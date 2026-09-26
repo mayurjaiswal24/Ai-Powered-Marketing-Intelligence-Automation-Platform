@@ -1,7 +1,11 @@
 """All number and date formatting for display (dashboard, PDF, Excel, text summaries).
 
-Indian conventions: digits grouped as 12,34,567. More formatters (₹, L/Cr, %, ROAS) are
-added in the KPI and dashboard phases.
+Indian conventions (locked decisions):
+  - money in INR with ₹ and Indian grouping: ₹12,34,567
+  - compact money for KPI cards in lakh (L) and crore (Cr): ₹8.5 L, ₹4.2 Cr
+  - percentages to 1 decimal: 12.3%
+  - ROAS to 2 decimals with "x": 3.45x
+  - anything missing or impossible shows "N/A", never 0
 """
 
 from __future__ import annotations
@@ -10,6 +14,19 @@ import datetime as dt
 import math
 
 NA = "N/A"
+LAKH = 1_00_000
+CRORE = 1_00_00_000
+
+
+def _is_missing(value) -> bool:
+    """None, NaN, pd.NA and infinity all count as 'no value'."""
+    if value is None:
+        return True
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return True
+    return math.isnan(number) or math.isinf(number)
 
 
 def group_indian(whole: int) -> str:
@@ -29,10 +46,71 @@ def group_indian(whole: int) -> str:
 
 
 def format_count(value) -> str:
-    """Whole-number counts (rows, clicks, leads) with Indian grouping; missing -> N/A."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    """Whole-number counts (rows, clicks, leads) with Indian grouping: 1,23,456."""
+    if _is_missing(value):
         return NA
-    return group_indian(int(round(value)))
+    return group_indian(int(round(float(value))))
+
+
+def format_inr(value, compact: bool = False, decimals: int | None = None) -> str:
+    """Rupees.
+
+    Full:    1234567 -> '₹12,34,567'; small amounts keep paise: 32.456 -> '₹32.46'
+    Compact: 42000000 -> '₹4.2 Cr'; 850000 -> '₹8.5 L'; below one lakh shown in full.
+    `decimals` forces the number of decimals in full mode (default: 0 from ₹100 up, else 2).
+    """
+    if _is_missing(value):
+        return NA
+    number = float(value)
+    sign = "-" if number < 0 else ""
+    number = abs(number)
+    if compact and number >= CRORE:
+        return f"{sign}₹{number / CRORE:.1f} Cr"
+    if compact and number >= LAKH:
+        return f"{sign}₹{number / LAKH:.1f} L"
+    if decimals is None:
+        decimals = 0 if number >= 100 or number.is_integer() else 2
+    rounded = round(number, decimals)
+    whole = int(rounded)
+    text = group_indian(whole)
+    if decimals > 0:
+        fraction = f"{rounded - whole:.{decimals}f}"[1:]   # ".46"
+        text += fraction
+    return f"{sign}₹{text}"
+
+
+def format_pct(value, decimals: int = 1) -> str:
+    """A percentage already on the 0-100 scale: 12.345 -> '12.3%'."""
+    if _is_missing(value):
+        return NA
+    return f"{float(value):.{decimals}f}%"
+
+
+def format_ratio(value, decimals: int = 2) -> str:
+    """A multiple such as ROAS: 3.4512 -> '3.45x'."""
+    if _is_missing(value):
+        return NA
+    return f"{float(value):.{decimals}f}x"
+
+
+def format_value(value, fmt: str, compact: bool = False) -> str:
+    """Format by KPI format type: 'money', 'percent', 'ratio' or 'count'."""
+    if fmt == "money":
+        return format_inr(value, compact=compact)
+    if fmt == "percent":
+        return format_pct(value)
+    if fmt == "ratio":
+        return format_ratio(value)
+    if fmt == "count":
+        return format_count(value)
+    raise ValueError(f"Unknown format type: {fmt}")
+
+
+def format_change(pct_change, decimals: int = 1) -> str:
+    """Relative change with a sign, for KPI card arrows: 12.34 -> '+12.3%'."""
+    if _is_missing(pct_change):
+        return NA
+    return f"{float(pct_change):+.{decimals}f}%"
 
 
 def format_date(value) -> str:
