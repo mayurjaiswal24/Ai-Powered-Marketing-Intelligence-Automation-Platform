@@ -1,0 +1,21 @@
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local database
+*.db
+
+# Generated exports (keep the folder itself)
+exports/*
+!exports/.gitkeep
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
