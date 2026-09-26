@@ -170,7 +170,7 @@ def _gross_profit_series(df: pd.DataFrame) -> pd.Series | None:
     return None
 
 
-def _ratio_parts(df: pd.DataFrame, key: str) -> tuple[pd.Series, pd.Series, float, str] | None:
+def ratio_parts(df: pd.DataFrame, key: str) -> tuple[pd.Series, pd.Series, float, str] | None:
     """Row-level (numerator, denominator) for a ratio KPI, with values blanked on rows where
     either input is missing (rule 3), plus the scale (100 for percentages) and a note.
     Returns None if the dataset lacks the fields."""
@@ -260,7 +260,7 @@ def compute_kpis(df: pd.DataFrame, capabilities=None) -> dict[str, KPIResult]:
 
     for key in RATIO_KPIS:
         spec = KPI_REGISTRY[key]
-        parts = None if _capability_disabled(key, capabilities) else _ratio_parts(df, key)
+        parts = None if _capability_disabled(key, capabilities) else ratio_parts(df, key)
         if parts is None:
             if key == "budget_utilisation" and not _has(df, "budget"):
                 continue   # optional extra: simply omitted when there is no budget column
@@ -323,7 +323,7 @@ def group_kpis(df: pd.DataFrame, by: str | list[str]) -> pd.DataFrame:
             out[metric] = _num(df, metric).groupby(grouped_on).sum(min_count=1)
 
     for key in RATIO_KPIS:
-        parts = _ratio_parts(df, key)
+        parts = ratio_parts(df, key)
         if parts is None:
             continue
         num, den, scale, _ = parts

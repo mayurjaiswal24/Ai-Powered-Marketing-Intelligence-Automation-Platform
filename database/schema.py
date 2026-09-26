@@ -158,8 +158,10 @@ CREATE TABLE IF NOT EXISTS anomalies (
     pct_change    REAL,
     score         REAL,
     direction     TEXT,
+    sentiment     TEXT,   -- negative / positive / check (is the change bad, good or unclear?)
     severity      TEXT,
     method        TEXT,
+    description   TEXT,
     details_json  TEXT
 );
 

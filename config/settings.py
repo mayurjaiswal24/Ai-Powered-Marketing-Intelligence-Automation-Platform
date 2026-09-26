@@ -50,6 +50,42 @@ OUTLIER_IQR_MULTIPLIER = 3.0
 # outliers are only checked on rows with at least this many leads.
 OUTLIER_MIN_LEADS = 5
 
+# --- Anomaly detection (weekly, robust) -----------------------------------------------------------
+# Each entity's week is compared with the median of its previous ANOMALY_BASELINE_WEEKS full weeks,
+# after removing the movement shared by the rest of the business that week (seasonality).
+ANOMALY_BASELINE_WEEKS = 8
+# At least this many full weeks of history are needed before a week can be judged.
+ANOMALY_MIN_HISTORY_WEEKS = 4
+# Robust z-score (distance from the median in MAD units) needed to call a week unusual.
+# 3.5 is the common rule of thumb; tuned on the sample data (Phase 07): 4.0 found the same
+# 10/10 planted anomalies as 3.5 but halved the unexplained flags (22 -> 12).
+ANOMALY_SCORE_THRESHOLD = 4.0
+# ... AND the change must be at least this big (%), so tiny-but-steady metrics are not flagged
+# for small wobbles ("do not call something an anomaly merely because it is numerically large").
+ANOMALY_MIN_PCT_CHANGE = 30.0
+# The MAD is floored at this share of the baseline: a very steady history must not turn a
+# 3% change into a "huge" score.
+ANOMALY_SCALE_FLOOR = 0.05
+# Minimum weekly volume (baseline median) before a metric is checked, to avoid tiny-number noise.
+# For ratio metrics the volume is the denominator (e.g. CPL needs enough leads).
+ANOMALY_MIN_VOLUME = {
+    "spend": 10_000,           # rupees per week
+    "revenue": 50_000,         # rupees per week
+    "clicks": 200,
+    "cpc": 200,                # clicks per week
+    "cpl": 20,                 # leads per week
+    "lead_qualification_rate": 30,   # leads per week
+    "lead_to_conversion_rate": 50,   # leads per week
+}
+# Scores at or above this (and changes of at least 50%) are labelled "high" severity.
+ANOMALY_HIGH_SCORE = 6.0
+
+# Daily tracking-outage rule: spend continues but clicks collapse.
+OUTAGE_BASELINE_DAYS = 28          # compare with the median of the previous 28 days
+OUTAGE_CLICK_SHARE = 0.05          # clicks below 5% of normal ...
+OUTAGE_MIN_SPEND_SHARE = 0.25      # ... while spend is at least 25% of normal
+OUTAGE_MIN_BASELINE_CLICKS = 20    # only for entities that normally get >= 20 clicks a day
+
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
 
