@@ -99,17 +99,26 @@ def _parse_formatted(text: pd.Series) -> tuple[pd.Series, pd.Series]:
     return numbers.astype(float), formatted
 
 
-def parse_dates(series: pd.Series) -> tuple[pd.Series, pd.Series]:
+DAY_FIRST_LABELS = {"DD/MM/YYYY", "DD-MM-YYYY", "DD.MM.YYYY"}
+
+
+def parse_dates(series: pd.Series, dayfirst: bool = True) -> tuple[pd.Series, pd.Series]:
     """Parse text dates written in any of DATE_FORMATS.
+
+    dayfirst=True (Indian convention) reads 05/01/2026 as 5 Jan; False reads it as May 1.
 
     Returns (datetimes with NaT where unparseable or missing,
              the format label that matched each cell, or None).
     """
+    formats = DATE_FORMATS
+    if not dayfirst:
+        us = [f for f in DATE_FORMATS if f[0] == "MM/DD/YYYY (US)"]
+        formats = us + [f for f in DATE_FORMATS if f[0] != "MM/DD/YYYY (US)"]
     text = series.fillna("").astype(str).str.strip()
     result = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
     labels = pd.Series(None, index=series.index, dtype=object)
     remaining = ~missing_mask(series)
-    for label, fmt in DATE_FORMATS:
+    for label, fmt in formats:
         if not remaining.any():
             break
         parsed = pd.to_datetime(text[remaining], format=fmt, errors="coerce")

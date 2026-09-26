@@ -174,3 +174,15 @@ LABEL_ALIASES: dict[str, str] = {
     "social": "paid social", "paid socials": "paid social",
     "e-mail": "email", "e mail": "email", "emailer": "email",
 }
+
+# Preferred display spelling for well-known channel/platform labels, keyed by the normalized
+# label AFTER aliases (so "FB", "facebook" and "Meta Ads" all become "Meta").
+CANONICAL_LABELS: dict[str, str] = {
+    "meta": "Meta", "google ads": "Google Ads", "youtube": "YouTube", "linkedin": "LinkedIn",
+    "paid search": "Paid Search", "paid social": "Paid Social", "email": "Email",
+    "video": "Video", "affiliate": "Affiliate", "professional network": "Professional Network",
+}
+
+# Fields holding whole-number counts (stored as integers after cleaning).
+COUNT_FIELDS = ("impressions", "reach", "clicks", "engagements", "views", "leads",
+                "qualified_leads", "opportunities", "conversions", "customers", "orders")

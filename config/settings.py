@@ -38,6 +38,18 @@ MAX_LABELS_FOR_CLUSTERING = 200
 # A column that is at least this share empty is flagged as a probable junk column.
 MOSTLY_EMPTY_SHARE = 0.95
 
+# --- Cleaning rules ------------------------------------------------------------------------------
+# Indian convention: 05/01/2026 means 5 January 2026. Set False for US-style files.
+DATE_DAYFIRST = True
+# "remove" drops exact duplicate rows (logged); "flag" keeps them and marks dq_flags instead.
+DUPLICATE_POLICY = "remove"
+# Outliers are only FLAGGED, never removed. A value is flagged if it lies beyond
+# Q3 + k x IQR (or below Q1 - k x IQR) within its channel. k = 3 flags only extreme values.
+OUTLIER_IQR_MULTIPLIER = 3.0
+# Row-level CPL is too noisy with very few leads (1 lead -> CPL = whole day's spend), so CPL
+# outliers are only checked on rows with at least this many leads.
+OUTLIER_MIN_LEADS = 5
+
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
 
