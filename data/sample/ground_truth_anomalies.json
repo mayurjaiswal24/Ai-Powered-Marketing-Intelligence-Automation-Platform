@@ -1,0 +1,262 @@
+{
+  "dataset": "marketing_clean.csv",
+  "note": "Magnitudes are approximate: compare the window against the few weeks before it for the same campaign/region. Rows outside these windows follow normal patterns (see expected_patterns.json).",
+  "anomalies": [
+    {
+      "id": "A01",
+      "metric": "cpl",
+      "secondary_metrics": [
+        "leads",
+        "click_to_lead_rate"
+      ],
+      "channel": [
+        "Paid Social"
+      ],
+      "platform": [
+        "Meta"
+      ],
+      "campaign_ids": [
+        "KL-META-001"
+      ],
+      "campaign_names": [
+        "Meta - Digital Marketing Prospecting"
+      ],
+      "region": "all",
+      "start_date": "2026-02-09",
+      "end_date": "2026-02-22",
+      "expected_direction": "up",
+      "sentiment": "negative",
+      "approx_magnitude_pct": 120,
+      "story": "Creative fatigue: the same ad creative ran for months, so people stopped responding. Click-to-lead rate fell by more than half and cost per lead roughly doubled for two weeks."
+    },
+    {
+      "id": "A02",
+      "metric": "lead_to_conversion_rate",
+      "secondary_metrics": [
+        "conversions",
+        "revenue",
+        "cac"
+      ],
+      "channel": [
+        "Paid Search"
+      ],
+      "platform": [
+        "Google Ads"
+      ],
+      "campaign_ids": [
+        "KL-GS-001"
+      ],
+      "campaign_names": [
+        "Google Search - Data Analytics Courses"
+      ],
+      "region": "all",
+      "start_date": "2026-03-09",
+      "end_date": "2026-03-29",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -70,
+      "story": "Landing page problem: a site release broke the course checkout page, so leads kept coming but far fewer enrolled for three weeks."
+    },
+    {
+      "id": "A03",
+      "metric": "spend",
+      "secondary_metrics": [
+        "budget",
+        "impressions"
+      ],
+      "channel": [
+        "Video"
+      ],
+      "platform": [
+        "YouTube"
+      ],
+      "campaign_ids": [
+        "KL-YT-001"
+      ],
+      "campaign_names": [
+        "YouTube - Career Stories"
+      ],
+      "region": "all",
+      "start_date": "2026-04-14",
+      "end_date": "2026-04-16",
+      "expected_direction": "up",
+      "sentiment": "negative",
+      "approx_magnitude_pct": 350,
+      "story": "Budget misconfiguration: someone typed a daily budget with an extra digit, so spend jumped about 4.5x for three days before it was caught."
+    },
+    {
+      "id": "A04",
+      "metric": "revenue",
+      "secondary_metrics": [
+        "conversions",
+        "roas"
+      ],
+      "channel": "all",
+      "platform": "all",
+      "campaign_ids": "all",
+      "campaign_names": "all",
+      "region": "East",
+      "start_date": "2026-08-03",
+      "end_date": "2026-08-23",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -55,
+      "story": "Regional payment issue: the payment gateway used for East-region customers failed for many transactions, so enrolments and revenue in East fell by about half for three weeks."
+    },
+    {
+      "id": "A05",
+      "metric": "clicks",
+      "secondary_metrics": [
+        "leads",
+        "conversions"
+      ],
+      "channel": [
+        "Paid Search"
+      ],
+      "platform": "Google Ads",
+      "campaign_ids": "all",
+      "campaign_names": "all",
+      "region": "all",
+      "start_date": "2026-09-08",
+      "end_date": "2026-09-09",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -99,
+      "story": "Tracking outage: a broken tag on Google Ads landing pages meant clicks, leads and enrolments were not recorded for two days, while spend continued as normal."
+    },
+    {
+      "id": "A06",
+      "metric": "conversions",
+      "secondary_metrics": [
+        "cpl",
+        "leads"
+      ],
+      "channel": [
+        "Professional Network"
+      ],
+      "platform": [
+        "LinkedIn"
+      ],
+      "campaign_ids": [
+        "KL-LI-001"
+      ],
+      "campaign_names": [
+        "LinkedIn - Mid-Career Data Upskilling"
+      ],
+      "region": "all",
+      "start_date": "2026-03-23",
+      "end_date": "2026-04-12",
+      "expected_direction": "up",
+      "sentiment": "positive",
+      "approx_magnitude_pct": 180,
+      "story": "Positive change: a new webinar-based lead form on LinkedIn attracted far better prospects, so leads and enrolments rose sharply and CPL fell for three weeks."
+    },
+    {
+      "id": "A07",
+      "metric": "qualified_lead_rate",
+      "secondary_metrics": [
+        "leads"
+      ],
+      "channel": [
+        "Affiliate"
+      ],
+      "platform": [
+        "Affiliate Network"
+      ],
+      "campaign_ids": [
+        "KL-AFF-001"
+      ],
+      "campaign_names": [
+        "Affiliate - Education Portals"
+      ],
+      "region": "all",
+      "start_date": "2026-02-23",
+      "end_date": "2026-03-06",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -75,
+      "story": "Low-quality affiliate traffic: one affiliate partner pushed incentivised sign-ups. Leads tripled but very few were genuine, so the qualified-lead rate collapsed."
+    },
+    {
+      "id": "A08",
+      "metric": "impressions",
+      "secondary_metrics": [
+        "clicks",
+        "leads"
+      ],
+      "channel": [
+        "Email"
+      ],
+      "platform": [
+        "Email (in-house)"
+      ],
+      "campaign_ids": [
+        "KL-EM-001"
+      ],
+      "campaign_names": [
+        "Email - Lead Nurture Series"
+      ],
+      "region": "all",
+      "start_date": "2025-12-01",
+      "end_date": "2025-12-07",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -80,
+      "story": "Email deliverability problem: a sender-reputation issue sent most nurture emails to spam for a week, so opens (impressions) and clicks fell by about 80%."
+    },
+    {
+      "id": "A09",
+      "metric": "cpc",
+      "secondary_metrics": [
+        "clicks",
+        "cpl"
+      ],
+      "channel": [
+        "Paid Search"
+      ],
+      "platform": [
+        "Google Ads"
+      ],
+      "campaign_ids": [
+        "KL-GS-002"
+      ],
+      "campaign_names": [
+        "Google Search - Software Development Courses"
+      ],
+      "region": "South",
+      "start_date": "2026-08-17",
+      "end_date": "2026-08-30",
+      "expected_direction": "up",
+      "sentiment": "negative",
+      "approx_magnitude_pct": 90,
+      "story": "Competitor bidding: a rival ed-tech brand bid aggressively on software-course keywords in the South, so CPC nearly doubled and clicks fell at the same spend."
+    },
+    {
+      "id": "A10",
+      "metric": "spend",
+      "secondary_metrics": [
+        "clicks",
+        "conversions"
+      ],
+      "channel": [
+        "Paid Social"
+      ],
+      "platform": [
+        "Meta"
+      ],
+      "campaign_ids": [
+        "KL-META-002"
+      ],
+      "campaign_names": [
+        "Meta - Website Retargeting"
+      ],
+      "region": "West",
+      "start_date": "2026-02-02",
+      "end_date": "2026-02-06",
+      "expected_direction": "down",
+      "sentiment": "negative",
+      "approx_magnitude_pct": -95,
+      "story": "Accidental pause: the West-region retargeting ad set was paused by mistake during an account clean-up, so spend and results nearly stopped for five days."
+    }
+  ]
+}

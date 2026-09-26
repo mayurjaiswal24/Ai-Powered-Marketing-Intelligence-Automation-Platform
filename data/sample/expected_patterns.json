@@ -1,0 +1,47 @@
+{
+  "note": "These are normal, expected patterns. A good detector should NOT flag them as anomalies.",
+  "patterns": [
+    {
+      "id": "P01",
+      "name": "Diwali festive peak",
+      "start_date": "2025-10-10",
+      "end_date": "2025-10-26",
+      "effect": "Demand up to ~35% above normal around 20 Oct 2025; the 'Diwali Festive Sale' promotion runs 1 Oct - 5 Nov 2025 with 25% discounts in this window."
+    },
+    {
+      "id": "P02",
+      "name": "Late-December holiday dip",
+      "start_date": "2025-12-22",
+      "end_date": "2025-12-31",
+      "effect": "Demand about 30% lower than early December."
+    },
+    {
+      "id": "P03",
+      "name": "January New-Year peak",
+      "start_date": "2026-01-01",
+      "end_date": "2026-01-31",
+      "effect": "Demand ~30% above normal; budgets raised; 'New Year Career Reset' promotion runs 26 Dec 2025 - 31 Jan 2026."
+    },
+    {
+      "id": "P04",
+      "name": "Admissions season (May-July)",
+      "start_date": "2026-05-01",
+      "end_date": "2026-07-31",
+      "effect": "Demand 20-35% above normal, peaking in June; 'Admissions Season Push' promotion runs in this window."
+    },
+    {
+      "id": "P05",
+      "name": "Weekend effect",
+      "start_date": null,
+      "end_date": null,
+      "effect": "Search and LinkedIn spend lower on weekends; social/video slightly higher. Email has no sends on weekends (zero spend)."
+    },
+    {
+      "id": "P06",
+      "name": "Campaign flights",
+      "start_date": null,
+      "end_date": null,
+      "effect": "Some campaigns start or end mid-year (see DATA_DICTIONARY.md). A campaign starting or stopping is not an anomaly."
+    }
+  ]
+}

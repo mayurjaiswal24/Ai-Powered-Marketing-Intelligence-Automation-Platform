@@ -1,0 +1,4 @@
+# Keep generated data byte-identical to the generator output on every OS.
+data/sample/*.csv text eol=lf
+data/sample/*.json text eol=lf
+data/sample/*.xlsx binary

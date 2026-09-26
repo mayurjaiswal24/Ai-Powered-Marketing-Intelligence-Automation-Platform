@@ -1,0 +1,41 @@
+date,campaign_id,campaign_name,campaign_type,objective,channel,platform,region,city_tier,customer_segment,course_category,budget,spend,impressions,reach,clicks,leads,qualified_leads,conversions,revenue,gross_profit
+2026-02-02,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,549.15,3605,3402,169,28,14,3,198611,116531
+2026-02-02,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,11213.5,5022,3898,258,28,8,3,139208,91170
+2026-02-02,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,10690.57,7337,5654,341,35,16,1,45662,18212
+2026-02-02,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,6476.91,12056,8947,73,7,6,1,75827,48467
+2026-02-02,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,9536.63,107524,41840,1009,71,7,1,20955,12675
+2026-02-02,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,7299.64,70636,41318,673,54,10,4,177139,113089
+2026-02-03,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,549.15,3266,2926,75,7,4,0,0,0
+2026-02-03,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,10247.42,5938,5008,266,23,8,1,42697,26684
+2026-02-03,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,9633.64,6267,5436,289,24,12,2,130457,75557
+2026-02-03,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,7256.87,14075,9560,69,7,3,0,0,0
+2026-02-03,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,8245.5,81551,44091,926,55,13,0,0,0
+2026-02-03,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,8249.93,47956,29082,525,41,3,0,0,0
+2026-02-04,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,549.15,3497,2948,94,12,4,0,0,0
+2026-02-04,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,9812.13,4688,4249,240,23,6,1,38400,22388
+2026-02-04,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,10917.37,7467,6180,349,38,10,0,0,0
+2026-02-04,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,6561.01,8670,4842,55,3,1,0,0,0
+2026-02-04,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,8621.76,70299,34159,780,51,9,0,0,0
+2026-02-04,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,8472.93,56555,23157,696,74,14,2,79925,47900
+2026-02-05,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,549.15,3606,3391,117,17,12,0,0,0
+2026-02-05,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,11951.38,7401,6450,347,25,12,1,48726,32714
+2026-02-05,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,9743.44,6508,5395,301,25,12,1,49599,22149
+2026-02-05,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,7391.94,11813,6927,68,3,1,0,0,0
+2026-02-05,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,8482.95,99472,43853,999,56,9,0,0,0
+2026-02-05,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,8453.04,54004,28646,650,64,10,1,44753,28740
+2026-02-06,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,549.15,3917,3293,103,16,5,0,0,0
+2026-02-06,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,10645.96,6474,5394,315,32,16,1,40568,24556
+2026-02-06,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,11678.89,8706,7421,400,40,15,0,0,0
+2026-02-06,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,6521.45,11789,6983,71,3,0,0,0,0
+2026-02-06,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,7549.28,58532,32523,710,41,5,1,21231,12951
+2026-02-06,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,8364.34,63391,24784,743,66,17,2,79121,47096
+2026-02-07,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,0.0,929,862,35,5,3,1,73036,45676
+2026-02-07,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,9341.15,5764,4771,237,16,4,0,0,0
+2026-02-07,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,9183.26,5500,4614,278,29,12,0,0,0
+2026-02-07,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,3657.5,5397,3554,31,5,3,0,0,0
+2026-02-07,KL-META-001,Meta - Digital Marketing Prospecting,Prospecting,Lead Generation,Paid Social,Meta,North,Tier 2,Students,Digital Marketing,9412,8946.36,120898,61510,1121,59,8,1,21650,13370
+2026-02-07,KL-META-002,Meta - Website Retargeting,Retargeting,Conversion,Paid Social,Meta,North,Tier 1,Early-Career Professionals,Data & Analytics,9412,9197.95,67755,37765,742,63,9,0,0,0
+2026-02-08,KL-EM-002,Email - Alumni Upsell,Retargeting,Conversion,Email,Email (in-house),North,Tier 1,Mid-Career Professionals,Finance,523,0.0,844,711,20,6,3,0,0,0
+2026-02-08,KL-GS-001,Google Search - Data Analytics Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 1,Early-Career Professionals,Data & Analytics,12549,8833.71,4935,4076,234,16,5,0,0,0
+2026-02-08,KL-GS-002,Google Search - Software Development Courses,Prospecting,Lead Generation,Paid Search,Google Ads,North,Tier 2,Early-Career Professionals,Software Development,12549,10392.64,5741,4921,299,19,9,3,173604,91254
+2026-02-08,KL-LI-002,LinkedIn - Finance Leadership Programme,Prospecting,Lead Generation,Professional Network,LinkedIn,North,Tier 1,Mid-Career Professionals,Finance,7320,3711.15,5592,3500,38,2,1,0,0,0
