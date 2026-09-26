@@ -758,7 +758,9 @@ def patterns_json() -> dict:
 # ---------------------------------------------------------------------------------------------
 
 def write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # newline="\n" keeps the file byte-identical on Windows and other systems.
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+                    newline="\n")
 
 
 def write_all(output_dir: Path, seed: int = DEFAULT_SEED, row_target: int = DEFAULT_ROW_TARGET) -> dict[str, int]:
