@@ -1,0 +1,216 @@
+"""Database tables. Creating them is safe to repeat (CREATE TABLE IF NOT EXISTS).
+
+The tables are kept separate by purpose (SPEC §8): what was uploaded, what was done to it,
+the clean data, the analytics results, the AI outputs and the reports. Every result table
+carries `run_id`, so each analysis run is self-contained and old runs can be compared or
+deleted without touching anything else.
+
+Analytics tables use a "tidy" long layout (one row = one entity x one metric). That keeps
+the schema stable while analyses evolve, and SQL like "all metrics for campaign X" stays simple.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+from config.fields import COUNT_FIELDS, FIELDS
+
+SCHEMA_VERSION = 1
+
+
+def _record_column_type(name: str, ftype: str) -> str:
+    if name in COUNT_FIELDS or name == "year":
+        return "INTEGER"
+    if ftype in ("number", "money"):
+        return "REAL"
+    return "TEXT"   # dates are stored as ISO text (YYYY-MM-DD), which sorts correctly
+
+
+# Clean marketing data: one column per canonical field, whether or not a dataset has it.
+RECORD_COLUMNS: dict[str, str] = {f.name: _record_column_type(f.name, f.ftype) for f in FIELDS}
+RECORD_COLUMNS.update({"week_start": "TEXT", "dq_flags": "TEXT", "source_row": "INTEGER"})
+
+_record_cols_sql = ",\n    ".join(f'"{name}" {sqltype}' for name, sqltype in RECORD_COLUMNS.items())
+
+TABLES = f"""
+CREATE TABLE IF NOT EXISTS schema_version (
+    version     INTEGER NOT NULL,
+    applied_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- One row per uploaded file. The SHA-256 hash lets us recognise a re-upload of the same file.
+CREATE TABLE IF NOT EXISTS datasets (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_name     TEXT NOT NULL,
+    file_type     TEXT,
+    file_hash     TEXT NOT NULL UNIQUE,
+    uploaded_at   TEXT NOT NULL,
+    row_count     INTEGER,
+    column_count  INTEGER
+);
+
+-- One analysis of a dataset (a dataset can be analysed several times, e.g. new mappings).
+CREATE TABLE IF NOT EXISTS runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    dataset_id      INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'started'
+                    CHECK (status IN ('started', 'cleaned', 'analysed', 'complete', 'failed')),
+    settings_json   TEXT,
+    record_columns  TEXT   -- JSON list of the clean-data columns this run actually has
+);
+
+CREATE TABLE IF NOT EXISTS field_mappings (
+    run_id             INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    source_column      TEXT NOT NULL,
+    canonical_field    TEXT,
+    confidence         REAL,
+    level              TEXT NOT NULL,
+    confirmed_by_user  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (run_id, source_column)
+);
+
+CREATE TABLE IF NOT EXISTS data_quality_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    row_ref         INTEGER,
+    column_name     TEXT,
+    original_value  TEXT,
+    cleaned_value   TEXT,
+    action          TEXT NOT NULL,
+    reason          TEXT,
+    severity        TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'error'))
+);
+CREATE INDEX IF NOT EXISTS ix_dql_run ON data_quality_logs(run_id);
+
+CREATE TABLE IF NOT EXISTS marketing_records (
+    record_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id     INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    {_record_cols_sql}
+);
+CREATE INDEX IF NOT EXISTS ix_records_run ON marketing_records(run_id);
+CREATE INDEX IF NOT EXISTS ix_records_run_date ON marketing_records(run_id, date);
+
+-- Headline KPIs for the whole run, with the numbers behind each one.
+CREATE TABLE IF NOT EXISTS kpi_results (
+    run_id       INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    kpi          TEXT NOT NULL,
+    value        REAL,
+    numerator    REAL,
+    denominator  REAL,
+    formula      TEXT,
+    note         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS campaign_analysis (
+    run_id    INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    campaign  TEXT NOT NULL,
+    metric    TEXT NOT NULL,
+    value     REAL
+);
+
+CREATE TABLE IF NOT EXISTS channel_analysis (
+    run_id   INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    channel  TEXT NOT NULL,
+    metric   TEXT NOT NULL,
+    value    REAL
+);
+
+-- Segments in the broad sense: customer segment, region, city tier, product category ...
+CREATE TABLE IF NOT EXISTS segment_analysis (
+    run_id     INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    dimension  TEXT NOT NULL,
+    segment    TEXT NOT NULL,
+    metric     TEXT NOT NULL,
+    value      REAL
+);
+
+CREATE TABLE IF NOT EXISTS funnel_analysis (
+    run_id              INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    scope               TEXT NOT NULL DEFAULT 'all',
+    stage_order         INTEGER NOT NULL,
+    stage               TEXT NOT NULL,
+    value               REAL,
+    rate_from_previous  REAL
+);
+
+CREATE TABLE IF NOT EXISTS trend_analysis (
+    run_id           INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    grain            TEXT NOT NULL CHECK (grain IN ('day', 'week', 'month')),
+    period           TEXT NOT NULL,
+    dimension        TEXT NOT NULL DEFAULT 'all',
+    dimension_value  TEXT NOT NULL DEFAULT 'all',
+    metric           TEXT NOT NULL,
+    value            REAL
+);
+
+CREATE TABLE IF NOT EXISTS anomalies (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id        INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    metric        TEXT NOT NULL,
+    entity_type   TEXT,
+    entity        TEXT,
+    grain         TEXT,
+    period_start  TEXT,
+    period_end    TEXT,
+    baseline      REAL,
+    observed      REAL,
+    pct_change    REAL,
+    score         REAL,
+    direction     TEXT,
+    severity      TEXT,
+    method        TEXT,
+    details_json  TEXT
+);
+
+-- Every Gemini call (or cache hit), for quota tracking and troubleshooting.
+CREATE TABLE IF NOT EXISTS ai_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          INTEGER REFERENCES runs(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    fingerprint     TEXT,
+    model           TEXT,
+    prompt_version  TEXT,
+    success         INTEGER NOT NULL,
+    error_type      TEXT,
+    input_tokens    INTEGER,
+    output_tokens   INTEGER,
+    latency_ms      INTEGER,
+    cache_hit       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_ai_runs_created ON ai_runs(created_at);
+
+-- Validated AI output, stored separately from the facts it interprets.
+CREATE TABLE IF NOT EXISTS ai_insights (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id           INTEGER REFERENCES runs(id) ON DELETE CASCADE,
+    fingerprint      TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    insights_json    TEXT NOT NULL,
+    evaluation_json  TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_ai_insights_fp ON ai_insights(fingerprint);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id       INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    report_type  TEXT NOT NULL CHECK (report_type IN ('pdf', 'excel')),
+    file_path    TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+"""
+
+# Tables that hold per-run analysis results in tidy form (saved/loaded generically).
+ANALYSIS_TABLES = ("kpi_results", "campaign_analysis", "channel_analysis", "segment_analysis",
+                   "funnel_analysis", "trend_analysis", "anomalies")
+
+
+def create_schema(conn: sqlite3.Connection) -> None:
+    """Create all tables if they do not exist yet, and record the schema version once."""
+    conn.executescript(TABLES)
+    if conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0:
+        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+
+
+def table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
