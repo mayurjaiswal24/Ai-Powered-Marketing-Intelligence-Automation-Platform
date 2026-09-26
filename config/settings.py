@@ -23,6 +23,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # environment win (override=False), so deployment settings are never replaced by a stray file.
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
+# --- Profiling & field-mapping thresholds (fixed business rules, not per-deployment) -------------
+# A header whose fuzzy similarity to a known synonym reaches this score (0-100), AND whose data
+# has the right type, is mapped as "high-confidence". Below it, the mapping is only suggested.
+MAPPING_HIGH_CONFIDENCE = 88
+# Candidates scoring below this are not even suggested.
+MAPPING_MIN_CANDIDATE = 65
+# Two category labels this similar (0-100) are treated as spelling variants ("Linkdin" ~ "LinkedIn").
+LABEL_SIMILARITY = 90
+# Share of non-missing values that must parse as a number/date for a column to get that type.
+TYPE_DETECTION_SHARE = 0.9
+# Columns with more distinct labels than this are not checked for inconsistent spellings.
+MAX_LABELS_FOR_CLUSTERING = 200
+# A column that is at least this share empty is flagged as a probable junk column.
+MOSTLY_EMPTY_SHARE = 0.95
+
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
 
