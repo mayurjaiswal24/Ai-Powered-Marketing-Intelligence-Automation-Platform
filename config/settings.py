@@ -66,6 +66,10 @@ class Settings:
     ai_max_calls_per_day: int = 15
     ai_cache_enabled: bool = True
     database_path: str = "marketing_intelligence.db"
+    # Uploads above this size are refused with a friendly message.
+    max_upload_mb: int = 50
+    # Above this many rows we warn that analysis may be slow (the file still loads).
+    large_row_warning: int = 200_000
 
     @property
     def has_gemini_key(self) -> bool:
@@ -84,6 +88,8 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ai_max_calls_per_day=_parse_int(env.get("AI_MAX_CALLS_PER_DAY"), defaults.ai_max_calls_per_day),
         ai_cache_enabled=_parse_bool(env.get("AI_CACHE_ENABLED"), defaults.ai_cache_enabled),
         database_path=_parse_str(env.get("DATABASE_PATH"), defaults.database_path),
+        max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
+        large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
     )
 
 

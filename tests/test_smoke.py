@@ -18,6 +18,8 @@ def test_defaults_with_empty_environment():
     assert s.ai_cache_enabled is True
     assert s.database_path == "marketing_intelligence.db"
     assert s.has_gemini_key is False
+    assert s.max_upload_mb == 50
+    assert s.large_row_warning == 200_000
 
 
 def test_values_are_parsed_safely():

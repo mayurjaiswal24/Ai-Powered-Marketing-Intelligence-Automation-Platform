@@ -2,3 +2,6 @@
 data/sample/*.csv text eol=lf
 data/sample/*.json text eol=lf
 data/sample/*.xlsx binary
+# Loader test fixtures must keep their exact bytes (encodings, line endings, fake binaries).
+tests/fixtures/* -text
+tests/fixtures/*.py text eol=lf
