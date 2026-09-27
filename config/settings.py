@@ -121,6 +121,12 @@ AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long
 AI_TEMPERATURE = 0.2               # low: we want careful, repeatable interpretation
 AI_MAX_CALLS_PER_REQUEST = 2       # one request may use a 2nd call: fallback model or unreadable answer
 AI_NUMBER_TOLERANCE = 0.01         # relative tolerance when checking AI numbers against evidence
+# AI field mapping (ai/mapping.py): what Gemini may see about a problem column.
+AI_MAPPING_SAMPLE_VALUES = 3       # at most this many example values per problem column
+AI_MAPPING_SAMPLE_CHARS = 40       # each example value is cut to this length
+AI_MAPPING_DICTIONARY_MAX_CHARS = 4_000   # data-dictionary sheet text sent with the columns
+# Public (deployed demo) mode: runs of a browser session are deleted after this many hours.
+PUBLIC_RUN_MAX_AGE_HOURS = 24
 
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
@@ -171,6 +177,13 @@ class Settings:
     # Housekeeping: only the newest N analysis runs are kept (records, snapshots, cached AI
     # insights and export folders of older runs are deleted when a new run is saved).
     keep_last_runs: int = 20
+    # Public demo mode (true in deployment): each browser session sees only its own runs,
+    # smaller uploads, per-session AI limits, and runs are deleted after 24 hours.
+    public_mode: bool = False
+    max_upload_mb_public: int = 10
+    ai_max_calls_per_session: int = 2          # insight calls per browser session (public mode)
+    ai_max_mapping_calls_per_day: int = 10     # Gemini field-mapping calls per UTC day
+    ai_max_mapping_calls_per_session: int = 2  # field-mapping calls per browser session (public)
     # Folder for generated PDF/Excel files (relative paths are inside the project folder).
     exports_dir: str = "exports"
     # Uploads above this size are refused with a friendly message.
@@ -181,6 +194,11 @@ class Settings:
     @property
     def has_gemini_key(self) -> bool:
         return bool(self.gemini_api_key)
+
+    @property
+    def upload_limit_mb(self) -> int:
+        """The upload size limit that applies now (smaller in public mode)."""
+        return min(self.max_upload_mb, self.max_upload_mb_public) if self.public_mode else self.max_upload_mb
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -198,6 +216,15 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         database_path=_parse_str(env.get("DATABASE_PATH"), defaults.database_path),
         exports_dir=_parse_str(env.get("EXPORTS_DIR"), defaults.exports_dir),
         keep_last_runs=_parse_int(env.get("KEEP_LAST_RUNS"), defaults.keep_last_runs, minimum=1),
+        public_mode=_parse_bool(env.get("PUBLIC_MODE"), defaults.public_mode),
+        max_upload_mb_public=_parse_int(env.get("MAX_UPLOAD_MB_PUBLIC"), defaults.max_upload_mb_public,
+                                        minimum=1),
+        ai_max_calls_per_session=_parse_int(env.get("AI_MAX_CALLS_PER_SESSION"),
+                                            defaults.ai_max_calls_per_session),
+        ai_max_mapping_calls_per_day=_parse_int(env.get("AI_MAX_MAPPING_CALLS_PER_DAY"),
+                                                defaults.ai_max_mapping_calls_per_day),
+        ai_max_mapping_calls_per_session=_parse_int(env.get("AI_MAX_MAPPING_CALLS_PER_SESSION"),
+                                                    defaults.ai_max_mapping_calls_per_session),
         max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
         large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
     )

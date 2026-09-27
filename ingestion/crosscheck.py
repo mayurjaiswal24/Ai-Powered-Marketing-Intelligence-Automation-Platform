@@ -34,9 +34,12 @@ _METRICS: dict[str, dict] = {
     "CPM":  {"names": {"cpm", "cost per mille", "cost per 1000 impressions"},
              "defs": [("spend", "impressions", (1000,))]},
     "CPA":  {"names": {"cpa", "cac", "cost per acquisition", "cost per conversion",
-                       "cost per purchase", "cost per order", "cost per result", "cost conv"},
+                       "cost per purchase", "cost per order", "cost conv"},
              "defs": [("spend", "conversions", (1,)), ("spend", "orders", (1,)),
                       ("spend", "customers", (1,))]},
+    # Meta's "Cost per result": a result is a lead or a conversion, depending on the campaign.
+    "Cost per result": {"names": {"cost per result", "cost per results"},
+                        "defs": [("spend", "leads", (1,)), ("spend", "conversions", (1,))]},
     "ROAS": {"names": {"roas", "roas x", "return on ad spend", "purchase roas"},
              "defs": [("revenue", "spend", (1,))]},
     "ROI":  {"names": {"roi", "roi percent", "return on investment"},
@@ -72,6 +75,7 @@ class CrossCheck:
     message: str
     definition: str = ""        # e.g. "Spend ÷ Clicks × 100"
     fields: tuple[str, ...] = ()   # canonical fields confirmed by a verified match
+    contradicted: tuple[str, ...] = ()   # fields of the mapped definition a mismatch disproves
 
 
 @dataclass
@@ -158,6 +162,7 @@ def cross_check(df: pd.DataFrame, mapping: MappingResult) -> CrossCheckResult:
                         trials.append((num_mapped and den_mapped, num_name, num_values, den_col, scales))
         trials.sort(key=lambda trial: not trial[0])            # stable: keeps definition order
         tried_mapped = [_describe(n, d, sc[0]) for mapped, n, _v, d, sc in trials if mapped]
+        first_mapped = next(((n, d) for mapped, n, _v, d, _sc in trials if mapped), None)
 
         hit = None                           # (definition text, all mapped?, columns used)
         for mapped, num_name, num_values, den_col, scales in trials:
@@ -172,11 +177,7 @@ def cross_check(df: pd.DataFrame, mapping: MappingResult) -> CrossCheckResult:
                 break
 
         if hit and hit[1]:
-            by_column = {c: f for f, c in mapping.active.items()}
-            if hit[2][0] == _NET_RETURN:
-                fields = ("revenue", "spend")
-            else:
-                fields = tuple(by_column[c] for c in hit[2] if c in by_column)
+            fields = _fields_of(hit[2], mapping)
             result.checks.append(CrossCheck(col, metric, "verified",
                                             f"Your file's {col} matches {hit[0]} - these mappings "
                                             "are verified by the file's own calculations.",
@@ -189,7 +190,8 @@ def cross_check(df: pd.DataFrame, mapping: MappingResult) -> CrossCheckResult:
         elif tried_mapped:
             result.checks.append(CrossCheck(col, metric, "mismatch",
                                             f"Your file's {col} doesn't match {tried_mapped[0]} - "
-                                            "please check these mappings.", tried_mapped[0]))
+                                            "please check these mappings.", tried_mapped[0],
+                                            contradicted=_fields_of(first_mapped, mapping)))
         else:
             result.checks.append(CrossCheck(col, metric, "unchecked",
                                             f"Your file's {col} could not be checked (the columns "
@@ -198,6 +200,15 @@ def cross_check(df: pd.DataFrame, mapping: MappingResult) -> CrossCheckResult:
 
 
 _NET_RETURN = "(Revenue − Spend)"
+
+
+def _fields_of(columns: tuple[str, str], mapping: MappingResult) -> tuple[str, ...]:
+    """Canonical fields behind a (numerator, denominator) pair of mapped columns."""
+    if columns[0] == _NET_RETURN:
+        return ("revenue", "spend") + tuple(f for f, c in mapping.active.items() if c == columns[1]
+                                            and f not in ("revenue", "spend"))
+    by_column = {c: f for f, c in mapping.active.items()}
+    return tuple(by_column[c] for c in columns if c in by_column)
 
 
 def _net_return_columns(df: pd.DataFrame, mapping: MappingResult):

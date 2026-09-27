@@ -98,11 +98,20 @@ def find_dataset_by_hash(file_hash: str, db_path=None) -> DatasetRecord | None:
     return DatasetRecord(row[0], row[1], row[2], row[3], True, row[4], row[5]) if row else None
 
 
-def create_run(dataset_id: int, settings: dict | None = None, db_path=None) -> int:
+def create_run(dataset_id: int, settings: dict | None = None, db_path=None,
+               session_id: str | None = None) -> int:
+    """A new analysis run. `session_id` (public mode) ties it to one browser session."""
     with session(db_path) as conn:
-        cur = conn.execute("INSERT INTO runs (dataset_id, created_at, settings_json) VALUES (?, ?, ?)",
-                           (dataset_id, _now(), json.dumps(settings or {}, sort_keys=True)))
+        cur = conn.execute("INSERT INTO runs (dataset_id, created_at, settings_json, session_id) "
+                           "VALUES (?, ?, ?, ?)",
+                           (dataset_id, _now(), json.dumps(settings or {}, sort_keys=True), session_id))
         return cur.lastrowid
+
+
+def run_session_id(run_id: int, db_path=None) -> str | None:
+    with session(db_path) as conn:
+        row = conn.execute("SELECT session_id FROM runs WHERE id = ?", (run_id,)).fetchone()
+    return row[0] if row else None
 
 
 def update_run_status(run_id: int, status: str, db_path=None) -> None:
@@ -354,15 +363,67 @@ def load_run_snapshot(run_id: int, db_path=None) -> bytes | None:
     return row[0] if row else None
 
 
-def list_recent_runs(limit: int = 10, db_path=None) -> pd.DataFrame:
-    """Most recent completed runs that can be reopened (they have a snapshot)."""
+def list_recent_runs(limit: int = 10, db_path=None, session_id: str | None = None) -> pd.DataFrame:
+    """Most recent completed runs that can be reopened (they have a snapshot).
+    With `session_id` (public mode) only that browser session's runs are listed."""
+    where, params = "", [limit]
+    if session_id is not None:
+        where, params = "WHERE r.session_id = ? ", [session_id, limit]
     with session(db_path) as conn:
         return pd.read_sql(
             "SELECT r.id AS run_id, d.file_name, d.row_count, r.created_at, r.status, "
             "(SELECT COUNT(*) FROM reports rp WHERE rp.run_id = r.id) AS reports "
             "FROM runs r JOIN datasets d ON d.id = r.dataset_id "
             "JOIN run_snapshots s ON s.run_id = r.id "
-            "ORDER BY r.id DESC LIMIT ?", conn, params=(limit,))
+            f"{where}ORDER BY r.id DESC LIMIT ?", conn, params=params)
+
+
+# --- Field-mapping memory (AI answers and user choices per column layout) -------------------
+
+def load_mapping_cache(layout_key: str, session_id: str = "", db_path=None) -> dict:
+    """{'ai': {column: (field or None, reason)}, 'user': {column: field or None}} for a layout.
+    User choices are those saved without a session (local app) or in this session (public)."""
+    out: dict = {"ai": {}, "user": {}}
+    with session(db_path) as conn:
+        rows = conn.execute("SELECT column_name, source, field, reason, session_id FROM mapping_cache "
+                            "WHERE layout_key = ?", (layout_key,)).fetchall()
+    for column, source, fname, reason, sid in rows:
+        if source == "ai":
+            out["ai"][column] = (fname, reason or "")
+        elif sid in ("", session_id):
+            if sid == session_id or column not in out["user"]:
+                out["user"][column] = fname
+    return out
+
+
+def save_mapping_cache(layout_key: str, source: str, entries: dict, session_id: str = "",
+                       db_path=None) -> None:
+    """entries = {column: (field or None, reason)}. Replaces earlier entries for those columns."""
+    with session(db_path) as conn:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mapping_cache (layout_key, column_name, source, field, reason, "
+            "session_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(layout_key, column, source, fname, reason, session_id, _now())
+             for column, (fname, reason) in entries.items()])
+
+
+def save_mapping_call(*, layout_key: str | None, session_id: str | None, model: str | None,
+                      success: bool, error_type: str | None = None, input_tokens: int | None = None,
+                      output_tokens: int | None = None, db_path=None) -> None:
+    with session(db_path) as conn:
+        conn.execute("INSERT INTO ai_mapping_calls (created_at, layout_key, session_id, model, success, "
+                     "error_type, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                     (_now(), layout_key, session_id, model, int(success), error_type,
+                      input_tokens, output_tokens))
+
+
+def count_mapping_calls(since_iso: str, session_id: str | None = None, db_path=None) -> int:
+    """Gemini mapping calls since a UTC time (optionally for one browser session)."""
+    sql, params = "SELECT COUNT(*) FROM ai_mapping_calls WHERE created_at >= ?", [since_iso]
+    if session_id is not None:
+        sql, params = sql + " AND session_id = ?", params + [session_id]
+    with session(db_path) as conn:
+        return conn.execute(sql, params).fetchone()[0]
 
 
 def delete_run(run_id: int, db_path=None) -> None:

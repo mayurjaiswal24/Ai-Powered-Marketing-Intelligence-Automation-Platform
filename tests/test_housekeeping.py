@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import database.connection as dbc
+import config.settings as config_settings
 from config.settings import Settings, load_settings
 from dashboard.pipeline import SAMPLE_DIR, load_raw, prepare, run_pipeline
 from database import housekeeping, repository
@@ -128,7 +129,7 @@ def test_new_ids_are_never_reused_after_deletion(store):
 
 
 def test_pipeline_applies_retention(tmp_path, monkeypatch):
-    monkeypatch.setattr(housekeeping, "settings", Settings(keep_last_runs=2))
+    monkeypatch.setattr(config_settings, "settings", Settings(keep_last_runs=2))
     db = tmp_path / "app.db"
     raw, report = load_raw(SAMPLE_DIR / "test_a_small.csv")
     ids = [run_pipeline(prepare(raw, report), db_path=db).run_id for _ in range(3)]

@@ -39,10 +39,16 @@ class BudgetStatus:
     day_limit: int
     calls_this_run: int
     run_limit: int
+    # Public mode only: calls made in this browser session and the per-session limit.
+    calls_this_session: int = 0
+    session_limit: int | None = None
 
     @property
     def remaining(self) -> int:
-        return max(0, min(self.day_limit - self.calls_today, self.run_limit - self.calls_this_run))
+        left = min(self.day_limit - self.calls_today, self.run_limit - self.calls_this_run)
+        if self.session_limit is not None:
+            left = min(left, self.session_limit - self.calls_this_session)
+        return max(0, left)
 
     @property
     def reason(self) -> str:
@@ -50,15 +56,21 @@ class BudgetStatus:
         if self.calls_today >= self.day_limit:
             return (f"The daily AI limit ({self.day_limit} calls, AI_MAX_CALLS_PER_DAY) has been "
                     "reached. Saved insights still work; new calls are possible tomorrow (UTC).")
+        if self.session_limit is not None and self.calls_this_session >= self.session_limit:
+            return (f"This demo allows {self.session_limit} AI calls per session "
+                    "(AI_MAX_CALLS_PER_SESSION). Saved insights still work.")
         if self.calls_this_run >= self.run_limit:
             return (f"The AI limit for this analysis run ({self.run_limit} calls, "
                     "AI_MAX_CALLS_PER_RUN) has been reached. Saved insights still work.")
         return ""
 
 
-def budget_status(settings, run_id: int | None, session_calls: int = 0, db_path=None) -> BudgetStatus:
+def budget_status(settings, run_id: int | None, session_calls: int = 0, db_path=None,
+                  session_total: int | None = None) -> BudgetStatus:
     """Calls used today and in this run, from the ai_runs log. If the run was not saved
-    (run_id None), the calls made in this browser session are used instead."""
+    (run_id None), the calls made in this browser session are used instead.
+    In public mode the calls of the whole browser session (`session_total`, defaulting to
+    `session_calls`) are also limited by AI_MAX_CALLS_PER_SESSION."""
     from database import repository
     from database.connection import DatabaseError
     try:
@@ -67,7 +79,11 @@ def budget_status(settings, run_id: int | None, session_calls: int = 0, db_path=
                     if run_id is not None else session_calls)
     except DatabaseError:
         today, this_run = 0, session_calls
-    return BudgetStatus(today, settings.ai_max_calls_per_day, this_run, settings.ai_max_calls_per_run)
+    status = BudgetStatus(today, settings.ai_max_calls_per_day, this_run, settings.ai_max_calls_per_run)
+    if getattr(settings, "public_mode", False):
+        status.calls_this_session = session_calls if session_total is None else session_total
+        status.session_limit = settings.ai_max_calls_per_session
+    return status
 
 
 def load_cached(fingerprint: str, db_path=None) -> dict | None:

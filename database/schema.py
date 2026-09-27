@@ -15,7 +15,7 @@ import sqlite3
 
 from config.fields import COUNT_FIELDS, FIELDS
 
-SCHEMA_VERSION = 2   # 2: run_snapshots (reopen a run without recomputing)
+SCHEMA_VERSION = 3   # 2: run_snapshots; 3: mapping cache + mapping-call log, runs.session_id
 
 
 def _record_column_type(name: str, ftype: str) -> str:
@@ -202,6 +202,34 @@ CREATE TABLE IF NOT EXISTS run_snapshots (
     payload         BLOB NOT NULL
 );
 
+-- Field-mapping memory per column layout (hash of the file's column names).
+-- source 'ai' = Gemini's answer (reused: same layout, no new call); source 'user' = the user's
+-- choice, which wins over AI and rules next time. field NULL = "not used".
+CREATE TABLE IF NOT EXISTS mapping_cache (
+    layout_key   TEXT NOT NULL,
+    column_name  TEXT NOT NULL,
+    source       TEXT NOT NULL CHECK (source IN ('ai', 'user')),
+    field        TEXT,
+    reason       TEXT,
+    session_id   TEXT NOT NULL DEFAULT '',   -- public mode: a user's choices stay in their session
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (layout_key, column_name, source, session_id)
+);
+
+-- Every Gemini field-mapping call (not cache hits), for the daily / per-session mapping budget.
+CREATE TABLE IF NOT EXISTS ai_mapping_calls (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at     TEXT NOT NULL,
+    layout_key     TEXT,
+    session_id     TEXT,
+    model          TEXT,
+    success        INTEGER NOT NULL,
+    error_type     TEXT,
+    input_tokens   INTEGER,
+    output_tokens  INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_ai_mapping_calls_created ON ai_mapping_calls(created_at);
+
 CREATE TABLE IF NOT EXISTS reports (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id       INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -219,6 +247,9 @@ ANALYSIS_TABLES = ("kpi_results", "campaign_analysis", "channel_analysis", "segm
 def create_schema(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist yet, and record the schema version once."""
     conn.executescript(TABLES)
+    # Version 3: runs remember the browser session that made them (public mode isolation).
+    if "session_id" not in table_columns(conn, "runs"):
+        conn.execute("ALTER TABLE runs ADD COLUMN session_id TEXT")
     current = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
     if current is None or current < SCHEMA_VERSION:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))

@@ -41,6 +41,8 @@ WARNING = "#fab219"
 NEUTRAL = "#898781"
 
 TEMPLATE_NAME = "marketing"
+# Row highlight in the mapping table for columns mapped by Gemini, by check result.
+AI_ROW_BACKGROUND = {"verified": "#e3f4e8", "check": "#fff3d1", "failed": "#fde2e1", "": "#e8f0fb"}
 TOP_MARGIN = 56                 # room for the title plus a small note above the plot
 TOP_MARGIN_WITH_LEGEND = 84     # title row + legend row
 LABEL_WRAP = 24                 # category labels longer than this wrap onto a second line

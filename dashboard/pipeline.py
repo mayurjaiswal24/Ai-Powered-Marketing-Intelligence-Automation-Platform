@@ -18,7 +18,9 @@ from analytics.engine import AnalysisResult, run_analysis, save_analysis
 from config.settings import PROJECT_ROOT
 from database import repository
 from database.connection import DatabaseError
-from database.housekeeping import apply_retention
+from database.housekeeping import housekeep
+from ai.mapping import AIMappingOutcome, MappingAssistant, contradicted_ai_columns
+from ai.mapping import badges as ai_badges
 from ingestion.crosscheck import CrossCheckResult, apply_to_mapping, cross_check
 from ingestion.loader import LoadReport, load_file
 from ingestion.mapper import MappingResult, map_fields
@@ -46,6 +48,14 @@ class PreparedUpload:
     validation: ValidationResult
     crosscheck: CrossCheckResult = field(default_factory=CrossCheckResult)
     warnings: list[PlausibilityWarning] = field(default_factory=list)   # warn, never block
+    ai: AIMappingOutcome = field(default_factory=AIMappingOutcome)       # Gemini's part, if any
+    badges: dict[str, str] = field(default_factory=dict)   # column -> verified / check / failed
+    remembered: dict[str, str | None] = field(default_factory=dict)     # saved user choices used
+
+    @property
+    def ai_mapped_columns(self) -> list[str]:
+        """Columns Gemini decided (applied or proven wrong), for the banner and highlighting."""
+        return [m.column for m in self.mapping.columns if m.source in ("ai", "ai_rejected")]
 
 
 @dataclass
@@ -66,21 +76,44 @@ def load_raw(source, filename: str | None = None) -> tuple[pd.DataFrame, LoadRep
 
 
 def prepare(raw_df: pd.DataFrame, report: LoadReport,
-            overrides: dict[str, str | None] | None = None) -> PreparedUpload:
-    """Profile the raw table, map its columns (with the user's choices) and check what the data
-    supports. Cheap enough to repeat whenever the user changes a mapping choice."""
+            overrides: dict[str, str | None] | None = None,
+            assistant: MappingAssistant | None = None) -> PreparedUpload:
+    """Profile the raw table, map its columns and check what the data supports.
+
+    Order of authority: the user's choices (this session's `overrides`, then choices saved for
+    this column layout) > Gemini (only for columns the rules left open) > Python rules.
+    Without an `assistant` no AI is used (tests, AI switched off).
+    Cheap enough to repeat whenever the user changes a mapping choice: Gemini's answer is cached
+    per column layout, so it is asked at most once per layout.
+    """
     profile = profile_dataset(raw_df)
-    mapping = map_fields(profile, overrides=overrides)
+    remembered = {}
+    if assistant is not None:
+        remembered = {c: f for c, f in assistant.remembered_choices(raw_df.columns).items()
+                      if c in raw_df.columns}
+    choices = {**remembered, **(overrides or {})}
+    mapping = map_fields(profile, overrides=choices)
+
+    ai = AIMappingOutcome()
+    if assistant is not None:
+        ai = assistant.suggest(raw_df, report, mapping)
+        if ai.decisions:
+            mapping = map_fields(profile, overrides=choices, ai=ai.decisions)
+    checks = cross_check(raw_df, mapping)          # the file's own CPC/CTR/ROAS vs. the mapping
+    rejected = contradicted_ai_columns(mapping, checks)
+    if rejected:                                   # AI proven wrong: not applied, user chooses
+        mapping = map_fields(profile, overrides=choices, ai=ai.decisions, ai_rejected=rejected)
+        checks = cross_check(raw_df, mapping)
     profile.apply_mapping(raw_df, mapping)
     validation = validate(mapping, profile)
-    checks = cross_check(raw_df, mapping)          # the file's own CPC/CTR/ROAS vs. the mapping
     apply_to_mapping(mapping, checks)
     warnings = check_plausibility(raw_df, mapping)
-    return PreparedUpload(raw_df, report, profile, mapping, validation, checks, warnings)
+    return PreparedUpload(raw_df, report, profile, mapping, validation, checks, warnings, ai,
+                          ai_badges(mapping, checks), remembered)
 
 
 def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda _msg: None,
-                 db_path=None) -> PipelineOutput:
+                 db_path=None, session_id: str | None = None) -> PipelineOutput:
     """Clean, store and analyse. Database problems do not stop the analysis: the results are
     still shown, with a note that they were not saved."""
     progress("Cleaning and standardising the data")
@@ -94,7 +127,8 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
                                          prep.report.file_type, db_path=db_path)
         is_reupload = ds.is_reupload
         run_id = repository.create_run(ds.id, {"overrides": {m.column: m.field for m in prep.mapping.columns
-                                                             if m.source == "user"}}, db_path=db_path)
+                                                             if m.source == "user"}}, db_path=db_path,
+                                       session_id=session_id)
         repository.save_field_mappings(run_id, prep.mapping, db_path=db_path)
         repository.save_quality_log(run_id, cleaned.quality_log_df, db_path=db_path)
         repository.save_clean_records(run_id, cleaned.clean_df, db_path=db_path)
@@ -117,7 +151,7 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
         except DatabaseError as exc:
             output.save_error = exc.user_message
         try:
-            apply_retention(db_path=db_path)     # keep only the newest KEEP_LAST_RUNS runs
+            housekeep(db_path=db_path)           # newest KEEP_LAST_RUNS; public: 24-hour limit
         except (DatabaseError, OSError):
             pass                                 # housekeeping must never break an analysis
     return output

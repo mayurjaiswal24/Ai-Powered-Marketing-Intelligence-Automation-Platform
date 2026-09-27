@@ -60,6 +60,14 @@ class LoadReport:
     delimiter: str | None = None  # "comma", "semicolon" or "tab"
     header_row: int = 1           # 1-based row number of the header in the original file
     warnings: list[str] = field(default_factory=list)
+    # Text of a "data dictionary" / "definitions" sheet, if the workbook has one. Used only to
+    # help map columns (it describes what each column means); never analysed.
+    data_dictionary: str | None = None
+
+
+# Sheet names that describe the columns rather than hold data.
+DICTIONARY_SHEET_WORDS = ("dictionary", "definition", "glossary", "readme", "read me",
+                          "metadata", "field guide", "column guide", "notes")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -71,7 +79,7 @@ def load_file(source: Any, filename: str | None = None, *, max_file_mb: int | No
     """Load a CSV/XLSX from a file path or a Streamlit UploadedFile (anything with
     `.getvalue()` or `.read()`). Returns (raw_df with every cell as text, LoadReport).
     Raises IngestionError with a plain-English message if the file cannot be used."""
-    max_file_mb = max_file_mb or settings.max_upload_mb
+    max_file_mb = max_file_mb or settings.upload_limit_mb
     large_row_warning = large_row_warning or settings.large_row_warning
 
     filename = filename or _guess_name(source)
@@ -265,11 +273,23 @@ def _xlsx_rows(data: bytes, report: LoadReport) -> list[list[str]]:
     chosen = max(sheets, key=lambda name: filled[name])
     report.sheet_used = chosen
     report.other_sheets = [name for name in sheets if name != chosen]
+    report.data_dictionary = _dictionary_text(sheets, report.other_sheets)
     if report.other_sheets:
         report.warnings.append(
             f"The workbook has {len(sheets)} sheets. Using '{chosen}' because it has the most "
             f"data. Other sheets not used: {', '.join(report.other_sheets)}.")
     return sheets[chosen]
+
+
+def _dictionary_text(sheets: dict[str, list[list[str]]], names: list[str]) -> str | None:
+    """The first sheet whose name says it describes the columns, as compact text."""
+    from config.settings import AI_MAPPING_DICTIONARY_MAX_CHARS
+    for name in names:
+        if any(word in name.lower() for word in DICTIONARY_SHEET_WORDS):
+            lines = [" | ".join(c.strip() for c in row if c.strip()) for row in sheets[name]]
+            text = "\n".join(line for line in lines if line)
+            return text[:AI_MAPPING_DICTIONARY_MAX_CHARS] or None
+    return None
 
 
 # ---------------------------------------------------------------------------------------------

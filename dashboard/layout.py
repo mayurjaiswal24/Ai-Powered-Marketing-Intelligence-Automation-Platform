@@ -4,6 +4,7 @@ the same analytics functions re-run on the filtered rows."""
 from __future__ import annotations
 
 import io
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -17,8 +18,8 @@ from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, period_compar
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
-from config.settings import settings
-from dashboard import charts, components as ui
+import config.settings as config_settings
+from dashboard import charts, components as ui, theme
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, preset_range)
 from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, load_raw, prepare,
@@ -54,15 +55,64 @@ def _reset_for_new_file(raw_df, report, label):
 
 def current_prep():
     """Profile + mapping for the loaded file, recomputed only when the file or the user's
-    mapping choices change."""
+    mapping choices change. Gemini is asked (once per column layout) about the columns the
+    rules could not map; a failed or unavailable attempt is not repeated in this session."""
     s = _state()
     if "raw_df" not in s:
         return None
     key = (s["report"].file_hash, tuple(sorted(s.get("overrides", {}).items(), key=str)))
     if s.get("prep_key") != key:
-        s["prep"] = prepare(s["raw_df"], s["report"], s.get("overrides") or None)
+        layout, assistant = _assistant(s["raw_df"].columns)
+        s["prep"] = prepare(s["raw_df"], s["report"], s.get("overrides") or None, assistant=assistant)
+        s["ai_map_session_calls"] = s.get("ai_map_session_calls", 0) + assistant.calls_made
+        if s["prep"].ai.source == "none" and s["prep"].ai.note:
+            s.setdefault("ai_map_tried", {})[layout] = s["prep"].ai.note
         s["prep_key"] = key
     return s["prep"]
+
+
+def _session_id() -> str:
+    """A random id for this browser session (public mode: runs and choices stay in it)."""
+    s = _state()
+    if "session_id" not in s:
+        s["session_id"] = uuid.uuid4().hex
+    return s["session_id"]
+
+
+def _public() -> bool:
+    return bool(config_settings.settings.public_mode)
+
+
+def _assistant(columns):
+    """The mapping assistant for this session: remembers choices, asks Gemini when allowed."""
+    import ai.client as ai_client
+    from ai.mapping import MappingAssistant, layout_key
+    settings = config_settings.settings
+    s = _state()
+    tried = s.get("ai_map_tried", {})
+    layout = layout_key(columns)
+    return layout, MappingAssistant(
+        settings, lambda: ai_client.client_from_settings(settings), session_id=_session_id(),
+        session_calls=s.get("ai_map_session_calls", 0), allow_call=layout not in tried,
+        blocked_note=tried.get(layout, ""))
+
+
+@st.cache_resource(show_spinner=False)
+def _startup_housekeeping(public_mode: bool) -> list[int]:
+    """Once per app start: in public mode, delete runs older than 24 hours (and beyond
+    KEEP_LAST_RUNS). Cached, so it runs once per server process, not on every page view."""
+    if not public_mode:
+        return []
+    from database.connection import DatabaseError
+    from database.housekeeping import housekeep
+    try:
+        return housekeep()
+    except (DatabaseError, OSError):
+        return []
+
+
+def startup() -> None:
+    _startup_housekeeping(bool(config_settings.settings.public_mode))
 
 
 def current_output():
@@ -155,11 +205,13 @@ def _filter_caption(filters: Filters | None) -> str:
 def page_upload() -> None:
     ui.page_header("Upload & Profile", "Upload a marketing export (CSV or Excel) or load a sample. "
                    "The file is profiled, cleaned and analysed automatically.")
+    if _public():
+        st.info("Demo app: your data is kept only for this session and deleted automatically.")
     left, right = st.columns([3, 2], gap="large")
     with left:
         uploaded = st.file_uploader("Marketing data file", type=["csv", "xlsx"], key="uploader",
-                                    help="One row per day and campaign works best. Maximum size is "
-                                         "set by MAX_UPLOAD_MB (default 50 MB).")
+                                    help="One row per day and campaign works best. Maximum size: "
+                                         f"{config_settings.settings.upload_limit_mb} MB.")
         if uploaded is not None and _state().get("uploaded_id") != uploaded.file_id:
             _state()["uploaded_id"] = uploaded.file_id
             try:
@@ -223,17 +275,24 @@ def page_upload() -> None:
     st.markdown("## Run analysis")
     for message in prep.validation.blocking:
         st.warning(message)
+    _ai_mapping_banner(prep)
     _confirm_columns(prep)
     _mapping_checks(prep)
     _final_mapping_summary(prep)
+    state = _state()
+    if current_output() is not None and state.get("output_prep_key") not in (None, state.get("prep_key")):
+        st.info("The mapping changed since the last analysis. Press Run analysis to update the results.")
     run = st.button("Run analysis", type="primary", key="run_analysis",
                     disabled=not prep.validation.can_analyse)
     if run:
         try:
             with st.status("Running analysis...", expanded=True) as status:
-                output = run_pipeline(prep, progress=lambda msg: status.write(msg))
+                output = run_pipeline(prep, progress=lambda msg: status.write(msg),
+                                      session_id=_session_id() if _public() else None)
                 status.update(label="Analysis complete", state="complete", expanded=False)
             _state()["output"] = output
+            _state()["output_prep_key"] = _state().get("prep_key")
+            _preload_demo(output, prep.report)
             for key in ("view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
                 _state().pop(key, None)
         except (CleaningError, IngestionError) as exc:
@@ -249,6 +308,9 @@ def page_upload() -> None:
             st.info("This exact file was uploaded before; a new analysis run was recorded for it.")
         if output.save_error:
             st.warning(f"The results are shown but were not saved: {output.save_error}")
+        if "raw_df" in _state():
+            st.button("Edit mapping and re-run", key="edit_rerun", on_click=_open_mapping_editor,
+                      help="Opens 'Change any mapping' above with your current choices filled in.")
     _recent_analyses()
 
 
@@ -257,7 +319,7 @@ def _recent_analyses() -> None:
     from database import repository
     from database.connection import DatabaseError
     try:
-        recent = repository.list_recent_runs(limit=8)
+        recent = repository.list_recent_runs(limit=8, session_id=_session_id() if _public() else None)
     except DatabaseError as exc:
         ui.friendly_error(exc)
         return
@@ -269,7 +331,8 @@ def _recent_analyses() -> None:
         st.caption("Analyses you run are saved here so you can reopen them later without recalculating.")
         return
     st.caption("Reopening shows the saved results instantly (no recalculation and no AI call). "
-               f"Only the newest {settings.keep_last_runs} analyses are kept (KEEP_LAST_RUNS).")
+               f"Only the newest {config_settings.settings.keep_last_runs} analyses are kept "
+               "(KEEP_LAST_RUNS).")
     state = _state()
     for row in recent.itertuples():
         c1, c2, c3, c4 = st.columns([5, 3, 1, 1])
@@ -278,9 +341,9 @@ def _recent_analyses() -> None:
                    + (f" | {row.reports} report(s)" if row.reports else ""))
         if c4.button("Delete", key=f"delete_run_{row.run_id}"):
             state["confirm_delete"] = int(row.run_id)
-        if state.get("confirm_delete") == int(row.run_id):
+        if state.get("confirm_delete") == int(row.run_id) and _owns_run(int(row.run_id)):
             _confirm_delete(int(row.run_id), row.file_name)
-        if c3.button("Open", key=f"open_run_{row.run_id}"):
+        if c3.button("Open", key=f"open_run_{row.run_id}") and _owns_run(int(row.run_id)):
             try:
                 output = reopen_run(int(row.run_id))
             except DatabaseError as exc:
@@ -301,6 +364,27 @@ _STATUS_LABELS = {
     "ignored": "Not used (your choice)"}
 _NOT_USED = "Not used"
 _LINE_BREAK = "\n"      # markdown lists inside st.success / st.warning need real line breaks
+
+
+def _preload_demo(output, report) -> None:
+    """Kalpa sample on a database without saved insights: store the demo seed's insights."""
+    from ai.demo_seed import preload_demo_insights
+    try:
+        preload_demo_insights(output, report, config_settings.settings)
+    except Exception:  # noqa: BLE001 - the demo seed is a convenience; never break a run
+        pass
+
+
+def _owns_run(run_id: int) -> bool:
+    """Public mode: a visitor may open or delete only runs made in their own session."""
+    if not _public():
+        return True
+    from database import repository
+    from database.connection import DatabaseError
+    try:
+        return repository.run_session_id(run_id) == _session_id()
+    except DatabaseError:
+        return False
 
 
 def _confirm_delete(run_id: int, file_name: str) -> None:
@@ -329,27 +413,69 @@ def _confirm_delete(run_id: int, file_name: str) -> None:
         st.rerun()
 
 
-def _mapping_editor(prep) -> None:
-    """Full mapping table with the reason for every decision, plus a way to change any column."""
-    table = prep.mapping.to_frame().rename(columns={
-        "column": "Column in file", "maps_to": "Used as", "status": "Confidence",
-        "score": "Match score", "suggestions": "Suggestions", "reason": "Why"})
-    table["Confidence"] = table["Confidence"].map(_STATUS_LABELS).fillna(table["Confidence"])
-    st.dataframe(table.drop(columns=["note"]), hide_index=True, width="stretch")
-    st.caption("Columns that need a decision are shown next to the Run analysis button below.")
+def _source_label(m) -> str:
+    if m.source == "user":
+        return "your choice"
+    return "AI" if m.source in ("ai", "ai_rejected") else "rule"
 
-    with st.expander("Change the mapping of any column"):
-        columns = [m.column for m in prep.mapping.columns]
-        column = st.selectbox("Column", columns, key="change_column")
-        current = prep.mapping.by_column(column)
-        choices = _field_choices(current.field)
-        picked = st.selectbox(f"'{column}' contains", choices, key=f"change_field_{column}",
-                              index=choices.index(current.field) if current.field in choices
-                              else choices.index(_NOT_USED),
-                              format_func=_choice_label)
-        if st.button("Apply this change", key="apply_change"):
-            _state().setdefault("overrides", {})[column] = None if picked == _NOT_USED else picked
-            st.rerun()
+
+def _mapping_editor(prep) -> None:
+    """Every column: what it is used as, who decided (rule / AI / your choice), the AI check
+    badge and the reason. AI rows are highlighted. Any column can be changed below."""
+    from ai.mapping import BADGES
+    frame = prep.mapping.to_frame()
+    table = pd.DataFrame({
+        "Column in file": frame["column"],
+        "Used as": frame["maps_to"],
+        "Source": [_source_label(m) for m in prep.mapping.columns],
+        "Check": [BADGES.get(prep.badges.get(m.column, ""), "") for m in prep.mapping.columns],
+        "Status": frame["status"].map(_STATUS_LABELS).fillna(frame["status"]),
+        "Why": frame["reason"],
+    })
+    badge_of = [prep.badges.get(m.column, "") if m.source in ("ai", "ai_rejected") else None
+                for m in prep.mapping.columns]
+
+    def highlight(row):
+        badge = badge_of[row.name]
+        colour = "" if badge is None else theme.AI_ROW_BACKGROUND.get(badge, theme.AI_ROW_BACKGROUND[""])
+        return [f"background-color: {colour}" if colour else ""] * len(row)
+
+    st.dataframe(table.style.apply(highlight, axis=1), hide_index=True, width="stretch")
+    st.caption("Highlighted rows were mapped by Gemini. Columns that need a decision are also shown "
+               "next to the Run analysis button below.")
+    _all_columns_editor(prep)
+
+
+def _open_mapping_editor() -> None:
+    """Used by the 'Edit mapping and re-run' buttons (also as a button callback)."""
+    _state()["edit_mapping"] = True
+    _state()["page"] = "Upload & Profile"
+
+
+def _all_columns_editor(prep) -> None:
+    """A dropdown for every column, whoever mapped it. Changes are applied together, remembered
+    for this column layout, and win over AI and rules next time."""
+    from ai.mapping import layout_key
+    layout = layout_key(prep.raw_df.columns)[:10]
+    with st.expander("Change any mapping", expanded=bool(_state().get("edit_mapping"))):
+        with st.form(f"mapping_form_{layout}"):
+            picks: dict[str, str | None] = {}
+            cols = st.columns(3)
+            for i, m in enumerate(prep.mapping.columns):
+                current = m.field if m.status in ("confirmed", "high_confidence") and m.field else _NOT_USED
+                choices = _field_choices(m.field, [f for f, _ in m.candidates])
+                picked = cols[i % 3].selectbox(
+                    f"{m.column}  ({_source_label(m)})", choices, index=choices.index(current),
+                    format_func=_choice_label, key=f"map_{layout}_{m.column}")
+                picks[m.column] = None if picked == _NOT_USED else picked
+            submitted = st.form_submit_button("Apply changes", key=f"apply_all_{layout}")
+        if submitted:
+            changed = {}
+            for m in prep.mapping.columns:
+                before = m.field if m.status in ("confirmed", "high_confidence") else None
+                if picks[m.column] != before:
+                    changed[m.column] = picks[m.column]
+            _apply_user_choices(prep, changed)
 
 
 def _field_choices(first: str | None = None, suggestions: list[str] = ()) -> list[str]:
@@ -385,7 +511,7 @@ def _confirm_columns(prep) -> None:
         for m in group:
             suggestions = [f for f, _ in m.candidates]
             default = (overrides.get(m.column, _NOT_USED) if m.column in overrides
-                       else _NOT_USED if m.source == "profit"
+                       else _NOT_USED if m.source in ("profit", "ai_rejected")
                        else suggestions[0] if suggestions else _NOT_USED)
             default = default or _NOT_USED
             choices = _field_choices(m.field, suggestions)
@@ -398,9 +524,19 @@ def _confirm_columns(prep) -> None:
                     st.caption(f"Why asked: {m.reason}.")
             picks[m.column] = None if picked == _NOT_USED else picked
     if st.button("Apply choices", key="apply_mapping", type="secondary"):
-        overrides.update(picks)
-        _state().pop("prep_key", None)
-        st.rerun()
+        _apply_user_choices(prep, picks)
+
+
+def _apply_user_choices(prep, choices: dict[str, str | None]) -> None:
+    """Use the user's choices now and remember them for this column layout (user > AI > rules)."""
+    state = _state()
+    if choices:
+        state.setdefault("overrides", {}).update(choices)
+        _layout, assistant = _assistant(prep.raw_df.columns)
+        assistant.remember_choices(prep.raw_df.columns, choices)
+    state.pop("prep_key", None)
+    state["edit_mapping"] = False
+    st.rerun()
 
 
 def _mapping_checks(prep) -> None:
@@ -422,16 +558,38 @@ def _mapping_checks(prep) -> None:
 
 
 def _final_mapping_summary(prep) -> None:
-    """One compact line per used field, right above the Run analysis button."""
+    """One compact line per used field (with who decided and the AI check), right above the
+    Run analysis button."""
+    from ai.mapping import BADGES
     verified = prep.crosscheck.verified_fields
-    used = [(FIELD_BY_NAME[m.field].label, m.column, m.field in verified)
-            for m in prep.mapping.columns if m.status in ("confirmed", "high_confidence")]
+    parts = []
+    for m in prep.mapping.columns:
+        if m.status not in ("confirmed", "high_confidence"):
+            continue
+        tags = [_source_label(m)]
+        if m.column in prep.badges:
+            tags.append(BADGES[prep.badges[m.column]])
+        elif m.field in verified:
+            tags.append("verified ✓")
+        parts.append(f"{FIELD_BY_NAME[m.field].label} ← '{m.column}' ({', '.join(tags)})")
     skipped = [m.column for m in prep.mapping.columns if m.status not in ("confirmed", "high_confidence")]
-    parts = [f"{label} ← '{col}'" + (" ✓" if ok else "") for label, col, ok in used]
     st.markdown("**Final mapping summary**")
-    st.caption(" · ".join(parts) + (" (✓ = verified by the file's own calculations)" if verified else ""))
+    st.caption(" · ".join(parts))
     if skipped:
         st.caption(f"Not used ({len(skipped)}): " + ", ".join(skipped))
+
+
+def _ai_mapping_banner(prep) -> None:
+    """How many columns Gemini mapped, the privacy note, and why AI was not used (if so)."""
+    from ai.mapping import PRIVACY_NOTE
+    ai_columns = prep.ai_mapped_columns
+    if ai_columns:
+        st.info(f"Gemini mapped {len(ai_columns)} column{'s' if len(ai_columns) != 1 else ''} "
+                "(highlighted). Review them or change any mapping below.")
+    if prep.ai.note:
+        st.caption(prep.ai.note)
+    if ai_columns or config_settings.settings.ai_enabled:
+        st.caption(PRIVACY_NOTE)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -863,14 +1021,21 @@ def page_ai() -> None:
     settings = config_settings.settings
     ui.page_header("AI Insights", "Google Gemini interprets the verified findings. It never calculates "
                    "the numbers; every statement must cite the evidence it is based on.")
-    if not settings.ai_enabled:
-        st.info("AI is turned off (AI_ENABLED=false in the .env file). The dashboard, findings, "
-                "anomalies and reports are complete without AI.")
-        return
-    if not settings.has_gemini_key or not settings.gemini_model:
-        st.warning("AI is switched on but not configured: add GEMINI_API_KEY and GEMINI_MODEL to the "
-                   ".env file, then restart the app.")
-        return
+    state = _state()
+    # Without calls (AI off or not configured) saved insights are still shown, e.g. the demo seed.
+    read_only = not (settings.ai_enabled and settings.has_gemini_key and settings.gemini_model)
+    if read_only:
+        saved = (get_insights(output.analysis, settings, None, run_id=output.run_id, allow_call=False)
+                 if settings.ai_cache_enabled else None)
+        if saved is None:
+            if not settings.ai_enabled:
+                st.info("AI is turned off (AI_ENABLED=false in the .env file). The dashboard, findings, "
+                        "anomalies and reports are complete without AI.")
+            else:
+                st.warning("AI is switched on but not configured: add GEMINI_API_KEY and GEMINI_MODEL "
+                           "to the .env file, then restart the app.")
+            return
+        state["ai_run"] = saved
 
     st.info(AI_BANNER)
     pack = build_evidence(output.analysis, model=settings.gemini_model)
@@ -879,15 +1044,16 @@ def page_ai() -> None:
     with st.expander("See the evidence pack sent to Gemini"):
         st.json(pack.json_text, expanded=False)
 
-    state = _state()
     # Saved insights for exactly this evidence are shown straight away: no API call.
     if state.get("ai_run") is None and settings.ai_cache_enabled:
         cached = get_insights(output.analysis, settings, None, run_id=output.run_id, allow_call=False)
         if cached is not None:
             state["ai_run"] = cached
     budget = budget_status(settings, output.run_id, state.get("ai_session_calls", 0))
+    session_text = (f" | this session: {budget.calls_this_session} of {budget.session_limit}"
+                    if budget.session_limit is not None else "")
     st.caption(f"AI calls today (UTC): {budget.calls_today} of {budget.day_limit} | this analysis run: "
-               f"{budget.calls_this_run} of {budget.run_limit} | caching "
+               f"{budget.calls_this_run} of {budget.run_limit}{session_text} | caching "
                f"{'on' if settings.ai_cache_enabled else 'off'}.")
 
     def request(force: bool) -> None:
@@ -907,7 +1073,10 @@ def page_ai() -> None:
     if notice:
         st.error(f"The new call did not succeed, so the saved insights are still shown. {notice}")
     run = state.get("ai_run")
-    if run is None or not run.ok:
+    if read_only:
+        st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No API call used.")
+        st.caption("New AI calls are off in this app (AI_ENABLED / GEMINI settings).")
+    elif run is None or not run.ok:
         if budget.remaining <= 0:
             st.warning(budget.reason)
         if st.button("Generate AI insights", key="generate_ai", type="primary",
@@ -1003,6 +1172,11 @@ def page_quality() -> None:
     output = current_output()
     ui.page_header("Data Quality", "What was fixed, flagged or excluded while cleaning, and what it "
                    "means for the numbers.")
+    if "raw_df" in _state():
+        st.button("Edit mapping and re-run", key="edit_rerun_quality", on_click=_open_mapping_editor,
+                  help="Opens Upload & Profile with your current choices filled in.")
+    else:
+        st.caption("To change the mapping of a reopened analysis, upload the file again.")
     summary = output.clean.quality_summary
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Rows uploaded", format_count(summary.rows_in), border=True)

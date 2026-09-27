@@ -1,0 +1,168 @@
+{
+ "seed_version": 1,
+ "note": "Real Gemini answer for the Kalpa clean sample; regenerate with scripts/refresh_demo_seed.py (one real call).",
+ "dataset": {
+  "file_name": "marketing_clean.csv",
+  "file_hash": "4bcfa8b49e0bc9a94fc1230d47c5709b17f84c2785d5025f82809204039aa83e"
+ },
+ "mapping": {
+  "date": "date",
+  "campaign_id": "campaign_id",
+  "campaign_name": "campaign_name",
+  "campaign_type": "campaign_type",
+  "objective": "objective",
+  "channel": "channel",
+  "platform": "platform",
+  "region": "region",
+  "city_tier": "city_tier",
+  "customer_segment": "customer_segment",
+  "course_category": "product_category",
+  "budget": "budget",
+  "spend": "spend",
+  "impressions": "impressions",
+  "reach": "reach",
+  "clicks": "clicks",
+  "leads": "leads",
+  "qualified_leads": "qualified_leads",
+  "conversions": "conversions",
+  "revenue": "revenue",
+  "gross_profit": "gross_profit"
+ },
+ "ai": {
+  "model": "gemini-3.1-flash-lite",
+  "prompt_version": "v4",
+  "created_at": "2026-09-27T11:11:29+00:00",
+  "insights": {
+   "executive_summary": {
+    "text": "The business achieved a total revenue of ₹34.0 Cr with a ROAS of 4.57x across all channels. Paid Search remains the primary driver, contributing 55.3% of total revenue from 44.8% of the total spend.",
+    "evidence_ids": [
+     "E01",
+     "E04",
+     "E14"
+    ]
+   },
+   "key_findings": [
+    {
+     "text": "Paid Search is the most efficient revenue driver with a ROAS of 5.65x, significantly outperforming the paid-media average ROAS of 4.57x.",
+     "evidence_ids": [
+      "E01",
+      "E14"
+     ]
+    },
+    {
+     "text": "The funnel experiences its most significant drop at the click-to-lead stage, where only 5.6% of clicks convert into leads.",
+     "evidence_ids": [
+      "E01",
+      "E08",
+      "E20"
+     ]
+    },
+    {
+     "text": "Early-Career Professionals represent the most valuable customer segment, delivering a ROAS of 5.57x and accounting for 63.4% of total revenue.",
+     "evidence_ids": [
+      "E13",
+      "E42"
+     ]
+    }
+   ],
+   "performance_concerns": [
+    {
+     "text": "Video channels show the weakest performance among paid media with a ROAS of 2.26x, well below the overall average of 4.57x.",
+     "evidence_ids": [
+      "E01",
+      "E06",
+      "E16"
+     ]
+    },
+    {
+     "text": "Meta - Digital Marketing Prospecting, which accounts for 8.8% of total spend, is underperforming with a ROAS of 1.55x.",
+     "evidence_ids": [
+      "E10",
+      "E37"
+     ]
+    }
+   ],
+   "hypotheses": [
+    {
+     "text": "The low click-to-lead rate of 5.6% may be caused by misalignment between ad messaging and landing page content.",
+     "evidence_ids": [
+      "E08",
+      "E20"
+     ],
+     "validation_step": "Review landing page bounce rates and form completion rates by campaign to identify if specific pages are underperforming."
+    },
+    {
+     "text": "The high CPL in the Professional Network channel (₹1,363) might be due to overly restrictive targeting criteria.",
+     "evidence_ids": [
+      "E17"
+     ],
+     "validation_step": "Compare audience reach and engagement metrics for the Professional Network against other channels to see if the audience is too narrow."
+    }
+   ],
+   "investigation_areas": [
+    {
+     "text": "Investigate the root cause of the high-severity incident I04 in the East region, which resulted in an estimated ₹11.8 L loss.",
+     "evidence_ids": [
+      "E26"
+     ]
+    },
+    {
+     "text": "Analyze the impact of the Google Ads platform incident I09, which caused a 99.1% drop in clicks over two days.",
+     "evidence_ids": [
+      "E31"
+     ]
+    }
+   ],
+   "recommendations": [
+    {
+     "text": "Implement stricter monitoring for Google Search campaigns to prevent future losses similar to the ₹1.6 L impact from incident I09.",
+     "evidence_ids": [
+      "E31"
+     ],
+     "priority": "medium",
+     "metric_to_watch": "Daily Clicks",
+     "test_shift_pct": null
+    },
+    {
+     "text": "Shift budget from Meta - Digital Marketing Prospecting (ROAS 1.55x) to Affiliate (ROAS 6.67x) to improve overall efficiency, starting with a small test shift.",
+     "evidence_ids": [
+      "E05",
+      "E10",
+      "E19",
+      "E37"
+     ],
+     "priority": "high",
+     "metric_to_watch": "ROAS",
+     "test_shift_pct": 15.0
+    },
+    {
+     "text": "Reallocate budget from Video campaigns (ROAS 2.26x) to Paid Search (ROAS 5.65x), noting that Video's upper-funnel contribution may be undervalued in current ROAS metrics.",
+     "evidence_ids": [
+      "E03",
+      "E06",
+      "E14",
+      "E16"
+     ],
+     "priority": "medium",
+     "metric_to_watch": "ROAS",
+     "test_shift_pct": 10.0
+    }
+   ],
+   "limitations": [
+    {
+     "text": "ROAS calculations are based on revenue recorded per campaign, which may undervalue upper-funnel channels like Video that contribute to demand generation.",
+     "evidence_ids": [
+      "E03"
+     ]
+    },
+    {
+     "text": "CAC is calculated as Spend / Conversions due to the absence of a unique customer identifier in the dataset.",
+     "evidence_ids": [
+      "E01",
+      "E03"
+     ]
+    }
+   ]
+  }
+ }
+}

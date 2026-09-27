@@ -78,7 +78,8 @@ class MappingResult:
         """Uncertain columns that might be a business-critical field (Date, Spend, Revenue,
         Leads, Conversions). Analysis must wait until the user decides."""
         return [m for m in self.uncertain
-                if any(FIELD_BY_NAME[f].critical for f, _ in m.candidates)]
+                if m.source == "ai_rejected"                  # AI proven wrong: always ask
+                or any(FIELD_BY_NAME[f].critical for f, _ in m.candidates)]
 
     def to_frame(self) -> pd.DataFrame:
         return pd.DataFrame([{
@@ -167,12 +168,17 @@ def _fuzzy_scores(normalized: str) -> dict[str, float]:
 # ---------------------------------------------------------------------------------------------
 
 def map_fields(source, column_types: dict[str, str] | None = None,
-               overrides: dict[str, str | None] | None = None) -> MappingResult:
+               overrides: dict[str, str | None] | None = None,
+               ai: dict[str, tuple[str | None, str]] | None = None,
+               ai_rejected: dict[str, str] | None = None) -> MappingResult:
     """Map columns to canonical fields.
 
     `source` is a DatasetProfile (preferred: data types and value shapes are then checked), a
     DataFrame, or a list of column names. `overrides` = {column: field name, or None to ignore
     the column}; user choices always win and are marked confirmed.
+    `ai` = Gemini's decisions for the columns the rules left open {column: (field or None,
+    reason)}; applied only to those columns (user > AI > rules). `ai_rejected` = {column: field}
+    AI mappings the file's own calculations proved wrong: not applied, the user must choose.
     """
     columns, column_types, ratio_like = _columns_and_types(source, column_types)
     overrides = dict(overrides or {})
@@ -217,6 +223,33 @@ def map_fields(source, column_types: dict[str, str] | None = None,
             taken[p.field] = p.column
             winners[p.field] = p
 
+    # 2b. Gemini's answers for the columns the rules could not settle (never user choices).
+    ai, ai_rejected = dict(ai or {}), dict(ai_rejected or {})
+    for p in proposals:
+        if p.column not in ai or p.source == "user" or p.status not in ("uncertain", "unmapped"):
+            continue
+        fname, why = ai[p.column]
+        if p.column in ai_rejected:
+            p.status, p.field, p.source = "uncertain", None, "ai_rejected"
+            label = FIELD_BY_NAME[ai_rejected[p.column]].label
+            p.candidates = [(ai_rejected[p.column], 0.0)]
+            p.reason = (f"AI suggested {label}, but your file's own calculations contradict it; "
+                        "please choose")
+            p.note = p.reason
+        elif fname is None:
+            p.status, p.field, p.source, p.candidates = "not_used", None, "ai", []
+            p.reason = f"AI: {why}" if why else "AI: not a field the app uses"
+        elif fname in taken:
+            p.reason = f"AI suggested {FIELD_BY_NAME[fname].label}, but that field is already used"
+        elif p.source == "profit" and fname == "gross_profit":
+            p.reason += f" (AI suggested Gross profit: {why})" if why else ""
+        else:
+            p.status, p.field, p.source, p.score = "high_confidence", fname, "ai", 0.0
+            p.candidates, p.note = [], ""
+            p.reason = f"AI: {why}" if why else "AI mapping"
+            taken[fname] = p.column
+            winners[fname] = p
+
     # 3. Orders / purchases / transactions stand in for Conversions when there are none.
     if "conversions" not in taken and "orders" in taken:
         m = winners["orders"]
@@ -237,7 +270,7 @@ def map_fields(source, column_types: dict[str, str] | None = None,
 
     # 5. Suggestions for uncertain columns must not point at fields already in use.
     for p in proposals:
-        if p.status == "uncertain" and p.source not in ("conflict", "marketing_cost"):
+        if p.status == "uncertain" and p.source not in ("conflict", "marketing_cost", "ai_rejected"):
             p.candidates = [(f, s) for f, s in p.candidates if f not in taken]
             if not p.candidates:
                 p.status = "unmapped"

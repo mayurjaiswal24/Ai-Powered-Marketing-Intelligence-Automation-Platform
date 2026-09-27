@@ -31,6 +31,7 @@ PAGE_RENDERERS = {
 
 def main() -> None:
     st.markdown(APP_CSS, unsafe_allow_html=True)
+    layout.startup()                  # public mode: delete runs older than 24 hours (once)
     page, filters = layout.sidebar()
     try:
         if page == "Upload & Profile":
