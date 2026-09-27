@@ -38,7 +38,3 @@ def segment_table(df: pd.DataFrame, dimension: str) -> pd.DataFrame:
         table["growth_trend"] = table[dimension].map(growth["trend"]).fillna("n/a")
     table.insert(0, "dimension", dimension)
     return table.rename(columns={dimension: "segment"})
-
-
-def all_segment_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    return {d: segment_table(df, d) for d in available_dimensions(df)}

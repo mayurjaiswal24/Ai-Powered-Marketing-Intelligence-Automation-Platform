@@ -21,7 +21,7 @@ from dashboard import charts, components as ui
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, preset_range)
 from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, load_raw, prepare,
-                                run_pipeline, sample_path)
+                                reopen_run, run_pipeline, sample_path)
 from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
@@ -178,7 +178,15 @@ def page_upload() -> None:
 
     prep = current_prep()
     if prep is None:
-        ui.empty_state("No data loaded yet. Upload a file or load a sample dataset to begin.")
+        output = current_output()
+        if output is not None:
+            meta = output.analysis.metadata
+            st.success(f"Opened saved analysis run #{output.run_id} ({meta.get('dataset_name')}, "
+                       f"{format_count(meta.get('rows'))} rows, analysed {_format_timestamp(meta.get('created_at'))}). "
+                       "Use the sidebar to explore it, or upload a file to start a new analysis.")
+        else:
+            ui.empty_state("No data loaded yet. Upload a file or load a sample dataset to begin.")
+        _recent_analyses()
         return
 
     report, profile = prep.report, prep.profile
@@ -237,6 +245,40 @@ def page_upload() -> None:
             st.info("This exact file was uploaded before; a new analysis run was recorded for it.")
         if output.save_error:
             st.warning(f"The results are shown but were not saved: {output.save_error}")
+    _recent_analyses()
+
+
+def _recent_analyses() -> None:
+    """Previous runs saved in the database, reopened without recomputing."""
+    from database import repository
+    from database.connection import DatabaseError
+    try:
+        recent = repository.list_recent_runs(limit=8)
+    except DatabaseError as exc:
+        ui.friendly_error(exc)
+        return
+    st.markdown("## Recent analyses")
+    if recent.empty:
+        st.caption("Analyses you run are saved here so you can reopen them later without recalculating.")
+        return
+    st.caption("Reopening shows the saved results instantly (no recalculation and no AI call).")
+    for row in recent.itertuples():
+        c1, c2, c3 = st.columns([5, 3, 1])
+        c1.markdown(f"**Run #{row.run_id}** - {row.file_name}")
+        c2.caption(f"{format_count(row.row_count)} rows | {_format_timestamp(row.created_at)}"
+                   + (f" | {row.reports} report(s)" if row.reports else ""))
+        if c3.button("Open", key=f"open_run_{row.run_id}"):
+            try:
+                output = reopen_run(int(row.run_id))
+            except DatabaseError as exc:
+                ui.friendly_error(exc)
+                continue
+            state = _state()
+            for key in ("raw_df", "report", "source_label", "overrides", "prep", "prep_key", "view",
+                        "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm", "uploaded_id"):
+                state.pop(key, None)
+            state["output"] = output
+            st.rerun()
 
 
 def _mapping_editor(prep) -> None:
@@ -829,6 +871,9 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
         details.append(f"How to validate: {item['validation_step']}")
     if item.get("metric_to_watch"):
         details.append(f"Priority: {item.get('priority', '')} | Metric to watch: {item['metric_to_watch']}")
+    if item.get("test_shift_pct"):
+        details.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
+                       "(a proposal, not a measured figure)")
     for d in details:
         st.caption(d)
     for w in item.get("warnings", []):

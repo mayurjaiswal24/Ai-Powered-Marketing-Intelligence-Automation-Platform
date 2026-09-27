@@ -8,8 +8,8 @@ from analytics.kpis import group_kpis
 
 GRAIN_COLUMN = {"day": "date", "week": "week_start", "month": "month"}
 GROWTH_METRICS = ["spend", "leads", "conversions", "revenue"]
-ROLLING_WEEKS = 4
-MIN_MONTHS_FOR_SEASONALITY = 12
+from config.settings import MIN_MONTHS_FOR_SEASONALITY  # noqa: E402
+from config.settings import ROLLING_AVERAGE_WEEKS as ROLLING_WEEKS  # noqa: E402
 
 
 def time_series(df: pd.DataFrame, grain: str) -> pd.DataFrame:

@@ -27,6 +27,11 @@ class Hypothesis(InsightItem):
 class Recommendation(InsightItem):
     priority: Literal["high", "medium", "low"]
     metric_to_watch: str = Field(description="The KPI to monitor to see whether the action worked.")
+    # A PROPOSAL, not a fact: the evaluator does not look for it in the evidence.
+    test_shift_pct: float | None = Field(
+        default=None, ge=10, le=20,
+        description="Only for budget moves that should start as a test: the share of the source "
+                    "budget to move first (10-20). Leave empty otherwise.")
 
 
 class AIInsights(BaseModel):

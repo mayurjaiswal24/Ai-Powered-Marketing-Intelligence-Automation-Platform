@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -97,11 +98,29 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
     analysis = run_analysis(cleaned.clean_df, prep.validation, cleaned.quality_summary,
                             dataset_name=prep.report.filename, run_id=run_id)
 
+    output = PipelineOutput(cleaned, analysis, run_id, is_reupload, save_error)
     if run_id is not None:
         progress("Saving the analysis results")
         try:
             save_analysis(analysis, run_id, db_path=db_path)
+            repository.save_run_snapshot(run_id, pickle.dumps(output), db_path=db_path)
             repository.update_run_status(run_id, "complete", db_path=db_path)
         except DatabaseError as exc:
-            save_error = exc.user_message
-    return PipelineOutput(cleaned, analysis, run_id, is_reupload, save_error)
+            output.save_error = exc.user_message
+    return output
+
+
+def reopen_run(run_id: int, db_path=None) -> PipelineOutput:
+    """Load a previous run's results from its snapshot (no recomputation).
+    Raises DatabaseError with a plain message if it cannot be reopened."""
+    payload = repository.load_run_snapshot(run_id, db_path=db_path)
+    if payload is None:
+        raise DatabaseError("This analysis has no saved results to reopen. Please upload the file again.")
+    try:
+        output = pickle.loads(payload)   # written by this app only (see database/schema.py)
+    except Exception as exc:  # noqa: BLE001 - e.g. saved by an older version of the app
+        raise DatabaseError("This analysis was saved by an older version of the app and cannot be "
+                            "reopened. Please upload the file again.") from exc
+    output.is_reupload = False
+    output.save_error = None
+    return output

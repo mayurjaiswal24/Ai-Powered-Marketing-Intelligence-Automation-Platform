@@ -27,7 +27,7 @@ ATTRIBUTION_NOTE = ("ROAS uses the revenue recorded against each campaign, so up
                     "(for example video and prospecting campaigns, which create demand that other "
                     "channels later convert) may be undervalued.")
 # Below this share of readable dates, the Date column is not usable for trends.
-MIN_USABLE_DATE_SHARE = 0.5
+from config.settings import MIN_USABLE_DATE_SHARE  # noqa: E402
 
 
 @dataclass

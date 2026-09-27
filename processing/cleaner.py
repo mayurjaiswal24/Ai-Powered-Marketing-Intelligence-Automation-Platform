@@ -19,7 +19,6 @@ the good values on those rows (a row with bad clicks still has valid spend and l
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import numpy as np

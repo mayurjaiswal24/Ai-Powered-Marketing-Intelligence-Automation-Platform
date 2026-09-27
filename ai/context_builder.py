@@ -20,7 +20,7 @@ from config.fields import FIELD_BY_NAME, channel_type
 from config.settings import AI_CONTEXT_MAX_CHARS, AI_MAX_INCIDENTS, AI_TOP_CAMPAIGNS
 from utils.formatting import format_change, format_count, format_date, format_value
 
-MIN_SPEND_SHARE = 3.0   # % of spend; smaller campaigns have unreliable ratios
+from config.settings import MIN_SPEND_SHARE_FOR_RANKING as MIN_SPEND_SHARE  # noqa: E402
 
 
 @dataclass

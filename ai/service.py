@@ -7,7 +7,6 @@ and daily quota checks around this function.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -126,7 +125,3 @@ def generate_ai_insights(result, client, run_id: int | None = None, max_calls: i
 def evidence_lookup(pack: EvidencePack, ids: list[str]) -> list[dict]:
     """The evidence items behind a statement, for 'show evidence' in the UI and reports."""
     return [pack.by_id[i].as_dict() for i in ids if i in pack.by_id]
-
-
-def to_json(run: AIRunResult) -> str:
-    return json.dumps(run.insights, ensure_ascii=False, indent=2)

@@ -28,14 +28,15 @@ from reportlab.platypus import (CondPageBreak, Image, KeepTogether, PageBreak, P
 
 from analytics.kpis import KPI_REGISTRY, RATIO_KPIS
 from config import settings as cfg
-from config.settings import PROJECT_ROOT
+from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import format_table
-from reports import pdf_charts
+from reports import export_filename, pdf_charts
 from utils.formatting import format_count, format_date, format_value
 
 FONT_DIR = PROJECT_ROOT / "assets" / "fonts"
-EXPORTS_DIR = PROJECT_ROOT / "exports"
+EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
+               else PROJECT_ROOT / settings.exports_dir)
 REPORT_TITLE = "Marketing Intelligence Report"
 PAGE_W, PAGE_H = A4
 MARGIN = 18 * mm
@@ -594,6 +595,9 @@ def _ai_section(rep: _Report) -> None:
             if item.get("metric_to_watch"):
                 extra.append(f"Priority: {escape(str(item.get('priority', '')))}; metric to watch: "
                              f"{escape(item['metric_to_watch'])}")
+            if item.get("test_shift_pct"):
+                extra.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
+                             "(proposal)")
             ids = ", ".join(item.get("evidence_ids", []))
             status = " <i>(contains unverified figures)</i>" if item.get("status") == "unverified" else ""
             if item.get("weak"):
@@ -750,7 +754,7 @@ def export_pdf(result, exports_dir: str | Path | None = None, db_path=None,
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"Marketing_Intelligence_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+    path = folder / export_filename("Marketing_Intelligence_Report", run_id, "pdf")
     generate_pdf(result, path, ai=ai)
     if run_id:
         from database import repository

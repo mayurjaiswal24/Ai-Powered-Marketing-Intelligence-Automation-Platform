@@ -18,9 +18,8 @@ from config.fields import channel_type
 from utils.formatting import format_date, format_pct, format_value
 
 FINDING_TYPE = "Analytical finding"
-MIN_SPEND_SHARE_FOR_RANKING = 3.0      # % of spend; smaller campaigns have unreliable ratios
-MIN_SPEND_SHARE_FOR_MOVERS = 2.0
-CONCENTRATION_SHARE = 40.0             # % of spend in one channel worth pointing out
+from config.settings import (CONCENTRATION_SHARE, MIN_SPEND_SHARE_FOR_MOVERS,  # noqa: E402
+                             MIN_SPEND_SHARE_FOR_RANKING)
 
 
 @dataclass

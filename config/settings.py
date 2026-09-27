@@ -86,6 +86,19 @@ OUTAGE_CLICK_SHARE = 0.05          # clicks below 5% of normal ...
 OUTAGE_MIN_SPEND_SHARE = 0.25      # ... while spend is at least 25% of normal
 OUTAGE_MIN_BASELINE_CLICKS = 20    # only for entities that normally get >= 20 clicks a day
 
+# --- Analytics rules ----------------------------------------------------------------------------
+TREND_WINDOW_DAYS = 28             # "last 4 weeks vs the previous 4 weeks" for trends and growth
+TREND_FLAT_BAND_PCT = 5.0          # a change smaller than this (%) is described as "flat"
+ROLLING_AVERAGE_WEEKS = 4          # rolling averages on weekly trends
+MIN_MONTHS_FOR_SEASONALITY = 12    # full months needed before a month-of-year index is shown
+MIN_SPEND_SHARE_FOR_RANKING = 3.0  # % of spend; smaller campaigns have unreliable ratios
+MIN_SPEND_SHARE_FOR_MOVERS = 2.0   # % of spend a campaign needs to be a "biggest riser/faller"
+CONCENTRATION_SHARE = 40.0         # % of spend in one channel worth pointing out
+MIN_USABLE_DATE_SHARE = 0.5        # below this share of readable dates, trends are switched off
+HEADER_SEARCH_ROWS = 30            # how far down an upload we look for the real header row
+ANOMALY_WINDOWS = (1, 3)           # single weeks and sustained 3-week stretches
+ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE = 3   # entities needed to estimate "the typical change"
+
 # --- AI (Gemini) ---------------------------------------------------------------------------------
 # The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
 # trimmed first. Keeps each call small (free-tier friendly) and focused.
@@ -94,6 +107,8 @@ AI_TOP_CAMPAIGNS = 5               # best and weakest campaigns included as evid
 AI_MAX_INCIDENTS = 10              # top incidents (by estimated rupee impact) included as evidence
 AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long
 AI_TEMPERATURE = 0.2               # low: we want careful, repeatable interpretation
+AI_MAX_CALLS_PER_REQUEST = 2       # one request may use a 2nd call: fallback model or unreadable answer
+AI_NUMBER_TOLERANCE = 0.01         # relative tolerance when checking AI numbers against evidence
 
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
@@ -140,6 +155,8 @@ class Settings:
     ai_max_calls_per_day: int = 15
     ai_cache_enabled: bool = True
     database_path: str = "marketing_intelligence.db"
+    # Folder for generated PDF/Excel files (relative paths are inside the project folder).
+    exports_dir: str = "exports"
     # Uploads above this size are refused with a friendly message.
     max_upload_mb: int = 50
     # Above this many rows we warn that analysis may be slow (the file still loads).
@@ -163,6 +180,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ai_max_calls_per_day=_parse_int(env.get("AI_MAX_CALLS_PER_DAY"), defaults.ai_max_calls_per_day),
         ai_cache_enabled=_parse_bool(env.get("AI_CACHE_ENABLED"), defaults.ai_cache_enabled),
         database_path=_parse_str(env.get("DATABASE_PATH"), defaults.database_path),
+        exports_dir=_parse_str(env.get("EXPORTS_DIR"), defaults.exports_dir),
         max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
         large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
     )

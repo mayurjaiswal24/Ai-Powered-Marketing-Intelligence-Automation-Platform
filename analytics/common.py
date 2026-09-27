@@ -6,9 +6,8 @@ import pandas as pd
 
 from analytics.kpis import safe_divide
 
-# A recent change smaller than this (in %) is described as "flat".
-FLAT_BAND_PCT = 5.0
-RECENT_WINDOW_DAYS = 28   # "last 4 weeks vs previous 4 weeks"
+from config.settings import TREND_FLAT_BAND_PCT as FLAT_BAND_PCT  # noqa: E402  (thresholds live in config)
+from config.settings import TREND_WINDOW_DAYS as RECENT_WINDOW_DAYS  # noqa: E402
 
 
 def campaign_key(df: pd.DataFrame) -> str | None:

@@ -337,6 +337,30 @@ def list_reports(run_id: int, db_path=None) -> pd.DataFrame:
                            "WHERE run_id = ? ORDER BY id", conn, params=(run_id,))
 
 
+def save_run_snapshot(run_id: int, payload: bytes, db_path=None) -> None:
+    from database.schema import SCHEMA_VERSION
+    with session(db_path) as conn:
+        conn.execute("INSERT OR REPLACE INTO run_snapshots (run_id, created_at, schema_version, payload) "
+                     "VALUES (?, ?, ?, ?)", (run_id, _now(), SCHEMA_VERSION, payload))
+
+
+def load_run_snapshot(run_id: int, db_path=None) -> bytes | None:
+    with session(db_path) as conn:
+        row = conn.execute("SELECT payload FROM run_snapshots WHERE run_id = ?", (run_id,)).fetchone()
+    return row[0] if row else None
+
+
+def list_recent_runs(limit: int = 10, db_path=None) -> pd.DataFrame:
+    """Most recent completed runs that can be reopened (they have a snapshot)."""
+    with session(db_path) as conn:
+        return pd.read_sql(
+            "SELECT r.id AS run_id, d.file_name, d.row_count, r.created_at, r.status, "
+            "(SELECT COUNT(*) FROM reports rp WHERE rp.run_id = r.id) AS reports "
+            "FROM runs r JOIN datasets d ON d.id = r.dataset_id "
+            "JOIN run_snapshots s ON s.run_id = r.id "
+            "ORDER BY r.id DESC LIMIT ?", conn, params=(limit,))
+
+
 def delete_run(run_id: int, db_path=None) -> None:
     """Delete a run and (through ON DELETE CASCADE) everything that belongs to it."""
     with session(db_path) as conn:

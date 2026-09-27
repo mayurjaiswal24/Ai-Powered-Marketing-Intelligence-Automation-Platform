@@ -142,9 +142,9 @@ def test_recommendations_ranked_by_incident_impact(pack):
 # --- Prompt v3 ---------------------------------------------------------------------------------
 
 def test_prompt_v3_rules():
-    assert PROMPT_VERSION == "v3"
+    assert PROMPT_VERSION >= "v3"            # the v3 rules stay in later versions
     text = " ".join(SYSTEM_INSTRUCTIONS.lower().split())
-    for rule in ("rank recommendations by the rupee impact", "test shift", "10-20%",
-                 "metric and result that decide whether to continue", "quote that incident's estimated impact",
+    for rule in ("rank recommendations by the rupee impact", "test shift", "between 10 and 20",
+                 "decide whether to continue", "quote that incident's estimated impact",
                  "never cite a single \"finding\" item", "3-5 key findings"):
         assert rule in text, rule

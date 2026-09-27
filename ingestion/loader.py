@@ -29,7 +29,7 @@ from config.settings import settings
 SUPPORTED_EXTENSIONS = {".csv": "csv", ".xlsx": "xlsx"}
 CSV_ENCODINGS = ["utf-8", "utf-8-sig", "latin-1"]
 CSV_DELIMITERS = {",": "comma", ";": "semicolon", "\t": "tab"}
-HEADER_SEARCH_ROWS = 30  # how far down we look for the real header row
+from config.settings import HEADER_SEARCH_ROWS  # noqa: E402  (how far down we look for the header)
 
 # Every .xlsx is a ZIP archive; an encrypted (password-protected) workbook is instead an
 # old-style "OLE" container holding a stream called EncryptedPackage.

@@ -26,7 +26,7 @@ NUMBER = re.compile(
     r"(?:\s?(?P<unit>Cr\b|crore\b|L\b|lakh\b|lakhs\b|%|x\b))?")
 MULTIPLIER = {"Cr": 1e7, "crore": 1e7, "L": 1e5, "lakh": 1e5, "lakhs": 1e5}
 ID_PATTERN = re.compile(r"^E\d{2,3}$")
-RELATIVE_TOLERANCE = 0.01
+from config.settings import AI_NUMBER_TOLERANCE as RELATIVE_TOLERANCE  # noqa: E402
 
 
 @dataclass(frozen=True)

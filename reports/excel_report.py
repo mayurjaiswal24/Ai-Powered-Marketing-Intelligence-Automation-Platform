@@ -9,7 +9,6 @@ when the data supports them.
 
 from __future__ import annotations
 
-import io
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,12 +17,14 @@ import pandas as pd
 
 from analytics.kpis import KPI_REGISTRY, RATIO_KPIS
 from config import settings as cfg
-from config.settings import PROJECT_ROOT
+from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import column_format, column_label
+from reports import export_filename
 from utils.formatting import format_count, format_date
 
-EXPORTS_DIR = PROJECT_ROOT / "exports"
+EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
+               else PROJECT_ROOT / settings.exports_dir)
 WORKBOOK_TITLE = "Marketing Intelligence Workbook"
 
 # Excel custom formats. Indian grouping needs two conditional sections (crore, lakh) plus a
@@ -344,6 +345,7 @@ def _ai(book: _Book, ai: dict | None) -> None:
                          "validation_step": item.get("validation_step", ""),
                          "priority": item.get("priority", ""),
                          "metric_to_watch": item.get("metric_to_watch", ""),
+                         "test_shift_pct": item.get("test_shift_pct"),
                          "check": item.get("status", ""),
                          "quality": "weak: " + "; ".join(item.get("weak_reasons", [])) if item.get("weak") else "ok"})
     if rows:
@@ -450,7 +452,7 @@ def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: p
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"Marketing_Intelligence_Workbook_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    path = folder / export_filename("Marketing_Intelligence_Workbook", run_id, "xlsx")
     generate_workbook(result, path, clean_df, quality_log, ai)
     if run_id:
         from database import repository
@@ -460,9 +462,3 @@ def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: p
         except DatabaseError:
             pass
     return path
-
-
-def workbook_bytes(result, clean_df=None, quality_log=None, ai=None) -> bytes:
-    buffer = io.BytesIO()
-    generate_workbook(result, buffer, clean_df, quality_log, ai)
-    return buffer.getvalue()

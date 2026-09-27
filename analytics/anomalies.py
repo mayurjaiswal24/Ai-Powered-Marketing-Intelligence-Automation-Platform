@@ -102,8 +102,8 @@ def _metric_parts(df: pd.DataFrame, metric: str):
 NOISE_COUNT = {"revenue": "conversions", "clicks": "clicks", "cpc": "clicks", "cpl": "leads",
                "lead_qualification_rate": "qualified_leads",
                "lead_to_conversion_rate": "conversions"}
-WINDOWS = (1, 3)                    # single weeks, and 3-week stretches for sustained changes
-MIN_ENTITIES_FOR_COMMON_MOVE = 3    # need at least 3 entities to estimate "the typical change"
+from config.settings import ANOMALY_WINDOWS as WINDOWS  # noqa: E402  (single weeks + 3-week stretches)
+from config.settings import ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE as MIN_ENTITIES_FOR_COMMON_MOVE  # noqa: E402
 
 
 def _stable_composition(df: pd.DataFrame, entity: pd.Series, week: pd.Series,

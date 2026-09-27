@@ -19,7 +19,7 @@ from ai.client import AIError, ai_error
 from ai.prompts import PROMPT_VERSION
 
 # A regenerate/retry can use at most this many calls (the second only for unreadable JSON).
-MAX_CALLS_PER_REQUEST = 2
+from config.settings import AI_MAX_CALLS_PER_REQUEST as MAX_CALLS_PER_REQUEST  # noqa: E402
 
 
 def compute_fingerprint(pack_json: str, model: str, prompt_version: str = PROMPT_VERSION) -> str:

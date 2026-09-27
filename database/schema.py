@@ -15,7 +15,7 @@ import sqlite3
 
 from config.fields import COUNT_FIELDS, FIELDS
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2   # 2: run_snapshots (reopen a run without recomputing)
 
 
 def _record_column_type(name: str, ftype: str) -> str:
@@ -193,6 +193,15 @@ CREATE TABLE IF NOT EXISTS ai_insights (
 );
 CREATE INDEX IF NOT EXISTS ix_ai_insights_fp ON ai_insights(fingerprint);
 
+-- Snapshot of a finished run's results, so "Recent analyses" can reopen it without recomputing.
+-- Written and read only by this application (Python pickle of the cleaned data + AnalysisResult).
+CREATE TABLE IF NOT EXISTS run_snapshots (
+    run_id          INTEGER PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    schema_version  INTEGER NOT NULL,
+    payload         BLOB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reports (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id       INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -210,7 +219,8 @@ ANALYSIS_TABLES = ("kpi_results", "campaign_analysis", "channel_analysis", "segm
 def create_schema(conn: sqlite3.Connection) -> None:
     """Create all tables if they do not exist yet, and record the schema version once."""
     conn.executescript(TABLES)
-    if conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0:
+    current = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    if current is None or current < SCHEMA_VERSION:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
 
 
