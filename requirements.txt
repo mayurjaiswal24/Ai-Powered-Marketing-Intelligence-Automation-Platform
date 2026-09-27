@@ -1,9 +1,9 @@
-# Pinned dependencies. New packages are added only when a phase needs them.
+# Pinned runtime dependencies (what the app needs; installed by the host on deployment).
+# Test-only packages are in requirements-dev.txt.
 pandas==3.0.6
 numpy==2.5.3
 openpyxl==3.1.5
 python-dotenv==1.2.3
-pytest==9.1.1
 rapidfuzz==3.14.6
 streamlit==1.64.0
 plotly==7.1.0
@@ -11,10 +11,5 @@ pyarrow==25.0.1
 reportlab==5.0.1
 matplotlib==3.11.2
 xlsxwriter==3.2.9
-# Test-only: reads generated PDFs back to check their text.
-pypdf==6.19.0
 google-genai==2.25.0
 pydantic==2.13.5
-# Test-only (Phase 14): coverage report.
-pytest-cov==7.1.0
-coverage==7.16.2

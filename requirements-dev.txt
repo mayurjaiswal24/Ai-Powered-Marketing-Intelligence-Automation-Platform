@@ -1,0 +1,7 @@
+# Everything in requirements.txt plus the test tools (local development only).
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+coverage==7.16.2
+# Reads generated PDFs back to check their text.
+pypdf==6.19.0

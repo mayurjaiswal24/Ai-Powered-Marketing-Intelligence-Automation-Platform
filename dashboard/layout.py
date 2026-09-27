@@ -209,9 +209,11 @@ def page_upload() -> None:
         st.info("Demo app: your data is kept only for this session and deleted automatically.")
     left, right = st.columns([3, 2], gap="large")
     with left:
+        limit_mb = config_settings.settings.upload_limit_mb      # 10 MB in public mode
         uploaded = st.file_uploader("Marketing data file", type=["csv", "xlsx"], key="uploader",
+                                    max_upload_size=limit_mb,
                                     help="One row per day and campaign works best. Maximum size: "
-                                         f"{config_settings.settings.upload_limit_mb} MB.")
+                                         f"{limit_mb} MB.")
         if uploaded is not None and _state().get("uploaded_id") != uploaded.file_id:
             _state()["uploaded_id"] = uploaded.file_id
             try:
@@ -226,6 +228,7 @@ def page_upload() -> None:
             try:
                 raw_df, report = load_raw(sample_path(label))
                 _reset_for_new_file(raw_df, report, label)
+                _open_demo_snapshot(report)
             except IngestionError as exc:
                 ui.friendly_error(exc)
 
@@ -304,6 +307,9 @@ def page_upload() -> None:
         meta = output.analysis.metadata
         st.success(f"Analysis ready: {format_count(meta['rows'])} clean rows. Open Executive "
                    "Overview in the sidebar.")
+        if _state().pop("demo_opened", False):
+            st.caption("The finished sample analysis was opened instantly (it ships with the app, "
+                       "with its saved AI insights). Your own uploads always run the full analysis.")
         if output.is_reupload:
             st.info("This exact file was uploaded before; a new analysis run was recorded for it.")
         if output.save_error:
@@ -364,6 +370,20 @@ _STATUS_LABELS = {
     "ignored": "Not used (your choice)"}
 _NOT_USED = "Not used"
 _LINE_BREAK = "\n"      # markdown lists inside st.success / st.warning need real line breaks
+
+
+def _open_demo_snapshot(report) -> None:
+    """Kalpa clean sample: open the finished analysis that ships with the app (no waiting)."""
+    from dashboard.demo import load_demo_snapshot, restore_demo_run
+    payload = load_demo_snapshot(report.file_hash)
+    if payload is None:
+        return
+    prep, output = restore_demo_run(payload, config_settings.settings,
+                                    session_id=_session_id() if _public() else None)
+    state = _state()
+    state["prep"], state["prep_key"] = prep, (report.file_hash, ())
+    state["output"], state["output_prep_key"] = output, state["prep_key"]
+    state["demo_opened"] = True
 
 
 def _preload_demo(output, report) -> None:

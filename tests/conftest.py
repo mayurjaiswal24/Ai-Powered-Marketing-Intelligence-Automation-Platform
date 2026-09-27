@@ -4,7 +4,8 @@ The owner's .env switches AI on and holds the API key, and config/settings.py lo
 import time. Every test therefore starts with AI switched off and no key, and the SDK methods
 that would contact Google raise an error. Tests that need AI patch in a fake client themselves.
 
-The demo seed (saved Kalpa insights) is also off by default, so tests of the "Generate" flow
+The demo seed (saved Kalpa insights) and the demo snapshot (finished Kalpa analysis) are also
+off by default, so tests of the "Generate" flow
 start from an empty cache; the demo-seed tests switch it on explicitly.
 """
 
@@ -15,6 +16,7 @@ from google.genai import _api_client as genai_api_client
 from google.genai import models as genai_models
 
 import ai.demo_seed
+import dashboard.demo
 import config.settings as config_settings
 
 
@@ -39,3 +41,5 @@ def no_real_gemini(monkeypatch, tmp_path_factory):
                  "_request", "_async_request"):
         monkeypatch.setattr(genai_api_client.BaseApiClient, name, _refuse)
     monkeypatch.setattr(ai.demo_seed, "SEED_PATH", tmp_path_factory.getbasetemp() / "no_seed.json")
+    monkeypatch.setattr(dashboard.demo, "DEMO_SNAPSHOT_PATH",
+                        tmp_path_factory.getbasetemp() / "no_snapshot.pkl.gz")

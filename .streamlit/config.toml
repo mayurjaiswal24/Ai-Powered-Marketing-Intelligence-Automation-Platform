@@ -15,4 +15,6 @@ toolbarMode = "minimal"
 gatherUsageStats = false
 
 [server]
+# Server-wide ceiling (MB). The app applies its own, smaller limit per upload:
+# MAX_UPLOAD_MB (default 50) locally, MAX_UPLOAD_MB_PUBLIC (default 10) when PUBLIC_MODE=true.
 maxUploadSize = 50

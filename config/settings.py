@@ -23,6 +23,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # environment win (override=False), so deployment settings are never replaced by a stray file.
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
+
+def _load_streamlit_secrets() -> None:
+    """Deployment (Streamlit Community Cloud): the app's Secrets are a TOML file whose
+    root-level keys Streamlit turns into environment variables when it loads them. Load them
+    now, before the settings below are read. Locally there is no secrets file: nothing happens."""
+    try:
+        from streamlit.runtime.secrets import secrets_singleton
+        if not secrets_singleton.load_if_toml_exists():
+            return
+        # Streamlit copies only text and numbers into the environment; a TOML true/false
+        # (e.g. AI_ENABLED = true) would be skipped, so copy those too.
+        for key, value in secrets_singleton.items():
+            if isinstance(value, bool):
+                os.environ.setdefault(key, "true" if value else "false")
+    except Exception:  # noqa: BLE001 - a broken secrets file must not stop the app starting
+        pass
+
+
+_load_streamlit_secrets()
+
 # --- Profiling & field-mapping thresholds (fixed business rules, not per-deployment) -------------
 # A header whose fuzzy similarity to a known synonym reaches this score (0-100), AND whose data
 # has the right type, is mapped as "high-confidence". Below it, the mapping is only suggested.
