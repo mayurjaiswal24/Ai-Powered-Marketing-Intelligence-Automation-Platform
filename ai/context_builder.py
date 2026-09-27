@@ -10,13 +10,11 @@ If the pack is larger than AI_CONTEXT_MAX_CHARS, the lowest-priority items are l
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 
 import pandas as pd
 
-from ai.prompts import PROMPT_VERSION
 from analytics.kpis import KPI_REGISTRY
 from config.fields import FIELD_BY_NAME
 from config.settings import AI_CONTEXT_MAX_CHARS, AI_MAX_ANOMALIES, AI_TOP_CAMPAIGNS
@@ -258,8 +256,8 @@ def build_evidence(result, max_chars: int = AI_CONTEXT_MAX_CHARS, model: str = "
     json_text = _to_json(dataset, items, not_available, assign=True)
     pack = EvidencePack(dataset, items, not_available, dropped_items=len(candidates) - len(items),
                         json_text=json_text, by_id={it.id: it for it in items})
-    pack.fingerprint = hashlib.sha256(
-        f"{PROMPT_VERSION}|{model}|{json_text}".encode("utf-8")).hexdigest()
+    from ai.cache import compute_fingerprint
+    pack.fingerprint = compute_fingerprint(json_text, model)
     return pack
 
 

@@ -31,6 +31,8 @@ class AIRunResult:
     model: str = ""
     prompt_version: str = PROMPT_VERSION
     notes: list[str] = field(default_factory=list)
+    from_cache: bool = False
+    cached_at: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -47,6 +49,18 @@ def _log(run_id, pack, client, success, error_type=None, response=None, db_path=
                                input_tokens=getattr(response, "input_tokens", None),
                                output_tokens=getattr(response, "output_tokens", None),
                                latency_ms=getattr(response, "latency_ms", None), db_path=db_path)
+    except DatabaseError:
+        pass
+
+
+def log_cache_hit(run_id, pack, model: str, db_path=None) -> None:
+    """A reuse of saved insights: logged for transparency, never counted against the budget."""
+    from database import repository
+    from database.connection import DatabaseError
+    try:
+        repository.save_ai_run(run_id, fingerprint=pack.fingerprint, model=model,
+                               prompt_version=PROMPT_VERSION, success=True, cache_hit=True,
+                               db_path=db_path)
     except DatabaseError:
         pass
 

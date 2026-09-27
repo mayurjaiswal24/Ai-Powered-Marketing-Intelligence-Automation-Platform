@@ -47,7 +47,7 @@ def _reset_for_new_file(raw_df, report, label):
     s = _state()
     s["raw_df"], s["report"], s["source_label"] = raw_df, report, label
     s["overrides"] = {}
-    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path", "ai_run"):
+    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
         s.pop(key, None)
 
 
@@ -222,7 +222,7 @@ def page_upload() -> None:
                 output = run_pipeline(prep, progress=lambda msg: status.write(msg))
                 status.update(label="Analysis complete", state="complete", expanded=False)
             _state()["output"] = output
-            for key in ("view", "view_key", "pdf_path", "excel_path", "ai_run"):
+            for key in ("view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
                 _state().pop(key, None)
         except (CleaningError, IngestionError) as exc:
             ui.friendly_error(exc)
@@ -614,19 +614,21 @@ AI_BANNER = "AI-generated interpretation of verified metrics. Hypotheses require
 
 
 def page_ai() -> None:
+    import ai.client as ai_client
     import config.settings as config_settings
-    from ai.client import AIError, client_from_settings
+    from ai.cache import budget_status, get_insights
+    from ai.client import AIError
     from ai.context_builder import build_evidence
     from ai.schemas import SECTIONS
-    from ai.service import evidence_lookup, generate_ai_insights
+    from ai.service import evidence_lookup
 
     output = current_output()
     settings = config_settings.settings
     ui.page_header("AI Insights", "Google Gemini interprets the verified findings. It never calculates "
                    "the numbers; every statement must cite the evidence it is based on.")
     if not settings.ai_enabled:
-        st.info("AI insights are turned off (AI_ENABLED=false in the .env file). The dashboard, "
-                "findings, anomalies and reports are complete without AI.")
+        st.info("AI is turned off (AI_ENABLED=false in the .env file). The dashboard, findings, "
+                "anomalies and reports are complete without AI.")
         return
     if not settings.has_gemini_key or not settings.gemini_model:
         st.warning("AI is switched on but not configured: add GEMINI_API_KEY and GEMINI_MODEL to the "
@@ -640,16 +642,67 @@ def page_ai() -> None:
     with st.expander("See the evidence pack sent to Gemini"):
         st.json(pack.json_text, expanded=False)
 
-    if st.button("Generate AI insights", key="generate_ai", type="primary"):
+    state = _state()
+    # Saved insights for exactly this evidence are shown straight away: no API call.
+    if state.get("ai_run") is None and settings.ai_cache_enabled:
+        cached = get_insights(output.analysis, settings, None, run_id=output.run_id, allow_call=False)
+        if cached is not None:
+            state["ai_run"] = cached
+    budget = budget_status(settings, output.run_id, state.get("ai_session_calls", 0))
+    st.caption(f"AI calls today (UTC): {budget.calls_today} of {budget.day_limit} | this analysis run: "
+               f"{budget.calls_this_run} of {budget.run_limit} | caching "
+               f"{'on' if settings.ai_cache_enabled else 'off'}.")
+
+    def request(force: bool) -> None:
         try:
-            client = client_from_settings(settings)
             with st.spinner("Asking Gemini to interpret the evidence..."):
-                run = generate_ai_insights(output.analysis, client, run_id=output.run_id,
-                                           max_calls=max(1, min(2, settings.ai_max_calls_per_run)))
-            _state()["ai_run"] = run
+                result = get_insights(output.analysis, settings,
+                                      lambda: ai_client.client_from_settings(settings),
+                                      run_id=output.run_id, force=force,
+                                      session_calls=state.get("ai_session_calls", 0))
+            if not result.from_cache:
+                state["ai_session_calls"] = state.get("ai_session_calls", 0) + result.calls_made
+            state["ai_run"] = result
         except AIError as exc:
             ui.friendly_error(exc)
-    run = _state().get("ai_run")
+
+    notice = state.pop("ai_notice", None)
+    if notice:
+        st.error(f"The new call did not succeed, so the saved insights are still shown. {notice}")
+    run = state.get("ai_run")
+    if run is None or not run.ok:
+        if budget.remaining <= 0:
+            st.warning(budget.reason)
+        if st.button("Generate AI insights", key="generate_ai", type="primary",
+                     disabled=budget.remaining <= 0):
+            request(force=False)
+    else:
+        if run.from_cache:
+            st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No API call used.")
+        if not state.get("ai_confirm"):
+            if st.button("Regenerate insights", key="regenerate_ai"):
+                state["ai_confirm"] = True
+                st.rerun()
+        else:
+            st.warning(f"Regenerating makes a new Gemini call and uses the budget ({budget.remaining} "
+                       "call(s) left). The saved insights stay available if it fails.")
+            if budget.remaining <= 0:
+                st.caption(budget.reason)
+            c_yes, c_no = st.columns([1, 4])
+            if c_yes.button("Yes, make a new call", key="confirm_regenerate", type="primary",
+                            disabled=budget.remaining <= 0):
+                state["ai_confirm"] = False
+                previous = run
+                request(force=True)
+                fresh = state.get("ai_run")
+                if fresh is not None and not fresh.ok:
+                    state["ai_notice"] = fresh.error.user_message
+                    state["ai_run"] = previous          # keep showing the saved insights
+                st.rerun()                              # redraw with the new (or kept) insights
+            if c_no.button("Cancel", key="cancel_regenerate"):
+                state["ai_confirm"] = False
+                st.rerun()
+    run = state.get("ai_run")
     if run is None:
         ui.empty_state("No AI insights yet. Press 'Generate AI insights' to make one Gemini call.")
         return
@@ -663,9 +716,10 @@ def page_ai() -> None:
     c2.metric("All figures verified", format_count(ev["verified"]), border=True)
     c3.metric("Unverified figures", format_count(ev["unverified"]), border=True)
     c4.metric("Dropped (no evidence)", format_count(ev["dropped"]), border=True)
-    st.caption(f"Model {run.model} | prompt {run.prompt_version} | {run.calls_made} call(s) | "
-               f"about {format_count(run.input_tokens)} input and {format_count(run.output_tokens)} "
-               "output tokens.")
+    usage = ("saved result, no call used" if run.from_cache else
+             f"{run.calls_made} call(s), about {format_count(run.input_tokens)} input and "
+             f"{format_count(run.output_tokens)} output tokens")
+    st.caption(f"Model {run.model} | prompt {run.prompt_version} | {usage}.")
     for key, title, label in SECTIONS:
         raw = run.insights.get(key)
         items = raw if isinstance(raw, list) else ([raw] if raw else [])
@@ -740,12 +794,61 @@ def page_quality() -> None:
     log.to_csv(buffer, index=False)
     st.download_button("Download the full change log (CSV)", buffer.getvalue(),
                        file_name="data_quality_log.csv", mime="text/csv", key="dq_download")
+    _ai_usage_panel()
+
+
+def _ai_usage_panel() -> None:
+    """Calls today, cache hits and remaining budget (free-tier awareness, SPEC 14.6)."""
+    import config.settings as config_settings
+    from ai.cache import budget_status, today_start_utc
+    from database import repository
+    from database.connection import DatabaseError
+    settings = config_settings.settings
+    st.markdown("## AI usage")
+    if not settings.ai_enabled:
+        st.caption("AI is turned off (AI_ENABLED=false); no AI calls are made.")
+        return
+    try:
+        usage = repository.ai_usage_since(today_start_utc())
+    except DatabaseError as exc:
+        ui.friendly_error(exc)
+        return
+    output = current_output()
+    budget = budget_status(settings, output.run_id if output else None,
+                           _state().get("ai_session_calls", 0))
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Gemini calls today (UTC)", f"{usage['calls']} of {settings.ai_max_calls_per_day}", border=True)
+    c2.metric("Failed calls today", format_count(usage["failed"]), border=True)
+    c3.metric("Saved results reused today", format_count(usage["cache_hits"]), border=True,
+              help="Cache hits: no API call and no budget used.")
+    c4.metric("Calls left now", format_count(budget.remaining), border=True,
+              help="The lower of the daily limit and the per-run limit.")
+    st.caption(f"Tokens today: about {format_count(usage['input_tokens'])} input and "
+               f"{format_count(usage['output_tokens'])} output. Limits come from AI_MAX_CALLS_PER_DAY "
+               "and AI_MAX_CALLS_PER_RUN; free-tier quotas are set by Google and can change.")
+
+
+def _format_timestamp(iso: str | None) -> str:
+    if not iso:
+        return "an earlier session"
+    ts = pd.Timestamp(iso)
+    return f"{format_date(ts)}, {ts.strftime('%H:%M')} UTC"
 
 
 def _ai_sections() -> dict | None:
-    """Checked AI output of this session, if any (exports never trigger an AI call)."""
+    """AI output for the report: this session's result, else saved insights for the same evidence.
+    Exports never trigger an AI call."""
     run = _state().get("ai_run")
-    return run.insights if run is not None and run.ok else None
+    if run is not None and run.ok:
+        return run.insights
+    import config.settings as config_settings
+    from ai.cache import get_insights
+    settings = config_settings.settings
+    output = current_output()
+    if output is None or not settings.gemini_model:
+        return None
+    cached = get_insights(output.analysis, settings, None, run_id=output.run_id, allow_call=False)
+    return cached.insights if cached is not None else None
 
 
 def page_reports() -> None:

@@ -281,6 +281,25 @@ def count_ai_calls_since(since_iso: str, db_path=None) -> int:
                             (since_iso,)).fetchone()[0]
 
 
+def count_ai_calls_for_run(run_id: int, db_path=None) -> int:
+    """Real (non-cached) Gemini calls made for one analysis run, for the per-run budget."""
+    with session(db_path) as conn:
+        return conn.execute("SELECT COUNT(*) FROM ai_runs WHERE cache_hit = 0 AND run_id = ?",
+                            (run_id,)).fetchone()[0]
+
+
+def ai_usage_since(since_iso: str, db_path=None) -> dict:
+    """Usage summary for the AI usage panel: real calls (ok / failed), cache hits, tokens."""
+    with session(db_path) as conn:
+        row = conn.execute(
+            "SELECT SUM(cache_hit = 0), SUM(cache_hit = 0 AND success = 1), "
+            "SUM(cache_hit = 0 AND success = 0), SUM(cache_hit = 1), "
+            "SUM(COALESCE(input_tokens, 0)), SUM(COALESCE(output_tokens, 0)) "
+            "FROM ai_runs WHERE created_at >= ?", (since_iso,)).fetchone()
+    keys = ["calls", "successful", "failed", "cache_hits", "input_tokens", "output_tokens"]
+    return {k: int(v or 0) for k, v in zip(keys, row)}
+
+
 def save_ai_insights(run_id: int | None, fingerprint: str, insights: dict,
                      evaluation: dict | None = None, db_path=None) -> int:
     with session(db_path) as conn:
