@@ -8,10 +8,14 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 
 from config.settings import AI_TEMPERATURE, AI_TIMEOUT_SECONDS
+
+
+logger = logging.getLogger("marketing_intelligence.ai")
 
 
 class AIError(Exception):
@@ -69,6 +73,10 @@ def classify_error(exc: Exception) -> AIError:
     if isinstance(exc, genai_errors.APIError):
         code = getattr(exc, "code", None)
         text = f"{getattr(exc, 'status', '')} {getattr(exc, 'message', '')}".lower()
+        # Technical detail goes to the server log only (never the UI); Google's error messages
+        # do not contain the API key.
+        logger.warning("Gemini API error: code=%s status=%s message=%s", code,
+                       getattr(exc, "status", ""), getattr(exc, "message", ""))
         if code == 429 or "resource_exhausted" in text or "quota" in text:
             return ai_error("quota")
         if code in (401, 403) or "api key" in text or "permission" in text:
@@ -80,6 +88,7 @@ def classify_error(exc: Exception) -> AIError:
         if code and code >= 500:
             return ai_error("server")
         return ai_error("unknown")
+    logger.warning("Gemini call failed: %s", type(exc).__name__)
     if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, TimeoutError, ConnectionError)):
         return ai_error("network")
     return ai_error("unknown")
@@ -104,9 +113,11 @@ class GeminiClient:
 
     def generate(self, system: str, prompt: str, schema) -> AIResponse:
         types = self._types
-        config = types.GenerateContentConfig(system_instruction=system, temperature=AI_TEMPERATURE,
-                                             response_mime_type="application/json",
-                                             response_schema=schema)
+        config = types.GenerateContentConfig(
+            system_instruction=system, temperature=AI_TEMPERATURE,
+            response_mime_type="application/json", response_schema=schema,
+            # No tools are used; switch the SDK's automatic function calling off explicitly.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
         start = time.perf_counter()
         try:
             response = self._client.models.generate_content(model=self.model, contents=prompt,
@@ -126,3 +137,21 @@ def client_from_settings(settings) -> GeminiClient:
     if not settings.ai_enabled:
         raise ai_error("disabled")
     return GeminiClient(settings.gemini_api_key, settings.gemini_model)
+
+
+def list_generation_models(api_key: str) -> list[str]:
+    """Names of models this key may use for text generation (a diagnostic request; it does not
+    generate any content). Used only when the owner asks, e.g. after a 'model not found' error."""
+    if not api_key:
+        raise ai_error("missing_key")
+    from google import genai
+    client = genai.Client(api_key=api_key)
+    try:
+        names = []
+        for m in client.models.list():
+            actions = getattr(m, "supported_actions", None) or []
+            if not actions or "generateContent" in actions:
+                names.append(str(m.name).removeprefix("models/"))
+        return sorted(names)
+    except Exception as exc:  # noqa: BLE001
+        raise classify_error(exc) from exc
