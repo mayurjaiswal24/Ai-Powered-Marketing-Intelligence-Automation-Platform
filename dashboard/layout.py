@@ -4,6 +4,7 @@ the same analytics functions re-run on the filtered rows."""
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -23,6 +24,7 @@ from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, load_raw, prepa
                                 run_pipeline, sample_path)
 from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
+from reports.pdf_report import ReportError, export_pdf
 from utils.formatting import format_count, format_date, format_value
 
 PAGES = ["Upload & Profile", "Executive Overview", "Performance Trends", "Channels", "Campaigns",
@@ -44,7 +46,7 @@ def _reset_for_new_file(raw_df, report, label):
     s = _state()
     s["raw_df"], s["report"], s["source_label"] = raw_df, report, label
     s["overrides"] = {}
-    for key in ("output", "prep", "prep_key", "view", "view_key"):
+    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path"):
         s.pop(key, None)
 
 
@@ -219,7 +221,7 @@ def page_upload() -> None:
                 output = run_pipeline(prep, progress=lambda msg: status.write(msg))
                 status.update(label="Analysis complete", state="complete", expanded=False)
             _state()["output"] = output
-            for key in ("view", "view_key"):
+            for key in ("view", "view_key", "pdf_path"):
                 _state().pop(key, None)
         except (CleaningError, IngestionError) as exc:
             ui.friendly_error(exc)
@@ -658,11 +660,28 @@ def page_quality() -> None:
 
 def page_reports() -> None:
     output = current_output()
-    ui.page_header("Reports", "Executive PDF and analytical Excel workbook for the full dataset.")
-    ui.empty_state("Report exports are not available yet. The executive PDF and the Excel workbook "
-                   "will be generated here from the same analysis shown in this dashboard.")
+    ui.page_header("Reports", "Executive PDF and analytical Excel workbook for the full dataset "
+                   "(dashboard filters do not apply to exports).")
+    st.markdown("## Executive PDF report")
+    st.caption("A consulting-style report with KPIs, channel, campaign, funnel and segment analysis, "
+               "findings, performance concerns, data quality, methodology and limitations.")
+    if st.button("Generate PDF", key="generate_pdf", type="primary"):
+        try:
+            with st.spinner("Building the PDF report..."):
+                path = export_pdf(output.analysis)
+            _state()["pdf_path"] = str(path)
+        except ReportError as exc:
+            ui.friendly_error(exc)
+    pdf_path = _state().get("pdf_path")
+    if pdf_path and Path(pdf_path).exists():
+        st.success(f"Report ready: {Path(pdf_path).name}")
+        st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
+                           mime="application/pdf", key="download_pdf")
+    st.markdown("## Excel workbook")
+    ui.empty_state("The Excel workbook export is not available yet.")
     if output.run_id:
-        st.caption(f"This analysis is saved as run #{output.run_id}.")
+        st.caption(f"This analysis is saved as run #{output.run_id}; generated reports are recorded "
+                   "against it.")
 
 
 def not_ready() -> None:
