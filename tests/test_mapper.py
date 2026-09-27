@@ -124,8 +124,16 @@ def test_one_column_per_field():
                       dtype=str)
     mapping = map_fields(df)
     assert mapping.active["spend"] == "Spend"          # preferred synonym wins the tie
-    assert mapping.by_column("Cost").status == "uncertain"
-    assert mapping.active["clicks"] == "Clicks (all)"  # "clicks" is the canonical name
-    assert len(mapping.conflicts) == 2
-    # Two possible Spend columns: the user must choose (Spend is business-critical).
-    assert "Cost" in [m.column for m in mapping.needs_confirmation]
+    # A clearly preferred name exists, so 'Cost' is simply not used (no question needed).
+    assert mapping.by_column("Cost").status == "not_used"
+    assert "preferred" in mapping.by_column("Cost").reason
+    assert mapping.active["clicks"] in ("Clicks (all)", "Link clicks")
+    assert "Cost" not in [m.column for m in mapping.needs_confirmation]
+
+
+def test_equal_names_still_ask_the_user():
+    # Two columns with the same name rank: the app cannot prefer one, so it asks.
+    mapping = map_fields(["Spend", "Spend "], column_types={"Spend": "money", "Spend ": "money"})
+    assert len(mapping.active) == 1 and len(mapping.conflicts) == 1
+    assert mapping.by_column("Spend ").status == "uncertain"
+    assert "Spend " in [m.column for m in mapping.needs_confirmation]

@@ -8,6 +8,7 @@ unreliable on Streamlit Community Cloud. matplotlib draws the same numbers with 
 from __future__ import annotations
 
 import io
+import textwrap
 
 import matplotlib
 
@@ -39,6 +40,18 @@ plt.rcParams.update({
     "axes.facecolor": theme.SURFACE,
     "figure.facecolor": "white",
 })
+
+
+def _wrap(text, width: int = 28) -> str:
+    """Wrap a long category label onto two lines (then shorten), so labels never collide."""
+    lines = textwrap.wrap(str(text), width) or [""]
+    if len(lines) > 2:
+        lines = [lines[0], lines[1][:width - 3] + "..."]
+    return "\n".join(lines)
+
+
+def _title(ax, title: str, pad: float = 6) -> None:
+    ax.set_title(textwrap.fill(title, 90), pad=pad)
 
 
 def _to_png(fig) -> bytes:
@@ -76,8 +89,9 @@ def line_png(df: pd.DataFrame, x: str, y: str, fmt: str, title: str, height: flo
     ax.fill_between(range(len(xs)) if not date_axis else xs, data[y], color=theme.PRIMARY, alpha=0.10)
     ax.scatter([xs.iloc[-1]], [data[y].iloc[-1]], color=theme.PRIMARY, s=14, zorder=3)
     ax.annotate(format_value(data[y].iloc[-1], fmt, compact=True), (xs.iloc[-1], data[y].iloc[-1]),
-                textcoords="offset points", xytext=(-4, 6), ha="right", color=theme.INK_SECONDARY)
-    ax.set_title(title)
+                textcoords="offset points", xytext=(-4, 6), ha="right", color=theme.INK_SECONDARY,
+                bbox=dict(boxstyle="square,pad=0.15", fc="white", ec="none", alpha=0.85))
+    _title(ax, title)
     ax.set_ylim(bottom=0)
     _value_axis(ax, fmt)
     if date_axis:
@@ -87,7 +101,7 @@ def line_png(df: pd.DataFrame, x: str, y: str, fmt: str, title: str, height: flo
                             for t in ticks])
     else:
         ax.tick_params(axis="x", labelrotation=0)
-        step = max(1, len(xs) // 12)
+        step = max(1, -(-len(xs) // 8))       # at most ~8 month labels, so they never collide
         for i, label in enumerate(ax.get_xticklabels()):
             label.set_visible(i % step == 0)
     return _to_png(fig)
@@ -104,7 +118,7 @@ def hbar_png(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
     data = data.iloc[::-1]
     height = max(1.8, 0.32 * len(data) + 0.8)
     fig, ax = plt.subplots(figsize=(WIDTH_IN, height))
-    labels = [str(c) if len(str(c)) <= 42 else str(c)[:40] + "..." for c in data[category]]
+    labels = [_wrap(c) for c in data[category]]
     ax.barh(labels, data[value], color=theme.PRIMARY, height=0.55)
     span = max(abs(float(data[value].max())), 1e-9)
     for i, v in enumerate(data[value]):
@@ -112,7 +126,7 @@ def hbar_png(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
                 color=theme.INK_SECONDARY, fontsize=8)
     if reference is not None and not pd.isna(reference):
         ax.axvline(reference, color=theme.INK_MUTED, linewidth=0.8)   # explained in the caption
-    ax.set_title(title)
+    _title(ax, title)
     ax.set_xlim(right=span * 1.18)
     _value_axis(ax, fmt, axis="x")
     ax.tick_params(axis="y", length=0)
@@ -134,9 +148,11 @@ def share_png(df: pd.DataFrame, category: str, series: dict[str, str], title: st
         ax.barh([p + ((n - 1) / 2 - i) * bar_h for p in positions], data[col], height=bar_h * 0.9,
                 color=theme.CATEGORICAL[i], label=name)
     ax.set_yticks(list(positions))
-    ax.set_yticklabels(data[category].astype(str))
-    ax.set_title(title)
-    ax.legend(loc="lower right", frameon=False, fontsize=8)
+    ax.set_yticklabels([_wrap(c) for c in data[category]])
+    # Legend in its own row above the plot and below the title (never over the bars or title).
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=n, frameon=False, fontsize=8,
+              borderaxespad=0.2, handlelength=1.2)
+    _title(ax, title, pad=22)
     _value_axis(ax, "percent", axis="x")
     ax.tick_params(axis="y", length=0)
     return _to_png(fig)
@@ -164,5 +180,5 @@ def funnel_png(funnel: pd.DataFrame, title: str) -> bytes | None:
     ax.xaxis.set_minor_locator(NullLocator())
     ax.spines["bottom"].set_visible(False)
     ax.tick_params(axis="y", length=0)
-    ax.set_title(title)
+    _title(ax, title)
     return _to_png(fig)

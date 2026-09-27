@@ -83,7 +83,9 @@ def test_key_kpi_cells_are_numbers_equal_to_analysis(books):
         assert cell.value == pytest.approx(k.value, rel=1e-12), k.key
     assert "₹" in cells["Spend"].number_format
     assert cells["ROAS"].number_format == '0.00"x"'
-    assert cells["CTR"].number_format == '0.0"%"'
+    # Small percentages get more decimals (CTR below 1% -> 2 decimals), never 0.0%.
+    ctr = output.analysis.kpis["ctr"].value
+    assert cells["CTR"].number_format == ('0.0"%"' if ctr >= 1 else '0.00"%"' if ctr >= 0.1 else '0.000"%"')
 
 
 def test_unavailable_kpis_listed_not_zero(books):

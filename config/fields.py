@@ -34,7 +34,8 @@ FIELDS: tuple[FieldSpec, ...] = (
         "objective", "campaign objective", "goal", "marketing objective", "campaign goal")),
     FieldSpec("channel", "Channel", "campaign", "category", (
         "channel", "marketing channel", "media channel", "channel name", "medium",
-        "channel group", "default channel group", "advertising channel type", "source medium")),
+        "channel group", "default channel group", "advertising channel type", "source medium",
+        "lead source")),
     FieldSpec("platform", "Platform", "campaign", "category", (
         "platform", "ad platform", "publisher", "network", "ad network", "publisher platform",
         "source", "site")),
@@ -70,9 +71,11 @@ FIELDS: tuple[FieldSpec, ...] = (
 
     # --- Advertising ---------------------------------------------------------------------------
     FieldSpec("spend", "Spend", "advertising", "money", (
+        # "Cost" alone is how Google Ads names spend. Total/product/operating costs are NOT
+        # spend (see NOT_SPEND_COSTS); "marketing cost" is only a fallback (MARKETING_COSTS).
         "spend", "cost", "amount spent", "ad spend", "media spend", "total spend", "total spent",
-        "spent", "media cost", "total cost", "ad cost", "marketing spend", "investment",
-        "spend inr", "cost inr"),
+        "spent", "media cost", "ad cost", "advertising cost", "advertising spend", "ad costs",
+        "spend inr", "cost inr", "amount spent inr"),
         critical=True),
     FieldSpec("budget", "Budget", "advertising", "money", (
         "budget", "daily budget", "campaign budget", "planned budget", "budget amount", "allocated budget")),
@@ -102,7 +105,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("conversions", "Conversions", "funnel", "number", (
         "conversions", "conversion", "conv", "total conversions", "enrollments", "enrolments",
         "enrolled", "purchases", "admissions", "signups converted", "website purchases",
-        "all conv"),
+        "all conv", "deals won", "won deals", "closed won", "closed won deals"),
         critical=True),
     FieldSpec("customers", "Customers", "funnel", "number", (
         "customers", "new customers", "customer count", "customers acquired", "buyers", "paying customers")),
@@ -111,15 +114,20 @@ FIELDS: tuple[FieldSpec, ...] = (
 
     # --- Revenue -------------------------------------------------------------------------------
     FieldSpec("revenue", "Revenue", "revenue", "money", (
+        # Net revenue (after discounts) is preferred over gross when both exist: earlier = preferred.
+        "net revenue", "net sales", "revenue net", "net revenue inr",
         "revenue", "total revenue", "conversion value", "conv value", "purchase conversion value",
         "purchases conversion value", "website purchases conversion value", "sales amount",
         "sales revenue", "gross revenue", "income", "turnover", "gmv", "revenue inr",
-        "total conversion value", "all conv value"),
+        "total conversion value", "all conv value", "deal value", "won deal value",
+        "closed won value", "won revenue"),
         critical=True),
     FieldSpec("average_order_value", "Average order value", "revenue", "money", (
         "average order value", "aov", "avg order value", "order value", "average basket value")),
     FieldSpec("gross_profit", "Gross profit", "revenue", "money", (
-        "gross profit", "profit", "gross margin amount", "contribution", "gross_profit", "margin amount")),
+        # A plain "Profit" / "Net profit" column may already subtract marketing cost, so it is
+        # never mapped here automatically (see PROFIT_HEADERS).
+        "gross profit", "gross margin amount", "gross_profit")),
     FieldSpec("margin", "Margin %", "revenue", "number", (
         "margin", "gross margin", "margin percent", "margin pct", "gross margin percent", "profit margin")),
 
@@ -205,3 +213,31 @@ def channel_type(channel) -> str:
     if key.startswith("email") or key.startswith("e-mail"):      # e.g. platform "Email (in-house)"
         return "owned"
     return CHANNEL_TYPES.get(key, "paid")
+
+
+# --- Rules that keep mapping safe on any marketing file ----------------------------------------
+
+# Words that mark a DERIVED column (a ratio, rate or average that the app recalculates itself).
+# Such columns are never suggested for count or money fields.
+DERIVED_WORDS = {"rate", "ratio", "percent", "percentage", "pct", "ctr", "cpc", "cpm", "cpl", "cpa",
+                 "cac", "roas", "roi", "aov", "average", "avg", "per", "cvr", "share"}
+# Fields that legitimately hold a ratio (exempt from the derived-word rule when the name matches).
+RATIO_FIELDS = {"margin"}
+
+# Costs that are NOT advertising spend.
+NOT_SPEND_COSTS = {"total cost", "total costs", "product cost", "product costs", "cogs",
+                   "cost of goods", "cost of goods sold", "operating cost", "operating costs",
+                   "operating expense", "operating expenses", "opex", "shipping cost",
+                   "fulfilment cost", "fulfillment cost", "unit cost", "cost price",
+                   "production cost", "landed cost", "total expense", "total expenses"}
+
+# Broader marketing costs: may include agency fees, salaries or tools. Used for Spend only when
+# the file has no clear spend column, and then only as an uncertain suggestion.
+MARKETING_COSTS = {"marketing cost", "marketing costs", "marketing spend", "marketing expense",
+                   "marketing expenses", "promotion cost", "promotional cost", "investment"}
+
+# Profit columns that may already have marketing cost subtracted: never mapped to gross profit
+# automatically (ROI would subtract spend twice).
+PROFIT_HEADERS = {"profit", "net profit", "operating profit", "net income", "profit amount",
+                  "contribution", "margin amount", "net margin amount"}
+

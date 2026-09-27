@@ -79,11 +79,20 @@ def format_inr(value, compact: bool = False, decimals: int | None = None) -> str
     return f"{sign}₹{text}"
 
 
+def pct_decimals(value, decimals: int = 1) -> int:
+    """Decimals needed so a small non-zero percentage never shows as 0.0%:
+    2 decimals below 1%, 3 below 0.1% (0.04 -> '0.040%'), otherwise `decimals`."""
+    size = abs(float(value))
+    if size == 0 or size >= 1:
+        return decimals
+    return max(decimals, 3 if size < 0.1 else 2)
+
+
 def format_pct(value, decimals: int = 1) -> str:
-    """A percentage already on the 0-100 scale: 12.345 -> '12.3%'."""
+    """A percentage already on the 0-100 scale: 12.345 -> '12.3%', 0.456 -> '0.46%'."""
     if _is_missing(value):
         return NA
-    return f"{float(value):.{decimals}f}%"
+    return f"{float(value):.{pct_decimals(value, decimals)}f}%"
 
 
 def format_ratio(value, decimals: int = 2) -> str:
@@ -110,7 +119,7 @@ def format_change(pct_change, decimals: int = 1) -> str:
     """Relative change with a sign, for KPI card arrows: 12.34 -> '+12.3%'."""
     if _is_missing(pct_change):
         return NA
-    return f"{float(pct_change):+.{decimals}f}%"
+    return f"{float(pct_change):+.{pct_decimals(pct_change, decimals)}f}%"
 
 
 def format_date(value) -> str:

@@ -51,10 +51,33 @@ def _format_axis(fig: go.Figure, values, fmt: str, axis: str = "y") -> None:
     (fig.update_yaxes if axis == "y" else fig.update_xaxes)(**update)
 
 
+def wrap_label(text, width: int = theme.LABEL_WRAP, sep: str = "<br>") -> str:
+    """Break a long label at word boundaries so it never runs into its neighbour."""
+    words, lines, line = str(text).split(), [], ""
+    for word in words:
+        if line and len(line) + 1 + len(word) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    lines.append(line)
+    return sep.join(lines)
+
+
 def _base(title: str, height: int = CHART_HEIGHT) -> go.Figure:
     fig = go.Figure()
-    fig.update_layout(template=theme.TEMPLATE_NAME, title=title, height=height, showlegend=False)
+    title = wrap_label(title, theme.TITLE_WRAP)
+    extra = 20 * title.count("<br>")          # a wrapped title needs one more line of room
+    fig.update_layout(template=theme.TEMPLATE_NAME, title=title, height=height + extra,
+                      showlegend=False, margin=dict(t=theme.TOP_MARGIN + extra))
     return fig
+
+
+def _show_legend(fig: go.Figure) -> None:
+    """Legend row under the title, with the top margin grown so they never overlap."""
+    extra = fig.layout.margin.t - theme.TOP_MARGIN
+    fig.update_layout(showlegend=True, margin=dict(t=theme.TOP_MARGIN_WITH_LEGEND + extra),
+                      height=fig.layout.height + theme.TOP_MARGIN_WITH_LEGEND - theme.TOP_MARGIN)
 
 
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
@@ -111,7 +134,7 @@ def bar_chart(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
     height = max(CHART_HEIGHT, 44 + 30 * len(data))
     fig = _base(title, height)
     fig.add_trace(go.Bar(
-        x=data[value], y=labels, orientation="h", marker=dict(color=theme.PRIMARY),
+        x=data[value], y=labels.map(wrap_label), orientation="h", marker=dict(color=theme.PRIMARY),
         text=[format_value(v, fmt, compact=True) for v in data[value]], textposition="outside",
         textfont=dict(color=theme.INK_SECONDARY, size=12), cliponaxis=False,
         customdata=[f"{c}<br><b>{format_value(v, fmt)}</b>" for c, v in zip(labels, data[value])],
@@ -139,11 +162,12 @@ def share_comparison_chart(df: pd.DataFrame, category: str, series: dict[str, st
     fig = _base(title, max(CHART_HEIGHT, 60 + 44 * len(data)))
     for i, (name, col) in enumerate((n, c) for n, c in series.items() if c in df):
         fig.add_trace(go.Bar(
-            x=data[col], y=labels, orientation="h", name=name,
+            x=data[col], y=labels.map(wrap_label), orientation="h", name=name,
             marker=dict(color=theme.CATEGORICAL[i]),
             customdata=[f"{c}<br>{name}: <b>{format_value(v, 'percent')}</b>" for c, v in zip(labels, data[col])],
             hovertemplate="%{customdata}<extra></extra>"))
-    fig.update_layout(barmode="group", showlegend=True, bargap=0.35, bargroupgap=0.08)
+    fig.update_layout(barmode="group", bargap=0.35, bargroupgap=0.08)
+    _show_legend(fig)
     _format_axis(fig, pd.concat([data[c] for c in cols]), "percent", axis="x")
     fig.update_yaxes(showgrid=False, automargin=True)
     fig.update_xaxes(showgrid=True, gridcolor=theme.GRID)
@@ -163,7 +187,7 @@ def index_chart(df: pd.DataFrame, category: str, index_col: str, title: str,
     labels = data[category].astype(str)
     fig = _base(title, max(CHART_HEIGHT, 44 + 30 * len(data)))
     fig.add_trace(go.Bar(
-        x=diff, y=labels, base=100, orientation="h",
+        x=diff, y=labels.map(wrap_label), base=100, orientation="h",
         marker=dict(color=[theme.GOOD if b else theme.BAD for b in better]),
         text=[f"{v:.0f}" for v in data[index_col]], textposition="outside", cliponaxis=False,
         textfont=dict(color=theme.INK_SECONDARY, size=12),

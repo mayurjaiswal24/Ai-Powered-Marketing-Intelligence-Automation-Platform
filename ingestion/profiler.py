@@ -49,6 +49,9 @@ class ColumnProfile:
     date_max: pd.Timestamp | None = None
     date_formats: dict[str, int] = field(default_factory=dict)
     top_values: dict[str, int] = field(default_factory=dict)
+    # True when the values look like percentages or ratios ("4.5%", or mostly decimals 0-100):
+    # such a column is a derived metric, never a count or money field.
+    ratio_like: bool = False
 
 
 @dataclass
@@ -156,11 +159,11 @@ class DatasetProfile:
                 for m in uncertain:
                     options = " or ".join(FIELD_BY_NAME[c].label for c, _ in m.candidates) or "no suggestion"
                     lines.append(f"  [?]    '{m.column}' could be: {options}")
-            other = [m for m in self.mapping.columns if m.status in ("unmapped", "derived", "ignored")]
+            other = [m for m in self.mapping.columns if m.status in ("unmapped", "derived", "not_used", "ignored")]
             if other:
                 lines += ["", "Not used in analysis:"]
                 for m in other:
-                    lines.append(f"  [-]    '{m.column}' ({m.note or m.status})")
+                    lines.append(f"  [-]    '{m.column}' ({m.reason or m.note or m.status})")
 
         lines += ["", "Data-quality findings:"]
         if not self.findings:
@@ -323,7 +326,21 @@ def _profile_column(series: pd.Series) -> tuple[ColumnProfile, _Parsed]:
         profile.date_formats = {k: int(v) for k, v in date_labels.value_counts().items()}
     if kind == "text":
         profile.top_values = {str(k): int(v) for k, v in present.value_counts().head(5).items()}
+    profile.ratio_like = _looks_like_ratio(present, numbers)
     return profile, _Parsed(numbers, formatted, dates, date_labels)
+
+
+def _looks_like_ratio(present: pd.Series, numbers: pd.Series) -> bool:
+    if present.empty:
+        return False
+    if present.astype(str).str.strip().str.endswith("%").mean() >= 0.5:
+        return True
+    values = numbers.dropna()
+    if len(values) < max(3, 0.9 * len(present)):
+        return False
+    in_range = ((values >= 0) & (values <= 100)).mean()
+    decimals = (values != values.round()).mean()
+    return bool(in_range >= 0.95 and decimals >= 0.5)
 
 
 # ---------------------------------------------------------------------------------------------

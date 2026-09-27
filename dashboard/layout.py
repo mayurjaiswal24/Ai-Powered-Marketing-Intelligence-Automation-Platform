@@ -16,7 +16,7 @@ from analytics.funnel import biggest_drop_off, funnel_by_channel, funnel_table
 from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, period_comparison
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
-from config.fields import FIELD_BY_NAME, channel_type
+from config.fields import FIELD_BY_NAME, FIELDS, channel_type
 from dashboard import charts, components as ui
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, preset_range)
@@ -222,6 +222,9 @@ def page_upload() -> None:
     st.markdown("## Run analysis")
     for message in prep.validation.blocking:
         st.warning(message)
+    _confirm_columns(prep)
+    _mapping_checks(prep)
+    _final_mapping_summary(prep)
     run = st.button("Run analysis", type="primary", key="run_analysis",
                     disabled=not prep.validation.can_analyse)
     if run:
@@ -281,42 +284,118 @@ def _recent_analyses() -> None:
             st.rerun()
 
 
+_STATUS_LABELS = {
+    "confirmed": "Confirmed", "high_confidence": "High confidence (inferred)",
+    "uncertain": "Uncertain - please confirm", "unmapped": "Not recognised",
+    "derived": "Derived metric (recalculated)", "not_used": "Not used (on purpose)",
+    "ignored": "Not used (your choice)"}
+_NOT_USED = "Not used"
+_LINE_BREAK = "\n"      # markdown lists inside st.success / st.warning need real line breaks
+
+
 def _mapping_editor(prep) -> None:
+    """Full mapping table with the reason for every decision, plus a way to change any column."""
     table = prep.mapping.to_frame().rename(columns={
         "column": "Column in file", "maps_to": "Used as", "status": "Confidence",
-        "score": "Match score", "suggestions": "Suggestions", "note": "Note"})
-    table["Confidence"] = table["Confidence"].map({
-        "confirmed": "Confirmed", "high_confidence": "High confidence (inferred)",
-        "uncertain": "Uncertain - please confirm", "unmapped": "Not recognised",
-        "derived": "Ratio column (recalculated)", "ignored": "Not used"}).fillna(table["Confidence"])
-    st.dataframe(table, hide_index=True, width="stretch")
+        "score": "Match score", "suggestions": "Suggestions", "reason": "Why"})
+    table["Confidence"] = table["Confidence"].map(_STATUS_LABELS).fillna(table["Confidence"])
+    st.dataframe(table.drop(columns=["note"]), hide_index=True, width="stretch")
+    st.caption("Columns that need a decision are shown next to the Run analysis button below.")
 
+    with st.expander("Change the mapping of any column"):
+        columns = [m.column for m in prep.mapping.columns]
+        column = st.selectbox("Column", columns, key="change_column")
+        current = prep.mapping.by_column(column)
+        choices = _field_choices(current.field)
+        picked = st.selectbox(f"'{column}' contains", choices, key=f"change_field_{column}",
+                              index=choices.index(current.field) if current.field in choices
+                              else choices.index(_NOT_USED),
+                              format_func=_choice_label)
+        if st.button("Apply this change", key="apply_change"):
+            _state().setdefault("overrides", {})[column] = None if picked == _NOT_USED else picked
+            st.rerun()
+
+
+def _field_choices(first: str | None = None, suggestions: list[str] = ()) -> list[str]:
+    """Suggestions first, then every other field, then 'Not used'."""
+    ordered = [f for f in ([first] if first else []) + list(suggestions) if f]
+    ordered += [f.name for f in FIELDS if f.name not in ordered]
+    return list(dict.fromkeys(ordered)) + [_NOT_USED]
+
+
+def _choice_label(choice: str) -> str:
+    return FIELD_BY_NAME[choice].label if choice in FIELD_BY_NAME else choice
+
+
+def _confirm_columns(prep) -> None:
+    """Dropdowns for columns that need a decision, right where the user is about to run.
+    The app's suggestion is pre-selected, but nothing is used until 'Apply choices' is clicked
+    (except a Profit column, which starts as 'Not used': using it could double-count spend)."""
     overrides = _state().setdefault("overrides", {})
-    to_confirm = [m for m in prep.mapping.columns if m.status == "uncertain" or m.source == "user"]
-    if not to_confirm:
-        st.caption("Every column that matters was recognised with confidence.")
+    pending = [m for m in prep.mapping.columns if m.status == "uncertain"]
+    chosen = [m for m in prep.mapping.columns if m.source == "user"]
+    if not pending and not chosen:
         return
-    st.markdown("**Confirm what these columns mean**")
-    st.caption("Business-critical fields (Date, Spend, Revenue, Leads, Conversions) are never "
-               "guessed; analysis starts once you confirm them.")
-    for m in to_confirm:
-        options = [f for f, _ in m.candidates] if m.candidates else []
-        if m.source == "user" and m.field and m.field not in options:
-            options = [m.field] + options
-        choices = ["(choose)"] + options + ["Not used"]
-        current = overrides.get(m.column, "(choose)")
-        current = "Not used" if m.column in overrides and overrides[m.column] is None else current
-        picked = st.selectbox(
-            f"'{m.column}' contains", choices, index=choices.index(current) if current in choices else 0,
-            format_func=lambda f: FIELD_BY_NAME[f].label if f in FIELD_BY_NAME else f,
-            key=f"confirm_{m.column}")
-        if picked == "(choose)":
-            overrides.pop(m.column, None)
-        else:
-            overrides[m.column] = None if picked == "Not used" else picked
-    if st.button("Apply choices", key="apply_mapping"):
+    if pending:
+        st.markdown("**Please confirm what these columns mean**")
+        st.caption("Business-critical fields (Date, Spend, Revenue, Leads, Conversions) are never "
+                   "guessed; analysis starts once you confirm them. Other columns are optional.")
+    picks: dict[str, str | None] = {}
+    groups = [(pending, None)]
+    if chosen:
+        groups.append((chosen, st.expander(f"Your mapping choices ({len(chosen)})",
+                                           expanded=not pending)))
+    for group, container in groups:
+        for m in group:
+            suggestions = [f for f, _ in m.candidates]
+            default = (overrides.get(m.column, _NOT_USED) if m.column in overrides
+                       else _NOT_USED if m.source == "profit"
+                       else suggestions[0] if suggestions else _NOT_USED)
+            default = default or _NOT_USED
+            choices = _field_choices(m.field, suggestions)
+            with container if container is not None else st.container():
+                picked = st.selectbox(
+                    f"'{m.column}' contains", choices, index=choices.index(default),
+                    format_func=_choice_label, key=f"confirm_{m.column}",
+                    help=m.reason or None)
+                if m.status == "uncertain" and m.reason:
+                    st.caption(f"Why asked: {m.reason}.")
+            picks[m.column] = None if picked == _NOT_USED else picked
+    if st.button("Apply choices", key="apply_mapping", type="secondary"):
+        overrides.update(picks)
         _state().pop("prep_key", None)
         st.rerun()
+
+
+def _mapping_checks(prep) -> None:
+    """The file's own calculations and the plausibility warnings, before the run."""
+    checks = prep.crosscheck.checks
+    verified = [c for c in checks if c.status == "verified"]
+    if verified:
+        st.success(_LINE_BREAK.join(["Verified by your file's own calculations:"]
+                                    + [f"- {c.message}" for c in verified]))
+    for c in checks:
+        if c.status == "mismatch":
+            st.warning(c.message)
+        elif c.status in ("alternative", "unchecked"):
+            st.info(c.message)
+    if prep.warnings:
+        from ingestion.plausibility import HEADLINE
+        st.warning(_LINE_BREAK.join([HEADLINE] + [f"- {w.message}" for w in prep.warnings]))
+
+
+
+def _final_mapping_summary(prep) -> None:
+    """One compact line per used field, right above the Run analysis button."""
+    verified = prep.crosscheck.verified_fields
+    used = [(FIELD_BY_NAME[m.field].label, m.column, m.field in verified)
+            for m in prep.mapping.columns if m.status in ("confirmed", "high_confidence")]
+    skipped = [m.column for m in prep.mapping.columns if m.status not in ("confirmed", "high_confidence")]
+    parts = [f"{label} ← '{col}'" + (" ✓" if ok else "") for label, col, ok in used]
+    st.markdown("**Final mapping summary**")
+    st.caption(" · ".join(parts) + (" (✓ = verified by the file's own calculations)" if verified else ""))
+    if skipped:
+        st.caption(f"Not used ({len(skipped)}): " + ", ".join(skipped))
 
 
 # ---------------------------------------------------------------------------------------------

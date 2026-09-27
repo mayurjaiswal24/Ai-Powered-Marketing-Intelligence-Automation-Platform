@@ -21,7 +21,7 @@ from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import column_format, column_label
 from reports import export_filename
-from utils.formatting import format_count, format_date
+from utils.formatting import format_count, format_date, pct_decimals
 
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
                else PROJECT_ROOT / settings.exports_dir)
@@ -34,6 +34,10 @@ INR_2 = '[>=10000000]"₹"##\\,##\\,##\\,##0.00;[>=100000]"₹"##\\,##\\,##0.00;
 COUNT = '[>=10000000]##\\,##\\,##\\,##0;[>=100000]##\\,##\\,##0;##,##0'
 PERCENT = '0.0"%"'          # values are already on the 0-100 scale, exactly as in the dashboard
 SIGNED_PERCENT = '+0.0"%";-0.0"%";0.0"%"'
+# Small non-zero percentages get more decimals (same rule as utils.formatting.pct_decimals), so
+# 0.04% never shows as 0.0%. The format is chosen per cell; the stored number is unchanged.
+PERCENT_BY_DECIMALS = {2: '0.00"%"', 3: '0.000"%"'}
+SIGNED_PERCENT_BY_DECIMALS = {2: '+0.00"%";-0.00"%";0.00"%"', 3: '+0.000"%";-0.000"%";0.000"%"'}
 RATIO = '0.00"x"'
 INDEX = "0"
 DATE = "d mmm yyyy"
@@ -79,6 +83,10 @@ class _Book:
             "count": self.wb.add_format({**base, "num_format": COUNT}),
             "percent": self.wb.add_format({**base, "num_format": PERCENT}),
             "signed_percent": self.wb.add_format({**base, "num_format": SIGNED_PERCENT}),
+            **{f"percent_{d}": self.wb.add_format({**base, "num_format": f})
+               for d, f in PERCENT_BY_DECIMALS.items()},
+            **{f"signed_percent_{d}": self.wb.add_format({**base, "num_format": f})
+               for d, f in SIGNED_PERCENT_BY_DECIMALS.items()},
             "ratio": self.wb.add_format({**base, "num_format": RATIO}),
             "index": self.wb.add_format({**base, "num_format": INDEX}),
             "date": self.wb.add_format({**base, "num_format": DATE}),
@@ -97,6 +105,14 @@ class _Book:
             return self.fmt["money2" if small else "money0"]
         return self.fmt.get(kind, self.fmt["text"])
 
+    def _small_percent(self, fmt, value: float):
+        """Swap a percent format for one with more decimals when the value is small."""
+        for kind in ("percent", "signed_percent"):
+            if fmt is self.fmt[kind]:
+                decimals = pct_decimals(value)
+                return fmt if decimals == 1 else self.fmt[f"{kind}_{decimals}"]
+        return fmt
+
     def write_value(self, ws, row: int, col: int, value, fmt) -> None:
         if _is_blank(value):
             ws.write_blank(row, col, None, fmt)
@@ -105,7 +121,7 @@ class _Book:
         elif isinstance(value, bool):
             ws.write_boolean(row, col, value, fmt)
         elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            ws.write_number(row, col, float(value), fmt)
+            ws.write_number(row, col, float(value), self._small_percent(fmt, float(value)))
         elif hasattr(value, "item"):                           # numpy scalars
             self.write_value(ws, row, col, value.item(), fmt)
         else:

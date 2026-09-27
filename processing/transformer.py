@@ -18,7 +18,8 @@ def select_and_rename(df: pd.DataFrame, mapping, log: QualityLog) -> pd.DataFram
     active = mapping.active                       # field -> original column
     reasons = {
         "unmapped": "column did not match any known marketing field",
-        "derived": "ratio column; it is recalculated from totals instead",
+        "derived": "derived metric (rate, ratio or average); it is recalculated from totals instead",
+        "not_used": "recognised but deliberately not used (see the mapping reason)",
         "ignored": "you chose not to use this column",
         "uncertain": "meaning of the column was not confirmed",
     }

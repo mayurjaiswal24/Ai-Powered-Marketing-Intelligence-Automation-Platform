@@ -41,22 +41,31 @@ WARNING = "#fab219"
 NEUTRAL = "#898781"
 
 TEMPLATE_NAME = "marketing"
+TOP_MARGIN = 56                 # room for the title plus a small note above the plot
+TOP_MARGIN_WITH_LEGEND = 84     # title row + legend row
+LABEL_WRAP = 24                 # category labels longer than this wrap onto a second line
+TITLE_WRAP = 60
 
 
 def build_template() -> go.layout.Template:
     t = go.layout.Template()
     t.layout = go.Layout(
         font=dict(family=FONT_FAMILY, size=13, color=INK_SECONDARY),
-        title=dict(font=dict(size=15, color=INK), x=0, xanchor="left", y=0.97),
+        # Title pinned to the top edge of the whole figure (not the plot), so legends and
+        # "Average = 100"-style notes above the plot can never slide under it.
+        title=dict(font=dict(size=15, color=INK), x=0, xanchor="left", xref="container",
+                   y=1, yanchor="top", yref="container", pad=dict(t=10, l=8)),
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         colorway=CATEGORICAL,
-        margin=dict(l=8, r=16, t=48, b=8),
+        margin=dict(l=8, r=16, t=TOP_MARGIN, b=8),
         xaxis=dict(showgrid=False, linecolor=AXIS, linewidth=1, ticks="", zeroline=False,
                    tickfont=dict(color=INK_MUTED), title=dict(font=dict(color=INK_MUTED))),
         yaxis=dict(showgrid=True, gridcolor=GRID, gridwidth=1, zeroline=False, linecolor=AXIS,
                    ticks="", tickfont=dict(color=INK_MUTED), title=dict(font=dict(color=INK_MUTED))),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+        # Legend in its own row between the title and the plot (charts with a legend get
+        # TOP_MARGIN_WITH_LEGEND so the two never touch).
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, yref="paper", xanchor="left", x=0,
                     font=dict(color=INK_SECONDARY), bgcolor="rgba(0,0,0,0)"),
         hoverlabel=dict(bgcolor="white", bordercolor=GRID, font=dict(family=FONT_FAMILY, color=INK)),
         hovermode="closest",

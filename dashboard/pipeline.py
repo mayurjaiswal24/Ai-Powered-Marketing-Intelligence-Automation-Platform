@@ -1,13 +1,14 @@
 """The end-to-end pipeline behind the app, with no Streamlit code (so it can be tested alone).
 
-    prepare()       load -> profile -> map fields -> check capabilities   (before the user confirms)
+    prepare()       load -> profile -> map fields -> cross-check with the file's own ratios ->
+                    plausibility warnings -> check capabilities           (before the user confirms)
     run_pipeline()  clean -> save to SQLite -> analyse -> save results      (after "Run analysis")
 """
 
 from __future__ import annotations
 
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -17,8 +18,10 @@ from analytics.engine import AnalysisResult, run_analysis, save_analysis
 from config.settings import PROJECT_ROOT
 from database import repository
 from database.connection import DatabaseError
+from ingestion.crosscheck import CrossCheckResult, apply_to_mapping, cross_check
 from ingestion.loader import LoadReport, load_file
 from ingestion.mapper import MappingResult, map_fields
+from ingestion.plausibility import PlausibilityWarning, check_plausibility
 from ingestion.profiler import DatasetProfile, profile_dataset
 from ingestion.validator import ValidationResult, validate
 from processing.cleaner import CleanResult, clean_dataset
@@ -40,6 +43,8 @@ class PreparedUpload:
     profile: DatasetProfile
     mapping: MappingResult
     validation: ValidationResult
+    crosscheck: CrossCheckResult = field(default_factory=CrossCheckResult)
+    warnings: list[PlausibilityWarning] = field(default_factory=list)   # warn, never block
 
 
 @dataclass
@@ -67,7 +72,10 @@ def prepare(raw_df: pd.DataFrame, report: LoadReport,
     mapping = map_fields(profile, overrides=overrides)
     profile.apply_mapping(raw_df, mapping)
     validation = validate(mapping, profile)
-    return PreparedUpload(raw_df, report, profile, mapping, validation)
+    checks = cross_check(raw_df, mapping)          # the file's own CPC/CTR/ROAS vs. the mapping
+    apply_to_mapping(mapping, checks)
+    warnings = check_plausibility(raw_df, mapping)
+    return PreparedUpload(raw_df, report, profile, mapping, validation, checks, warnings)
 
 
 def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda _msg: None,

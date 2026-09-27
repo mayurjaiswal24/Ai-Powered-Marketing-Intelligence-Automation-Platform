@@ -28,9 +28,21 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 # has the right type, is mapped as "high-confidence". Below it, the mapping is only suggested.
 MAPPING_HIGH_CONFIDENCE = 88
 # Candidates scoring below this are not even suggested.
-MAPPING_MIN_CANDIDATE = 65
+MAPPING_MIN_CANDIDATE = 75   # raised from 65: weaker matches produced nonsense (e.g. Discount -> Country)
 # Two category labels this similar (0-100) are treated as spelling variants ("Linkdin" ~ "LinkedIn").
 LABEL_SIMILARITY = 90
+
+# --- Cross-check with the file's own calculated columns (ingestion/crosscheck.py) ---
+CROSSCHECK_SAMPLE_ROWS = 500       # rows compared (the first N); enough to be sure, fast on big files
+CROSSCHECK_MIN_ROWS = 5            # fewer comparable rows than this -> no verdict
+CROSSCHECK_MIN_MATCH_SHARE = 0.90  # share of rows that must agree (files round their own ratios)
+CROSSCHECK_REL_TOL = 0.02          # agree within 2% ...
+CROSSCHECK_ABS_TOL = 0.011         # ... or within 0.011 (a value rounded to 2 decimals)
+
+# --- Plausibility warnings before analysis (ingestion/plausibility.py). Warn, never block. ---
+PLAUSIBLE_MAX_CTR_PCT = 50.0            # overall CTR above this is very unusual for ads
+PLAUSIBLE_MIN_LEAD_TO_CONV_PCT = 0.1    # fewer than 1 in 1,000 leads converting is suspicious
+PLAUSIBLE_MAX_ROAS = 50.0               # overall ROAS above 50x is rare outside synthetic data
 # Share of non-missing values that must parse as a number/date for a column to get that type.
 TYPE_DETECTION_SHARE = 0.9
 # Columns with more distinct labels than this are not checked for inconsistent spellings.
