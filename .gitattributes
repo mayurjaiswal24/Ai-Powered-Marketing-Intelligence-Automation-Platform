@@ -5,3 +5,6 @@ data/sample/*.xlsx binary
 # Loader test fixtures must keep their exact bytes (encodings, line endings, fake binaries).
 tests/fixtures/* -text
 tests/fixtures/*.py text eol=lf
+
+# Windows batch files must keep CRLF line endings.
+*.bat text eol=crlf
