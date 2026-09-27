@@ -162,8 +162,8 @@ def test_excel_has_incidents_and_owned_block(clean, tmp_path):
 
 # --- Prompt v2 ---------------------------------------------------------------------------------
 
-def test_prompt_v2_rules():
-    assert PROMPT_VERSION == "v2"
+def test_prompt_keeps_v2_rules():
+    assert PROMPT_VERSION >= "v2"            # the v2 rules stay in later versions
     text = " ".join(SYSTEM_INSTRUCTIONS.lower().split())
     for rule in ("connect at", "never recommend increasing", "click-to-lead rate points to landing page",
                  "not the landing page", "attribution limitation", "from and to", "not a customer segment",

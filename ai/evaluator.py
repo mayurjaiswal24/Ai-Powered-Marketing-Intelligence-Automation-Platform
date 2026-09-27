@@ -5,7 +5,12 @@
 2. Every number the AI writes (₹4.2 Cr, 38%, 3.45x, 1,23,456 ...) must match a number in the
    evidence it cites, allowing for rounding. Otherwise the item is kept but marked UNVERIFIED
    with a warning, so a reader knows not to trust that figure.
-3. A summary counts kept, verified, unverified and dropped items.
+3. Quality checks (v3). Failing items are kept but marked WEAK with a warning:
+   - a key finding that cites only one deterministic finding just restates it;
+   - a recommendation that cites an incident must quote that incident's estimated rupee impact.
+   Recommendations are then re-ranked in code by the rupee impact of the incidents they cite
+   (highest first); recommendations without an incident keep their order after those.
+4. A summary counts kept, verified, unverified, weak and dropped items.
 """
 
 from __future__ import annotations
@@ -72,13 +77,15 @@ class Evaluation:
     kept: int = 0
     verified: int = 0
     unverified: int = 0
+    weak: int = 0
     dropped: int = 0
     dropped_items: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {"kept": self.kept, "verified": self.verified, "unverified": self.unverified,
-                "dropped": self.dropped, "dropped_items": self.dropped_items, "warnings": self.warnings}
+                "weak": self.weak, "dropped": self.dropped, "dropped_items": self.dropped_items,
+                "warnings": self.warnings}
 
 
 def evaluate(insights: dict, pack) -> tuple[dict, Evaluation]:
@@ -95,9 +102,53 @@ def evaluate(insights: dict, pack) -> tuple[dict, Evaluation]:
         for item in items:
             result = _check_item(dict(item), label, pack, evidence_numbers, ev, title)
             if result is not None:
+                _quality_checks(key, result, pack, ev)
                 kept_items.append(result)
+        if key == "recommendations":
+            kept_items = _rank_by_incident_impact(kept_items, pack)
         checked[key] = (kept_items[0] if kept_items else None) if key == "executive_summary" else kept_items
     return checked, ev
+
+
+def _incident_impact(item, pack) -> tuple[list[str], list[Number]]:
+    """IDs of cited incident evidence and the rupee impact numbers stated in them."""
+    ids, amounts = [], []
+    for eid in item.get("evidence_ids", []):
+        ev_item = pack.by_id.get(eid)
+        if ev_item is not None and ev_item.type == "incident":
+            ids.append(eid)
+            amounts += [n for n in extract_numbers(ev_item.facts.get("estimated impact", ""), checkable_only=False)
+                        if n.kind == "money"]
+    return ids, amounts
+
+
+def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
+    weak = []
+    if section == "key_findings":
+        ids = item.get("evidence_ids", [])
+        if len(ids) == 1 and pack.by_id[ids[0]].type == "finding":
+            weak.append("Restates a single deterministic finding without adding insight.")
+    if section == "recommendations":
+        ids, amounts = _incident_impact(item, pack)
+        if ids and amounts:
+            stated = [n for n in extract_numbers(item.get("text", "")) if n.kind == "money"]
+            if not any(_matches(n, amounts) for n in stated):
+                shown = ", ".join(f"{i}: {pack.by_id[i].facts.get('estimated impact', '').split(' (')[0]}" for i in ids)
+                weak.append(f"Does not mention the rupee impact of the incident it relies on ({shown}).")
+    item["weak"] = bool(weak)
+    item["weak_reasons"] = weak
+    if weak:
+        ev.weak += 1
+        item["warnings"] = item.get("warnings", []) + weak
+
+
+def _rank_by_incident_impact(items: list[dict], pack) -> list[dict]:
+    """Highest rupee impact at stake first (enforced in code, whatever order the AI used)."""
+    def at_stake(item):
+        _, amounts = _incident_impact(item, pack)
+        return max((n.value for n in amounts), default=0.0)
+    ranked = sorted(enumerate(items), key=lambda p: (-at_stake(p[1]), p[0]))
+    return [item for _, item in ranked]
 
 
 def _check_item(item: dict, label: str, pack, evidence_numbers, ev: Evaluation, section: str) -> dict | None:

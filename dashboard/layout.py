@@ -791,11 +791,14 @@ def page_ai() -> None:
         return
 
     ev = run.evaluation
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Statements kept", format_count(ev["kept"]), border=True)
     c2.metric("All figures verified", format_count(ev["verified"]), border=True)
     c3.metric("Unverified figures", format_count(ev["unverified"]), border=True)
-    c4.metric("Dropped (no evidence)", format_count(ev["dropped"]), border=True)
+    c4.metric("Weak", format_count(ev.get("weak", 0)), border=True,
+              help="Kept but weak: restates a single finding, or leaves out the rupee impact of the "
+                   "incident it relies on.")
+    c5.metric("Dropped (no evidence)", format_count(ev["dropped"]), border=True)
     usage = ("saved result, no call used" if run.from_cache else
              f"{run.calls_made} call(s), about {format_count(run.input_tokens)} input and "
              f"{format_count(run.output_tokens)} output tokens")
@@ -817,7 +820,9 @@ def page_ai() -> None:
 def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
     import html
     ids = ", ".join(item.get("evidence_ids", []))
-    st.markdown(f"<div class='mi-finding'><span class='mi-tag'>{html.escape(label)}</span>"
+    weak = ("<span class='mi-tag' style='background:#fdf1d6;color:#8a5d00'>Weak</span>"
+            if item.get("weak") else "")
+    st.markdown(f"<div class='mi-finding'><span class='mi-tag'>{html.escape(label)}</span>{weak}"
                 f"{html.escape(item.get('text', ''))}</div>", unsafe_allow_html=True)
     details = []
     if item.get("validation_step"):

@@ -133,6 +133,8 @@ class Settings:
     # repr=False keeps the key out of logs and error messages if the object is ever printed.
     gemini_api_key: str = field(default="", repr=False)
     gemini_model: str = ""
+    # Used automatically (once) when the main model answers "high demand" (HTTP 503).
+    gemini_fallback_model: str = ""
     ai_enabled: bool = False
     ai_max_calls_per_run: int = 3
     ai_max_calls_per_day: int = 15
@@ -155,6 +157,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     return Settings(
         gemini_api_key=_parse_str(env.get("GEMINI_API_KEY"), defaults.gemini_api_key),
         gemini_model=_parse_str(env.get("GEMINI_MODEL"), defaults.gemini_model),
+        gemini_fallback_model=_parse_str(env.get("GEMINI_FALLBACK_MODEL"), defaults.gemini_fallback_model),
         ai_enabled=_parse_bool(env.get("AI_ENABLED"), defaults.ai_enabled),
         ai_max_calls_per_run=_parse_int(env.get("AI_MAX_CALLS_PER_RUN"), defaults.ai_max_calls_per_run),
         ai_max_calls_per_day=_parse_int(env.get("AI_MAX_CALLS_PER_DAY"), defaults.ai_max_calls_per_day),

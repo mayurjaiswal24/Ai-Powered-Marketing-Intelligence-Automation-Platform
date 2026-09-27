@@ -68,7 +68,11 @@ def good_answer(pack) -> dict:
                         "validation_step": "Compare channel CPL month by month."}],
         "investigation_areas": [{"text": "Review the weakest channel.", "evidence_ids": [finding.id]}],
         "recommendations": [{"text": "Shift budget to the best channel.", "evidence_ids": [finding.id],
-                             "priority": "high", "metric_to_watch": "ROAS"}],
+                             "priority": "high", "metric_to_watch": "ROAS"},
+                            {"text": "Review the weakest campaign's landing page.", "evidence_ids": [kpi.id],
+                             "priority": "medium", "metric_to_watch": "Click-to-lead rate"},
+                            {"text": "Check lead quality with the sales team.", "evidence_ids": [kpi.id],
+                             "priority": "low", "metric_to_watch": "Lead-to-conversion rate"}],
         "limitations": [{"text": "Outliers were flagged.", "evidence_ids": []}],       # no evidence
     }
 
@@ -186,8 +190,8 @@ def test_evaluator_tolerates_rounding(pack, analysis):
     spend = analysis.kpis["spend"].value / 1e7          # e.g. 7.44 (crore), shown as "₹7.4 Cr"
     ctr = analysis.kpis["ctr"].value
     answer = good_answer(pack)
-    answer["key_findings"] = [{"text": f"Spend was about ₹{spend:.2f} Cr and CTR {ctr:.2f}%.",
-                               "evidence_ids": ["E01"]}]
+    answer["key_findings"][0] = {"text": f"Spend was about ₹{spend:.2f} Cr and CTR {ctr:.2f}%.",
+                                 "evidence_ids": ["E01"]}
     checked, _ = evaluate(AIInsights.model_validate(answer).model_dump(), pack)
     assert checked["key_findings"][0]["status"] == "verified", kpi.facts
 

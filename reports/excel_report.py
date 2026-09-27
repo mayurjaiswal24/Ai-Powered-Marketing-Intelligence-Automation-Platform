@@ -344,7 +344,8 @@ def _ai(book: _Book, ai: dict | None) -> None:
                          "validation_step": item.get("validation_step", ""),
                          "priority": item.get("priority", ""),
                          "metric_to_watch": item.get("metric_to_watch", ""),
-                         "check": item.get("status", "")})
+                         "check": item.get("status", ""),
+                         "quality": "weak: " + "; ".join(item.get("weak_reasons", [])) if item.get("weak") else "ok"})
     if rows:
         _simple_sheet(book, "AI_Insights", pd.DataFrame(rows),
                       "AI-GENERATED content (Google Gemini): interpretation of the verified evidence. "

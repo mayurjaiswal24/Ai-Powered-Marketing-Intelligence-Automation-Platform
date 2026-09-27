@@ -31,11 +31,13 @@ class Recommendation(InsightItem):
 
 class AIInsights(BaseModel):
     executive_summary: InsightItem
-    key_findings: list[InsightItem]
+    key_findings: list[InsightItem] = Field(min_length=3, max_length=5)
     performance_concerns: list[InsightItem]
     hypotheses: list[Hypothesis]
     investigation_areas: list[InsightItem]
-    recommendations: list[Recommendation]
+    recommendations: list[Recommendation] = Field(
+        min_length=3, max_length=5,
+        description="Ranked by the rupee impact at stake, highest first.")
     limitations: list[InsightItem]
 
 

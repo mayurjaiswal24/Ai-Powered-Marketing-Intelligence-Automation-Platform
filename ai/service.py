@@ -84,6 +84,13 @@ def generate_ai_insights(result, client, run_id: int | None = None, max_calls: i
             if log:
                 _log(run_id, pack, client, False, exc.kind, db_path=db_path)
             run.error = exc
+            # "High demand" (503) on the main model: try the configured fallback model once,
+            # if the call budget allows. Quota errors (429) are never retried.
+            if exc.kind == "server" and run.calls_made < max_calls and                     getattr(client, "use_fallback", lambda: False)():
+                run.notes.append(f"The main model was overloaded; the fallback model "
+                                 f"{client.model} answered instead.")
+                run.model = client.model
+                continue
             return run
         run.input_tokens += response.input_tokens or 0
         run.output_tokens += response.output_tokens or 0

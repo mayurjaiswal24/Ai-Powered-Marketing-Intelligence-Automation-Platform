@@ -596,6 +596,8 @@ def _ai_section(rep: _Report) -> None:
                              f"{escape(item['metric_to_watch'])}")
             ids = ", ".join(item.get("evidence_ids", []))
             status = " <i>(contains unverified figures)</i>" if item.get("status") == "unverified" else ""
+            if item.get("weak"):
+                status += " <i>(weak: " + escape("; ".join(item.get("weak_reasons", []))) + ")</i>"
             rep.p(f"{tag(label)} {text}{status}" + "".join(f"<br/>{e}" for e in extra)
                   + (f"<br/><font color='{theme.INK_MUTED}' size='7.5'>Evidence: {ids}</font>" if ids else ""),
                   raw=True)

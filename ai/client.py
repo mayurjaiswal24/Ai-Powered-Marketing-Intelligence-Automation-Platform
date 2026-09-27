@@ -97,11 +97,14 @@ def classify_error(exc: Exception) -> AIError:
 class GeminiClient:
     """Thin wrapper around google-genai for one structured JSON generation."""
 
-    def __init__(self, api_key: str, model: str, timeout_s: int = AI_TIMEOUT_SECONDS):
+    def __init__(self, api_key: str, model: str, timeout_s: int = AI_TIMEOUT_SECONDS,
+                 fallback_model: str = ""):
         if not api_key:
             raise ai_error("missing_key")
         if not model:
             raise ai_error("missing_model")
+        # Used once, automatically, when the main model is overloaded ("high demand", HTTP 503).
+        self.fallback_model = fallback_model if fallback_model and fallback_model != model else ""
         from google import genai
         from google.genai import types
         self._types = types
@@ -110,6 +113,13 @@ class GeminiClient:
             api_key=api_key,
             http_options=types.HttpOptions(timeout=timeout_s * 1000,
                                            retry_options=types.HttpRetryOptions(attempts=1)))
+
+    def use_fallback(self) -> bool:
+        """Switch to the fallback model (once). Returns False if there is none left."""
+        if not self.fallback_model:
+            return False
+        self.model, self.fallback_model = self.fallback_model, ""
+        return True
 
     def generate(self, system: str, prompt: str, schema) -> AIResponse:
         types = self._types
@@ -136,7 +146,8 @@ def client_from_settings(settings) -> GeminiClient:
     """The real client, or a typed error explaining what is missing."""
     if not settings.ai_enabled:
         raise ai_error("disabled")
-    return GeminiClient(settings.gemini_api_key, settings.gemini_model)
+    return GeminiClient(settings.gemini_api_key, settings.gemini_model,
+                        fallback_model=getattr(settings, "gemini_fallback_model", ""))
 
 
 def list_generation_models(api_key: str) -> list[str]:
