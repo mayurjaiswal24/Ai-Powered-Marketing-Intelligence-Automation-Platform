@@ -86,6 +86,15 @@ OUTAGE_CLICK_SHARE = 0.05          # clicks below 5% of normal ...
 OUTAGE_MIN_SPEND_SHARE = 0.25      # ... while spend is at least 25% of normal
 OUTAGE_MIN_BASELINE_CLICKS = 20    # only for entities that normally get >= 20 clicks a day
 
+# --- AI (Gemini) ---------------------------------------------------------------------------------
+# The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
+# trimmed first. Keeps each call small (free-tier friendly) and focused.
+AI_CONTEXT_MAX_CHARS = 15_000
+AI_TOP_CAMPAIGNS = 5               # best and weakest campaigns included as evidence
+AI_MAX_ANOMALIES = 12              # most important anomalies included as evidence
+AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long
+AI_TEMPERATURE = 0.2               # low: we want careful, repeatable interpretation
+
 _TRUE_WORDS = {"1", "true", "yes", "y", "on"}
 _FALSE_WORDS = {"0", "false", "no", "n", "off"}
 

@@ -292,16 +292,22 @@ def _anomalies(book: _Book, result) -> None:
 def _ai(book: _Book, ai: dict | None) -> None:
     if not ai:
         return
+    from ai.schemas import SECTIONS
     rows = []
-    for key, label in (("interpretations", "AI interpretation"), ("hypotheses", "Hypothesis"),
-                       ("investigation_areas", "AI interpretation"), ("recommendations", "Recommendation")):
-        for item in ai.get(key) or []:
-            rows.append({"type": label, "text": item.get("text") if isinstance(item, dict) else str(item),
-                         "evidence_ids": ", ".join(item.get("evidence_ids", [])) if isinstance(item, dict) else ""})
+    for key, title, label in SECTIONS:
+        raw = ai.get(key)
+        for item in raw if isinstance(raw, list) else ([raw] if raw else []):
+            rows.append({"section": title, "type": label, "text": item.get("text", ""),
+                         "evidence_ids": ", ".join(item.get("evidence_ids", [])),
+                         "validation_step": item.get("validation_step", ""),
+                         "priority": item.get("priority", ""),
+                         "metric_to_watch": item.get("metric_to_watch", ""),
+                         "check": item.get("status", "")})
     if rows:
         _simple_sheet(book, "AI_Insights", pd.DataFrame(rows),
-                      "AI-GENERATED content (Google Gemini). Interpretations of the verified evidence; "
-                      "validate before acting.")
+                      "AI-GENERATED content (Google Gemini): interpretation of the verified evidence. "
+                      "Hypotheses require validation. 'check' = whether every figure matched the "
+                      "cited evidence.")
 
 
 def _data_quality(book: _Book, result, log: pd.DataFrame | None) -> None:

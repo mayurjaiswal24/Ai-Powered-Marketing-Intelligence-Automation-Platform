@@ -126,8 +126,9 @@ def test_export_saves_file_and_records_it(tmp_path):
 def test_ai_content_is_labelled_when_provided(tmp_path):
     raw, report = load_raw(SAMPLE_DIR / "test_b_medium.csv")
     output = run_pipeline(prepare(raw, report), db_path=tmp_path / "a.db")
-    ai = {"interpretations": [{"text": "Spend shifted towards search."}],
-          "recommendations": [{"text": "Review the weakest campaign's landing page."}]}
+    ai = {"key_findings": [{"text": "Spend shifted towards search.", "evidence_ids": ["E01"]}],
+          "recommendations": [{"text": "Review the weakest campaign's landing page.",
+                               "evidence_ids": ["E02"], "priority": "high", "metric_to_watch": "CPL"}]}
     path = tmp_path / "ai.pdf"
     generate_pdf(output.analysis, path, ai=ai)
     text = "\n".join(p.extract_text() for p in PdfReader(str(path)).pages)

@@ -123,7 +123,8 @@ def test_messy_quality_log_included(books):
 def test_ai_sheet_only_with_ai_output(tmp_path):
     raw, report = load_raw(SAMPLE_DIR / "test_b_medium.csv")
     output = run_pipeline(prepare(raw, report), db_path=tmp_path / "a.db")
-    ai = {"recommendations": [{"text": "Check the landing page.", "evidence_ids": ["F-1"]}]}
+    ai = {"recommendations": [{"text": "Check the landing page.", "evidence_ids": ["E01"],
+                               "priority": "high", "metric_to_watch": "CPL"}]}
     sheets = generate_workbook(output.analysis, tmp_path / "ai.xlsx", ai=ai)
     assert "AI_Insights" in sheets
     ws = load_workbook(tmp_path / "ai.xlsx")["AI_Insights"]

@@ -548,16 +548,28 @@ def _ai_section(rep: _Report) -> None:
                    "recommendations, each clearly labelled. The rest of this report is complete "
                    "without it.")
         return
-    labels = [("interpretations", "AI interpretation"), ("hypotheses", "Hypothesis"),
-              ("investigation_areas", "AI interpretation"), ("recommendations", "Recommendation")]
-    for key, label in labels:
-        items = rep.ai.get(key) or []
+    rep.notice("AI-generated interpretation of verified metrics (Google Gemini). Hypotheses require "
+               "validation. Evidence IDs refer to the evidence pack stored with this analysis.")
+    from ai.schemas import SECTIONS
+    for key, title, label in SECTIONS:
+        raw = rep.ai.get(key)
+        items = raw if isinstance(raw, list) else ([raw] if raw else [])
         if not items:
             continue
-        rep.h2(key.replace("_", " ").capitalize())
+        rep.h2(title)
         for item in items:
-            text = item.get("text") if isinstance(item, dict) else str(item)
-            rep.p(f"{tag(label)} {escape(text or '')}", raw=True)
+            text = escape(item.get("text", ""))
+            extra = []
+            if item.get("validation_step"):
+                extra.append(f"How to validate: {escape(item['validation_step'])}")
+            if item.get("metric_to_watch"):
+                extra.append(f"Priority: {escape(str(item.get('priority', '')))}; metric to watch: "
+                             f"{escape(item['metric_to_watch'])}")
+            ids = ", ".join(item.get("evidence_ids", []))
+            status = " <i>(contains unverified figures)</i>" if item.get("status") == "unverified" else ""
+            rep.p(f"{tag(label)} {text}{status}" + "".join(f"<br/>{e}" for e in extra)
+                  + (f"<br/><font color='{theme.INK_MUTED}' size='7.5'>Evidence: {ids}</font>" if ids else ""),
+                  raw=True)
 
 
 def _data_quality(rep: _Report) -> None:

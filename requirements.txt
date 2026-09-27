@@ -13,3 +13,5 @@ matplotlib==3.11.2
 xlsxwriter==3.2.9
 # Test-only: reads generated PDFs back to check their text.
 pypdf==6.19.0
+google-genai==2.25.0
+pydantic==2.13.5

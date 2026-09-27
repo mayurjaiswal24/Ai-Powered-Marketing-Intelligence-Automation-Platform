@@ -47,7 +47,7 @@ def _reset_for_new_file(raw_df, report, label):
     s = _state()
     s["raw_df"], s["report"], s["source_label"] = raw_df, report, label
     s["overrides"] = {}
-    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path"):
+    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path", "ai_run"):
         s.pop(key, None)
 
 
@@ -222,7 +222,7 @@ def page_upload() -> None:
                 output = run_pipeline(prep, progress=lambda msg: status.write(msg))
                 status.update(label="Analysis complete", state="complete", expanded=False)
             _state()["output"] = output
-            for key in ("view", "view_key", "pdf_path", "excel_path"):
+            for key in ("view", "view_key", "pdf_path", "excel_path", "ai_run"):
                 _state().pop(key, None)
         except (CleaningError, IngestionError) as exc:
             ui.friendly_error(exc)
@@ -610,11 +610,94 @@ def _entity_daily(df, entity_type, entity, around):
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
 
+AI_BANNER = "AI-generated interpretation of verified metrics. Hypotheses require validation."
+
+
 def page_ai() -> None:
-    ui.page_header("AI Insights", "Interpretation of the verified findings by Google Gemini, clearly "
-                   "labelled as AI-generated.")
-    ui.empty_state("AI insights are not enabled yet. The dashboard, findings and anomalies above are "
-                   "calculated without AI and are complete on their own.")
+    import config.settings as config_settings
+    from ai.client import AIError, client_from_settings
+    from ai.context_builder import build_evidence
+    from ai.schemas import SECTIONS
+    from ai.service import evidence_lookup, generate_ai_insights
+
+    output = current_output()
+    settings = config_settings.settings
+    ui.page_header("AI Insights", "Google Gemini interprets the verified findings. It never calculates "
+                   "the numbers; every statement must cite the evidence it is based on.")
+    if not settings.ai_enabled:
+        st.info("AI insights are turned off (AI_ENABLED=false in the .env file). The dashboard, "
+                "findings, anomalies and reports are complete without AI.")
+        return
+    if not settings.has_gemini_key or not settings.gemini_model:
+        st.warning("AI is switched on but not configured: add GEMINI_API_KEY and GEMINI_MODEL to the "
+                   ".env file, then restart the app.")
+        return
+
+    st.info(AI_BANNER)
+    pack = build_evidence(output.analysis, model=settings.gemini_model)
+    st.caption(f"Gemini receives {len(pack.items)} evidence items ({format_count(pack.size)} characters) "
+               "from the full dataset - no raw rows. Filters do not change the AI input.")
+    with st.expander("See the evidence pack sent to Gemini"):
+        st.json(pack.json_text, expanded=False)
+
+    if st.button("Generate AI insights", key="generate_ai", type="primary"):
+        try:
+            client = client_from_settings(settings)
+            with st.spinner("Asking Gemini to interpret the evidence..."):
+                run = generate_ai_insights(output.analysis, client, run_id=output.run_id,
+                                           max_calls=max(1, min(2, settings.ai_max_calls_per_run)))
+            _state()["ai_run"] = run
+        except AIError as exc:
+            ui.friendly_error(exc)
+    run = _state().get("ai_run")
+    if run is None:
+        ui.empty_state("No AI insights yet. Press 'Generate AI insights' to make one Gemini call.")
+        return
+    if run.error is not None:
+        ui.friendly_error(run.error)
+        return
+
+    ev = run.evaluation
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Statements kept", format_count(ev["kept"]), border=True)
+    c2.metric("All figures verified", format_count(ev["verified"]), border=True)
+    c3.metric("Unverified figures", format_count(ev["unverified"]), border=True)
+    c4.metric("Dropped (no evidence)", format_count(ev["dropped"]), border=True)
+    st.caption(f"Model {run.model} | prompt {run.prompt_version} | {run.calls_made} call(s) | "
+               f"about {format_count(run.input_tokens)} input and {format_count(run.output_tokens)} "
+               "output tokens.")
+    for key, title, label in SECTIONS:
+        raw = run.insights.get(key)
+        items = raw if isinstance(raw, list) else ([raw] if raw else [])
+        if not items:
+            continue
+        st.markdown(f"## {title}")
+        for i, item in enumerate(items):
+            _ai_item(item, label, run.pack, evidence_lookup, f"{key}_{i}")
+    if ev["dropped_items"]:
+        with st.expander(f"{ev['dropped']} statement(s) removed because they cited no valid evidence"):
+            for d in ev["dropped_items"]:
+                st.markdown(f"- *{d['section']}*: {d['text']} ({d['reason']})")
+
+
+def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
+    import html
+    ids = ", ".join(item.get("evidence_ids", []))
+    st.markdown(f"<div class='mi-finding'><span class='mi-tag'>{html.escape(label)}</span>"
+                f"{html.escape(item.get('text', ''))}</div>", unsafe_allow_html=True)
+    details = []
+    if item.get("validation_step"):
+        details.append(f"How to validate: {item['validation_step']}")
+    if item.get("metric_to_watch"):
+        details.append(f"Priority: {item.get('priority', '')} | Metric to watch: {item['metric_to_watch']}")
+    for d in details:
+        st.caption(d)
+    for w in item.get("warnings", []):
+        st.warning(w)
+    with st.expander(f"Evidence {ids}"):
+        for ev_item in lookup(pack, item.get("evidence_ids", [])):
+            st.markdown(f"**{ev_item['id']} - {ev_item['title']}**")
+            st.markdown(chr(10).join(f"- {k}: {v}" for k, v in ev_item["facts"].items()))
 
 
 def page_quality() -> None:
@@ -659,6 +742,12 @@ def page_quality() -> None:
                        file_name="data_quality_log.csv", mime="text/csv", key="dq_download")
 
 
+def _ai_sections() -> dict | None:
+    """Checked AI output of this session, if any (exports never trigger an AI call)."""
+    run = _state().get("ai_run")
+    return run.insights if run is not None and run.ok else None
+
+
 def page_reports() -> None:
     output = current_output()
     ui.page_header("Reports", "Executive PDF and analytical Excel workbook for the full dataset "
@@ -669,7 +758,7 @@ def page_reports() -> None:
     if st.button("Generate PDF", key="generate_pdf", type="primary"):
         try:
             with st.spinner("Building the PDF report..."):
-                path = export_pdf(output.analysis)
+                path = export_pdf(output.analysis, ai=_ai_sections())
             _state()["pdf_path"] = str(path)
         except ReportError as exc:
             ui.friendly_error(exc)
@@ -686,7 +775,7 @@ def page_reports() -> None:
         try:
             with st.spinner("Building the Excel workbook..."):
                 path = export_workbook(output.analysis, output.clean.clean_df,
-                                       output.clean.quality_log_df)
+                                       output.clean.quality_log_df, ai=_ai_sections())
             _state()["excel_path"] = str(path)
         except WorkbookError as exc:
             ui.friendly_error(exc)
