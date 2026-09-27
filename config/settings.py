@@ -89,9 +89,9 @@ OUTAGE_MIN_BASELINE_CLICKS = 20    # only for entities that normally get >= 20 c
 # --- AI (Gemini) ---------------------------------------------------------------------------------
 # The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
 # trimmed first. Keeps each call small (free-tier friendly) and focused.
-AI_CONTEXT_MAX_CHARS = 15_000
+AI_CONTEXT_MAX_CHARS = 18_000    # raised from 15,000 when incidents were added (Phase 12 review)
 AI_TOP_CAMPAIGNS = 5               # best and weakest campaigns included as evidence
-AI_MAX_ANOMALIES = 12              # most important anomalies included as evidence
+AI_MAX_INCIDENTS = 10              # top incidents (by estimated rupee impact) included as evidence
 AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long
 AI_TEMPERATURE = 0.2               # low: we want careful, repeatable interpretation
 

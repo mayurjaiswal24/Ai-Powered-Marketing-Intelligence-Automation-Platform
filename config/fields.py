@@ -186,3 +186,22 @@ CANONICAL_LABELS: dict[str, str] = {
 # Fields holding whole-number counts (stored as integers after cleaning).
 COUNT_FIELDS = ("impressions", "reach", "clicks", "engagements", "views", "leads",
                 "qualified_leads", "opportunities", "conversions", "customers", "orders")
+
+# Channel type: "paid" media is bought per impression/click/result; "owned" channels (email,
+# SMS, organic ...) run on the company's own audience with mostly fixed costs. Owned channels
+# are NOT ranked against paid media (their ROAS is not comparable: no auction, existing
+# audience) and are left out of efficiency indices; they are reported on a separate line.
+# Keys are normalized channel labels (lower-case). Anything not listed is treated as paid.
+CHANNEL_TYPES: dict[str, str] = {
+    "email": "owned", "sms": "owned", "whatsapp": "owned", "push notifications": "owned",
+    "organic social": "owned", "organic search": "owned", "seo": "owned", "direct": "owned",
+    "referral": "owned", "website": "owned",
+}
+
+
+def channel_type(channel) -> str:
+    """'owned' or 'paid' for a channel label (case and spacing ignored)."""
+    key = " ".join(str(channel).strip().lower().split())
+    if key.startswith("email") or key.startswith("e-mail"):      # e.g. platform "Email (in-house)"
+        return "owned"
+    return CHANNEL_TYPES.get(key, "paid")

@@ -11,6 +11,7 @@ from analytics.anomalies import detect_anomalies
 from analytics.campaign import rank_campaigns
 from analytics.engine import run_analysis, save_analysis, to_storage_tables
 from analytics.kpis import compute_kpis
+from config.fields import channel_type
 from analytics.trends import seasonality_index
 from database import repository as repo
 from ingestion.loader import load_file
@@ -155,9 +156,12 @@ def test_campaign_and_channel_tables(clean):
     assert c["spend_share_pct"].sum() == pytest.approx(100)
     assert c["spend"].sum() == pytest.approx(df["spend"].sum())
     assert {"first_date", "last_date", "active_days", "trend"} <= set(c.columns)
-    # Index 100 = overall average; ROAS index recomputed from table and KPI values.
-    overall_roas = result.kpis["roas"].value
-    assert ch["roas_index"].tolist() == pytest.approx((ch["roas"] / overall_roas * 100).tolist())
+    # Index 100 = paid-media average; owned channels (Email) get no index.
+    paid_rows = df[df["channel"].map(channel_type) == "paid"]
+    paid_roas = compute_kpis(paid_rows)["roas"].value
+    paid = ch[ch["channel_type"] == "paid"]
+    assert paid["roas_index"].tolist() == pytest.approx((paid["roas"] / paid_roas * 100).tolist())
+    assert ch.loc[ch["channel_type"] == "owned", "roas_index"].isna().all()
     ranked = rank_campaigns(c, "cpl", top=3)
     assert ranked["cpl"].is_monotonic_increasing     # lowest CPL is best
     assert ranked["rank"].tolist() == [1, 2, 3]
@@ -197,7 +201,7 @@ def test_findings_quote_the_right_values(clean):
     result = clean[1]
     by_id = {f.id: f for f in result.findings}
     best = by_id["F-best-channel"]
-    channels = result.channels.set_index("channel")
+    channels = result.channels[result.channels["channel_type"] == "paid"].set_index("channel")
     assert best.entity == channels["roas"].idxmax()
     assert f"{channels.loc[best.entity, 'roas']:.2f}x" in best.text
 

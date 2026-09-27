@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from analytics.kpis import KPI_REGISTRY
-from config.fields import FIELD_BY_NAME
-from config.settings import AI_CONTEXT_MAX_CHARS, AI_MAX_ANOMALIES, AI_TOP_CAMPAIGNS
+from config.fields import FIELD_BY_NAME, channel_type
+from config.settings import AI_CONTEXT_MAX_CHARS, AI_MAX_INCIDENTS, AI_TOP_CAMPAIGNS
 from utils.formatting import format_change, format_count, format_date, format_value
 
 MIN_SPEND_SHARE = 3.0   # % of spend; smaller campaigns have unreliable ratios
@@ -66,12 +66,16 @@ def _row_facts(row: pd.Series, metrics: list[str]) -> dict[str, str]:
             if m.endswith("_share_pct"):
                 facts[m.replace("_pct", "").replace("_", " ")] = _pct(row[m])
             elif m.endswith("_index"):
-                facts[m.replace("_", " ")] = f"{row[m]:.0f} (100 = average)"
+                facts[m.replace("_", " ")] = f"{row[m]:.0f} (100 = paid-media average)"
             elif m in ("trend_change_pct", "growth_pct"):
                 facts["last 4 weeks vs previous 4"] = format_change(row[m])
             else:
                 facts[KPI_REGISTRY[m].label if m in KPI_REGISTRY else m] = _fmt(m, row[m])
     return facts
+
+
+def _channel_label(channel) -> str:
+    return f"{channel} (owned channel)" if channel_type(channel) == "owned" else str(channel)
 
 
 def _headline(table: pd.DataFrame) -> str | None:
@@ -121,8 +125,14 @@ def _channel_items(result) -> list[EvidenceItem]:
     metrics = ["spend", "spend_share_pct", "leads", "cpl", "conversions", "cac", "revenue",
                "revenue_share_pct", "roas", "ctr", "lead_to_conversion_rate", "cpl_index", "roas_index"]
     ordered = ch.sort_values("spend", ascending=False) if "spend" in ch else ch
-    return [EvidenceItem("channel", f"Channel: {row['channel']}", _row_facts(row, metrics), 2)
-            for _, row in ordered.iterrows()]
+    items = []
+    for _, row in ordered.iterrows():
+        kind = row.get("channel_type", "paid")
+        facts = {"channel type": ("owned - own audience, mostly fixed costs; not comparable with paid "
+                                  "media and not ranked" if kind == "owned" else "paid")}
+        facts.update(_row_facts(row, metrics))
+        items.append(EvidenceItem("channel", f"Channel: {row['channel']}", facts, 2))
+    return items
 
 
 def _funnel_items(result) -> list[EvidenceItem]:
@@ -176,16 +186,17 @@ def _campaign_items(result) -> list[EvidenceItem]:
     if outcome:
         for _, row in c.sort_values(outcome, ascending=False).head(AI_TOP_CAMPAIGNS).iterrows():
             seen.add(row["campaign"])
-            facts = {"channel": str(row.get("channel", ""))} | _row_facts(row, metrics[1:])
+            facts = {"channel": _channel_label(row.get("channel", ""))} | _row_facts(row, metrics[1:])
             items.append(EvidenceItem("campaign", f"Top campaign by {outcome}: {row['campaign']}", facts, 3))
     metric = _headline(c)
     if metric and "spend_share_pct" in c:
-        sizeable = c[(c["spend_share_pct"] >= MIN_SPEND_SHARE) & c[metric].notna()]
+        paid = c["channel"].map(channel_type) == "paid" if "channel" in c else True
+        sizeable = c[(c["spend_share_pct"] >= MIN_SPEND_SHARE) & c[metric].notna() & paid]
         worst_first = KPI_REGISTRY[metric].higher_is_better is not False
         for _, row in sizeable.sort_values(metric, ascending=worst_first).head(AI_TOP_CAMPAIGNS).iterrows():
             if row["campaign"] in seen:
                 continue
-            facts = {"channel": str(row.get("channel", ""))} | _row_facts(row, metrics[1:])
+            facts = {"channel": _channel_label(row.get("channel", ""))} | _row_facts(row, metrics[1:])
             items.append(EvidenceItem("campaign", f"Weak campaign by {KPI_REGISTRY[metric].label}: "
                                       f"{row['campaign']}", facts, 3))
     return items
@@ -207,28 +218,45 @@ def _segment_items(result) -> list[EvidenceItem]:
     return items
 
 
-def _anomaly_items(result) -> list[EvidenceItem]:
-    a = result.anomalies
-    if a.empty:
+def _incident_items(result) -> list[EvidenceItem]:
+    """Top incidents by estimated rupee impact, with their flags and related effects."""
+    inc = getattr(result, "incidents", None)
+    if inc is None or inc.empty:
         return []
-    ranked = a.assign(_high=(a["severity"] != "high").astype(int),
-                      _score=-a["score"].abs().fillna(99)).sort_values(["_high", "_score"])
     items = []
-    for _, r in ranked.head(AI_MAX_ANOMALIES).iterrows():
-        m = r["metric"]
+    for r in inc.head(AI_MAX_INCIDENTS).itertuples():
         facts = {
-            "entity": f"{r['entity']} ({r['entity_type']})",
-            "metric": KPI_REGISTRY[m].label if m in KPI_REGISTRY else m,
-            "period": f"{format_date(r['period_start'])} to {format_date(r['period_end'])}",
-            "expected": _fmt(m, r["baseline"], compact=False),
-            "observed": _fmt(m, r["observed"], compact=False),
-            "change": format_change(r["pct_change"]),
-            "severity": r["severity"],
-            "assessment": {"negative": "problem", "positive": "improvement", "check": "needs review"}[r["sentiment"]],
+            "entity": f"{r.entity} ({r.entity_type})",
+            "period": f"{format_date(r.period_start)} to {format_date(r.period_end)}",
+            "metrics flagged": r.metrics,
+            "estimated impact": (f"{format_value(r.impact_inr, 'money', compact=True)} "
+                                 f"{r.impact_direction} ({r.impact_label})") if r.impact_direction in ("loss", "gain")
+                                else "not estimated",
+            "assessment": {"negative": "problem", "positive": "improvement", "check": "needs review"}[r.sentiment],
+            "severity": r.severity,
         }
-        items.append(EvidenceItem("anomaly", f"Anomaly: {facts['metric']} for {r['entity']}", facts,
-                                  2 if r["severity"] == "high" else 4))
+        for i, f in enumerate(r.flags[:3], start=1):
+            change = "" if f["change_pct"] is None else f", change {format_change(f['change_pct'])}"
+            facts[f"flag {i}"] = (f"{f['metric_label']}: expected {f['expected']}, observed {f['observed']}"
+                                  f"{change}" + (f" ({f['note']})" if f.get("note") else ""))
+        if r.related:
+            shown = "; ".join(
+                f"{f['entity']} {f['metric_label']} {format_change(f['change_pct'])}"
+                + (" (lower cost not an improvement)" if f.get("note") else "")
+                for f in r.related[:4])
+            more = f" and {len(r.related) - 4} more" if len(r.related) > 4 else ""
+            facts["related effects"] = shown + more
+        items.append(EvidenceItem("incident", f"Incident {r.incident_id}: {r.entity}", facts,
+                                  2 if r.rank <= 5 else 3))
     return items
+
+
+def _measurement_items(result) -> list[EvidenceItem]:
+    notes = list(getattr(result, "notes", []) or [])
+    if not notes:
+        return []
+    return [EvidenceItem("measurement", "Measurement notes and limitations",
+                         {f"note {i}": n for i, n in enumerate(notes, start=1)}, 1)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -240,9 +268,10 @@ def build_evidence(result, max_chars: int = AI_CONTEXT_MAX_CHARS, model: str = "
     dataset = {"name": meta.get("dataset_name"), "rows_analysed": format_count(meta.get("rows")),
                "period": f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}",
                "currency": "INR"}
-    candidates = (_kpi_items(result) + _quality_items(result) + _finding_items(result)
-                  + _channel_items(result) + _funnel_items(result) + _trend_items(result)
-                  + _anomaly_items(result) + _campaign_items(result) + _segment_items(result))
+    candidates = (_kpi_items(result) + _quality_items(result) + _measurement_items(result)
+                  + _finding_items(result) + _channel_items(result) + _funnel_items(result)
+                  + _trend_items(result) + _incident_items(result) + _campaign_items(result)
+                  + _segment_items(result))
     not_available = _not_available(result)
 
     # Keep the most important items that fit; drop from the lowest priority upwards.

@@ -67,7 +67,7 @@ def test_fingerprint_is_canonical_and_sensitive():
     assert a == compute_fingerprint('{"a": [1, 2], "b": 1}', "m")          # key order ignored
     assert a != compute_fingerprint('{"a": [1, 2], "b": 2}', "m")          # content matters
     assert a != compute_fingerprint('{"a": [1, 2], "b": 1}', "other")      # model matters
-    assert a != compute_fingerprint('{"a": [1, 2], "b": 1}', "m", prompt_version="v2")
+    assert a != compute_fingerprint('{"a": [1, 2], "b": 1}', "m", prompt_version="v99")
 
 
 # --- Cache ------------------------------------------------------------------------------------

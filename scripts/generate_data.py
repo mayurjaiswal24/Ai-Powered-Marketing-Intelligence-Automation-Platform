@@ -68,10 +68,13 @@ CHANNEL_ECONOMICS = {
     "Professional Network": dict(cpc=70.0, ctr=0.006, lead_rate=0.08, qual_rate=0.55,
                                  conv_rate=0.12, freq=(1.3, 1.8), weekend_spend=0.6,
                                  weekend_lead=0.7),
-    # In-house email to existing leads/alumni: near-zero cost, high conversion.
-    # "impressions" = email opens. Sends happen on weekdays only (weekend rows have zero spend).
-    "Email": dict(cost_per_open=0.30, daily_opens=3000, ctr=0.03, lead_rate=0.10,
-                  qual_rate=0.45, conv_rate=0.10, freq=(1.05, 1.2), weekend_open_share=0.25),
+    # In-house email to existing leads/alumni (an OWNED channel): high conversion, but not free.
+    # Cost = a fixed weekday cost for the email platform licence and content work (copywriting,
+    # design, list management) plus a small cost per open. "impressions" = email opens. Sends
+    # happen on weekdays only, so weekend rows have zero spend.
+    "Email": dict(cost_per_open=0.30, fixed_weekday_cost=2000.0, daily_opens=3000, ctr=0.03,
+                  lead_rate=0.10, qual_rate=0.45, conv_rate=0.10, freq=(1.05, 1.2),
+                  weekend_open_share=0.25),
     # Affiliates are paid per result: spend = payout per enrolment + fee per lead + a small
     # daily platform fee, so spend scales with conversions.
     "Affiliate": dict(daily_clicks=180, ctr=0.018, lead_rate=0.07, qual_rate=0.40,
@@ -82,7 +85,7 @@ CHANNEL_ECONOMICS = {
 # Daily budget per campaign per region, in INR, before seasonality.
 BASE_DAILY_BUDGET = {
     "Paid Search": 12000, "Paid Social": 9000, "Video": 10000,
-    "Professional Network": 7000, "Email": 500, "Affiliate": 20000,
+    "Professional Network": 7000, "Email": 3200, "Affiliate": 20000,
 }
 
 # Metro (Tier 1) auctions are more competitive -> higher CPC.
@@ -378,12 +381,13 @@ def generate_pair(campaign: Campaign, region: str, rng: np.random.Generator) -> 
 
     # --- Spend, clicks and impressions: logic differs by channel type. ----------------------
     if channel == "Email":
-        # Opens drive everything; spend is the email tool's cost per open, weekdays only.
+        # Opens drive results. Spend = fixed weekday cost (platform + content) + cost per open,
+        # capped by the budget; weekends have no sends and no spend.
         opens = econ["daily_opens"] * demand * anom["opens"] * rng.lognormal(0, 0.10, n)
         opens = np.where(is_weekend, opens * econ["weekend_open_share"], opens)
         impressions = rng.poisson(opens)
-        spend = np.where(is_weekend, 0.0,
-                         np.minimum(impressions * econ["cost_per_open"], budget * 1.05))
+        weekday_cost = econ["fixed_weekday_cost"] + impressions * econ["cost_per_open"]
+        spend = np.where(is_weekend, 0.0, np.minimum(weekday_cost, budget * 1.05))
         true_clicks = rng.binomial(impressions, np.clip(ctr, 0, 1))
     elif channel == "Affiliate":
         # Traffic comes from partner sites; Kalpa pays per result (see spend below).

@@ -330,11 +330,13 @@ def _executive_summary(rep: _Report) -> None:
     if r.findings:
         rep.h2("Headline findings")
         rep.bullets([f"{tag('Analytical finding')} {escape(f.text)}" for f in r.findings[:3]], raw=True)
-    concerns = _concerns(r)
-    if not r.anomalies.empty:
-        high = int((r.anomalies["severity"] == "high").sum())
-        rep.p(f"Anomaly detection flagged {len(r.anomalies)} unusual periods ({high} high severity, "
-              f"{len(concerns)} of them performance problems); see Performance concerns.")
+    inc = r.incidents
+    if inc is not None and not inc.empty:
+        problems = inc[inc["sentiment"] == "negative"]
+        at_stake = problems[problems["impact_direction"] == "loss"]["impact_inr"].sum()
+        rep.p(f"Anomaly detection found {len(inc)} incidents ({len(r.anomalies)} individual flags); "
+              f"{len(problems)} are performance problems with an estimated "
+              f"{format_value(at_stake, 'money', compact=True)} at stake. See Performance concerns.")
     q = r.quality_summary
     if q is not None:
         rep.p(q.limitations[0] if q.limitations else "No data-quality limitations affect these results.")
@@ -410,26 +412,39 @@ def _channels(rep: _Report) -> None:
     ch = rep.r.channels
     if ch.empty:
         return
+    from analytics.channel import owned_channels, paid_channels
+    paid, owned = paid_channels(ch), owned_channels(ch)
     rep.h1("Channel analysis")
-    rep.p(tag("Verified metric") + " Shares of spend and results by channel; efficiency index = "
-          "channel value / overall value x 100 (100 = average).", "small", raw=True)
+    rep.p(tag("Verified metric") + " Shares of spend and results by channel. Efficiency index = paid "
+          "channel value / paid-media average x 100 (100 = average). Owned channels are reported "
+          "separately and not ranked.", "small", raw=True)
     series = {"Share of spend": "spend_share_pct"}
     if "revenue_share_pct" in ch:
         series["Share of revenue"] = "revenue_share_pct"
     elif "leads_share_pct" in ch:
         series["Share of leads"] = "leads_share_pct"
     rep.chart(pdf_charts.share_png(ch, "channel", series, "Where the money goes and what it returns"))
-    metric = "roas" if "roas" in ch and ch["roas"].notna().any() else "cpl"
-    if metric in ch:
-        overall = rep.r.kpis[metric].value
-        rep.chart(pdf_charts.hbar_png(ch, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                      f"{KPI_REGISTRY[metric].label} by channel",
-                                      ascending=KPI_REGISTRY[metric].higher_is_better is False,
-                                      reference=overall),
-                  f"Vertical line = overall {KPI_REGISTRY[metric].label} ({format_value(overall, KPI_REGISTRY[metric].fmt)}).")
-    rep.table(ch.sort_values("spend", ascending=False) if "spend" in ch else ch,
-              ["channel", "spend", "spend_share_pct", "leads", "cpl", "conversions", "cac", "revenue",
-               "roas", "cpl_index"])
+    metric = "roas" if "roas" in paid and paid["roas"].notna().any() else "cpl"
+    if metric in paid and len(paid):
+        rep.chart(pdf_charts.hbar_png(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
+                                      f"{KPI_REGISTRY[metric].label} by paid channel",
+                                      ascending=KPI_REGISTRY[metric].higher_is_better is False),
+                  f"Paid channels only. Overall {KPI_REGISTRY[metric].label} (all channels): "
+                  f"{rep.r.kpis[metric].formatted}.")
+    cols = ["channel", "spend", "spend_share_pct", "leads", "cpl", "conversions", "cac", "revenue",
+            "roas", "cpl_index"]
+    rep.h2("Paid channels")
+    rep.table(paid.sort_values("spend", ascending=False) if "spend" in paid else paid, cols)
+    if not owned.empty:
+        rep.h2("Owned channels (not ranked)")
+        for _, row in owned.iterrows():
+            parts = [f"spend {format_value(row['spend'], 'money', compact=True)}"]
+            for m in ("revenue", "conversions", "roas"):
+                if m in owned and pd.notna(row.get(m)):
+                    parts.append(f"{KPI_REGISTRY[m].label} {format_value(row[m], KPI_REGISTRY[m].fmt, compact=True)}")
+            rep.p(f"{tag('Verified metric')} <b>{escape(str(row['channel']))}</b>: {escape(', '.join(parts))}. "
+                  "Owned channels reach the company's own audience with mostly fixed costs, so their ROAS "
+                  "is not comparable with paid media.", raw=True)
 
 
 def _campaigns(rep: _Report) -> None:
@@ -509,35 +524,49 @@ def _key_findings(rep: _Report) -> None:
         rep.p(f"{tag('Analytical finding')} <b>{escape(f.title)}</b><br/>{escape(f.text)}", raw=True)
 
 
-def _concerns(result) -> pd.DataFrame:
-    a = result.anomalies
-    if a.empty:
-        return a
-    bad = a[a["sentiment"] == "negative"].copy()
-    bad["_rank"] = (bad["severity"] != "high").astype(int)
-    bad["_abs"] = -bad["score"].abs().fillna(99)
-    return bad.sort_values(["_rank", "_abs"]).drop(columns=["_rank", "_abs"])
+def _impact(value, direction, label) -> str:
+    if direction not in ("loss", "gain") or not value:
+        return "impact not estimated"
+    return f"estimated {format_value(value, 'money', compact=True)} {direction} ({label})"
 
 
 def _performance_concerns(rep: _Report) -> None:
-    a = rep.r.anomalies
-    if a.empty:
+    inc = rep.r.incidents
+    if inc is None or inc.empty:
         return
     rep.h1("Performance concerns")
-    rep.p(tag("Analytical finding") + " Unusual periods from the anomaly detector (method in "
-          "Methodology). They describe what changed and by how much, not why.", "small", raw=True)
-    concerns = _concerns(rep.r)
-    if concerns.empty:
-        rep.p("No negative anomalies were detected.")
-    else:
-        rep.bullets([f"<b>{escape(r.severity.capitalize())}:</b> {escape(r.description)}"
-                     for r in concerns.head(10).itertuples()], raw=True)
-        if len(concerns) > 10:
-            rep.p(f"{len(concerns) - 10} further concerns are listed in the appendix.", "caption")
-    good = a[a["sentiment"] == "positive"]
+    rep.p(tag("Analytical finding") + " Incidents from the anomaly detector (method in Methodology), "
+          "ranked by estimated rupee impact. Flags on the same entity and period form one incident; "
+          "effects on other campaigns/channels in the same event are listed as related effects. They "
+          "describe what changed and by how much, not why; impacts are estimates.", "small", raw=True)
+    problems = inc[inc["sentiment"] != "positive"]
+    if problems.empty:
+        rep.p("No problem incidents were detected.")
+    for r in problems.head(8).itertuples():
+        lines = [f"<b>#{r.rank} {escape(r.entity)} ({escape(r.entity_type)}), {format_date(r.period_start)} to "
+                 f"{format_date(r.period_end)}</b> - {escape(r.metrics)}; "
+                 f"{escape(_impact(r.impact_inr, r.impact_direction, r.impact_label))}. Severity {r.severity}."]
+        for f in r.flags[:3]:
+            change = "" if f["change_pct"] is None else f" ({f['change_pct']:+.0f}%)"
+            note = f" {f['note']}" if f.get("note") else ""
+            lines.append(f"&nbsp;&nbsp;- {escape(f['metric_label'])}: expected {escape(f['expected'])}, observed "
+                         f"{escape(f['observed'])}{change}.{escape(note)}")
+        if r.related:
+            shown = "; ".join(f"{f['entity']} {f['metric_label']} "
+                              + ("" if f["change_pct"] is None else f"{f['change_pct']:+.0f}%")
+                              + (" (not an improvement)" if f.get("note") else "")
+                              for f in r.related[:4])
+            more = f" and {len(r.related) - 4} more" if len(r.related) > 4 else ""
+            lines.append(f"&nbsp;&nbsp;- Related effects: {escape(shown + more)}.")
+        rep.p("<br/>".join(lines), raw=True)
+    if len(problems) > 8:
+        rep.p(f"{len(problems) - 8} further incidents are listed in the appendix.", "caption")
+    good = inc[inc["sentiment"] == "positive"]
     if not good.empty:
         rep.h2("Notable improvements")
-        rep.bullets([r.description for r in good.head(5).itertuples()])
+        rep.bullets([f"{r.entity} ({r.entity_type}), {format_date(r.period_start)} to {format_date(r.period_end)}: "
+                     f"{r.metrics}; {_impact(r.impact_inr, r.impact_direction, r.impact_label)}."
+                     for r in good.head(5).itertuples()])
 
 
 def _ai_section(rep: _Report) -> None:
@@ -656,9 +685,22 @@ def _appendix(rep: _Report) -> None:
         rep.table(c.sort_values("spend", ascending=False) if "spend" in c else c,
                   ["campaign", "channel", "spend", "leads", "conversions", "revenue", metric,
                    "active_days"])
+    inc = rep.r.incidents
+    if inc is not None and not inc.empty:
+        rep.h2("All incidents (ranked by estimated impact)")
+        rows = pd.DataFrame({
+            "#": inc["rank"].astype(str),
+            "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in zip(inc["period_start"], inc["period_end"])],
+            "Entity": inc["entity"] + " (" + inc["entity_type"] + ")",
+            "Metrics": inc["metrics"],
+            "Impact": [_impact(v, d, l).replace("estimated ", "") for v, d, l in
+                       zip(inc["impact_inr"], inc["impact_direction"], inc["impact_label"])],
+            "Related": inc["n_related"].astype(str),
+        })
+        _plain_table(rep, rows, [8 * mm, 32 * mm, 42 * mm, 34 * mm, TEXT_W - 130 * mm, 14 * mm])
     a = rep.r.anomalies
     if not a.empty:
-        rep.h2("All detected anomalies")
+        rep.h2("All individual flags")
         rows = pd.DataFrame({
             "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in zip(a["period_start"], a["period_end"])],
             "Entity": a["entity"] + " (" + a["entity_type"] + ")",

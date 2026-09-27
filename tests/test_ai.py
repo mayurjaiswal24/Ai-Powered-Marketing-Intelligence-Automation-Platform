@@ -80,8 +80,14 @@ def test_evidence_pack_is_compact_and_identified(pack, analysis):
     ids = [i.id for i in pack.items]
     assert ids == [f"E{n:02d}" for n in range(1, len(ids) + 1)]
     types = {i.type for i in pack.items}
-    assert {"kpi", "data_quality", "finding", "channel", "funnel", "trend", "anomaly", "campaign",
-            "segment"} <= types
+    assert {"kpi", "data_quality", "measurement", "finding", "channel", "funnel", "trend", "incident",
+            "campaign", "segment"} <= types
+    email = next(i for i in pack.items if i.title == "Channel: Email")
+    assert email.facts["channel type"].startswith("owned")
+    measurement = next(i for i in pack.items if i.type == "measurement")
+    assert any("upper-funnel" in v for v in measurement.facts.values())
+    incident = next(i for i in pack.items if i.type == "incident")
+    assert "estimated impact" in incident.facts
     body = json.loads(pack.json_text)
     assert set(body) == {"dataset", "evidence", "not_available"}
     assert "2025-10-01" not in pack.json_text            # no raw rows / raw dates
@@ -92,7 +98,7 @@ def test_evidence_trimmed_by_priority(analysis):
     small = build_evidence(analysis, max_chars=3000)
     assert small.size <= 3000 and small.dropped_items > 0
     assert small.items[0].type == "kpi"                  # highest priority survives
-    assert "anomaly" not in {i.type for i in small.items[:3]}
+    assert "incident" not in {i.type for i in small.items[:3]}
 
 
 def test_fingerprint_changes_with_model_not_with_rebuild(analysis):
@@ -175,10 +181,13 @@ def test_evaluator_drops_fake_ids_and_flags_wrong_numbers(pack):
     assert ev.unverified == 1 and ev.kept == ev.verified + ev.unverified
 
 
-def test_evaluator_tolerates_rounding(pack):
+def test_evaluator_tolerates_rounding(pack, analysis):
     kpi = pack.by_id["E01"]
+    spend = analysis.kpis["spend"].value / 1e7          # e.g. 7.44 (crore), shown as "₹7.4 Cr"
+    ctr = analysis.kpis["ctr"].value
     answer = good_answer(pack)
-    answer["key_findings"] = [{"text": "Spend was about ₹7.32 Cr and CTR 0.70%.", "evidence_ids": ["E01"]}]
+    answer["key_findings"] = [{"text": f"Spend was about ₹{spend:.2f} Cr and CTR {ctr:.2f}%.",
+                               "evidence_ids": ["E01"]}]
     checked, _ = evaluate(AIInsights.model_validate(answer).model_dump(), pack)
     assert checked["key_findings"][0]["status"] == "verified", kpi.facts
 

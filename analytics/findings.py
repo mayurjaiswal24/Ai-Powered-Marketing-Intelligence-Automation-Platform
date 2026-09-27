@@ -12,8 +12,10 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from analytics.funnel import biggest_drop_off
+from analytics.incidents import incidents_for_campaign
 from analytics.kpis import KPI_REGISTRY
-from utils.formatting import format_pct, format_value
+from config.fields import channel_type
+from utils.formatting import format_date, format_pct, format_value
 
 FINDING_TYPE = "Analytical finding"
 MIN_SPEND_SHARE_FOR_RANKING = 3.0      # % of spend; smaller campaigns have unreliable ratios
@@ -54,7 +56,7 @@ def _headline_metric(table: pd.DataFrame) -> str | None:
     return None
 
 
-def generate_findings(tables: dict[str, pd.DataFrame]) -> list[Finding]:
+def generate_findings(tables: dict[str, pd.DataFrame], data_end=None) -> list[Finding]:
     findings: list[Finding] = []
     kpis = tables.get("kpis", pd.DataFrame())
     channels = tables.get("channels", pd.DataFrame())
@@ -82,11 +84,14 @@ def generate_findings(tables: dict[str, pd.DataFrame]) -> list[Finding]:
                                     f"Spend is concentrated in {top['channel']}", text + ".",
                                     top["channel"], "spend", 1, nums))
 
-    # 2-3. Best and weakest channel on the headline efficiency metric.
-    metric = _headline_metric(channels) if not channels.empty else None
-    if metric and len(channels) > 1:
+    # 2-3. Best and weakest PAID channel on the headline efficiency metric. Owned channels
+    # (e.g. email to the company's own list) are not ranked against paid media: their costs are
+    # mostly fixed and their audience already knows the brand, so their ROAS is not comparable.
+    paid = channels[channels["channel_type"] == "paid"] if "channel_type" in channels else channels
+    metric = _headline_metric(paid) if not paid.empty else None
+    if metric and len(paid) > 1:
         better_high = KPI_REGISTRY[metric].higher_is_better
-        valid = channels[channels[metric].notna()]
+        valid = paid[paid[metric].notna()]
         best = valid.loc[valid[metric].idxmax() if better_high else valid[metric].idxmin()]
         worst = valid.loc[valid[metric].idxmin() if better_high else valid[metric].idxmax()]
         ov = overall(metric)
@@ -94,12 +99,29 @@ def generate_findings(tables: dict[str, pd.DataFrame]) -> list[Finding]:
         for fid, row, word, prio in (("F-best-channel", best, "best", 2),
                                      ("F-weakest-channel", worst, "weakest", 3)):
             nums = [_num(f"channel {metric}", "channels", "channel", row["channel"], metric, channels)]
-            text = f"{row['channel']} has the {word} {label} of all channels ({_fmt(metric, row[metric])})"
+            text = f"{row['channel']} has the {word} {label} of the paid channels ({_fmt(metric, row[metric])})"
             if ov:
                 nums.append(ov)
                 text += f", against {_fmt(metric, ov['value'])} overall"
-            findings.append(Finding(fid, "performance", f"{word.capitalize()} channel by {label}: "
+            findings.append(Finding(fid, "performance", f"{word.capitalize()} paid channel by {label}: "
                                     f"{row['channel']}", text + ".", row["channel"], metric, prio, nums))
+
+    # Owned channels: reported on their own line, never ranked against paid media.
+    owned = channels[channels["channel_type"] == "owned"] if "channel_type" in channels else channels.iloc[0:0]
+    for _, row in owned.iterrows():
+        nums = [_num("owned channel spend", "channels", "channel", row["channel"], "spend", channels)]
+        parts = [f"spend {_fmt('spend', row['spend'])}"]
+        for m in ("revenue", "roas", "conversions", "leads"):
+            if m in owned and pd.notna(row.get(m)):
+                nums.append(_num(f"owned channel {m}", "channels", "channel", row["channel"], m, channels))
+                parts.append(f"{KPI_REGISTRY[m].label.lower() if m != 'roas' else 'ROAS'} {_fmt(m, row[m])}")
+                if m == "roas":
+                    break
+        findings.append(Finding(
+            f"F-owned-{row['channel']}", "owned", f"Owned channel: {row['channel']}",
+            f"{row['channel']} is an owned channel (own audience, mostly fixed costs): "
+            + ", ".join(parts) + ". It is shown separately and not ranked against paid media, because "
+            "its ROAS is not comparable.", row["channel"], "roas" if "roas" in owned else "spend", 3, nums))
 
     # 4. Funnel bottleneck (largest drop after the click stage).
     if not funnel.empty:
@@ -130,8 +152,9 @@ def generate_findings(tables: dict[str, pd.DataFrame]) -> list[Finding]:
         # 6. Weakest sizeable campaign on the headline metric.
         metric = _headline_metric(campaigns)
         if metric and "spend_share_pct" in campaigns:
+            is_paid = (campaigns["channel"].map(channel_type) == "paid") if "channel" in campaigns                 else pd.Series(True, index=campaigns.index)
             big = campaigns[(campaigns["spend_share_pct"] >= MIN_SPEND_SHARE_FOR_RANKING)
-                            & campaigns[metric].notna()]
+                            & campaigns[metric].notna() & is_paid]
             if len(big) > 1:
                 better_high = KPI_REGISTRY[metric].higher_is_better
                 worst = big.loc[big[metric].idxmin() if better_high else big[metric].idxmax()]
@@ -164,10 +187,24 @@ def generate_findings(tables: dict[str, pd.DataFrame]) -> list[Finding]:
                     nums = [_num(f"{tm} change %", "campaigns", "campaign", row["campaign"],
                                  "trend_change_pct", campaigns)]
                     verb = "grew" if change > 0 else "fell"
+                    text = (f"{row['campaign']}: {tm} {verb} {abs(change):.1f}% in the last 4 weeks "
+                            "compared with the 4 weeks before.")
+                    # If a detected incident or outage falls inside the compared 8 weeks, say so:
+                    # part of the change may come from that event rather than a lasting trend.
+                    incidents = tables.get("incidents")
+                    if data_end is not None and incidents is not None and not incidents.empty:
+                        end = pd.Timestamp(data_end)
+                        hits = incidents_for_campaign(incidents, row["campaign"],
+                                                      end - pd.Timedelta(days=55), end)
+                        if hits is not None and not hits.empty:
+                            events = "; ".join(
+                                f"{h.entity} ({h.entity_type}), {format_date(h.period_start)} to "
+                                f"{format_date(h.period_end)}: {h.metrics}" for h in hits.head(2).itertuples())
+                            text += (f" Note: this comparison period contains a detected incident ({events}), "
+                                     "so part of the change may come from that event.")
                     findings.append(Finding(
                         fid, "trend", f"Biggest {'riser' if change > 0 else 'faller'}: {row['campaign']}",
-                        f"{row['campaign']}: {tm} {verb} {abs(change):.1f}% in the last 4 weeks "
-                        "compared with the 4 weeks before.", row["campaign"], tm, prio, nums))
+                        text, row["campaign"], tm, prio, nums))
 
     # 9. Segment with the best efficiency (first available segment-type dimension).
     for name, seg in tables.items():

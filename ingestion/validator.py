@@ -21,6 +21,11 @@ FUNNEL_ORDER = ["impressions", "clicks", "leads", "qualified_leads", "opportunit
 GEOGRAPHY_FIELDS = ["region", "state", "city", "country", "market", "city_tier"]
 SEGMENT_FIELDS = ["customer_segment", "customer_type", "new_returning", "age", "gender"]
 PRODUCT_FIELDS = ["product", "product_category", "sku"]
+# Standard measurement caveat whenever ROAS is shown (a data-driven attribution model would
+# need user-level journeys, which campaign-level data does not have).
+ATTRIBUTION_NOTE = ("ROAS uses the revenue recorded against each campaign, so upper-funnel channels "
+                    "(for example video and prospecting campaigns, which create demand that other "
+                    "channels later convert) may be undervalued.")
 # Below this share of readable dates, the Date column is not usable for trends.
 MIN_USABLE_DATE_SHARE = 0.5
 
@@ -150,6 +155,8 @@ def validate(mapping: "MappingResult", profile: "DatasetProfile | None" = None) 
     if "reach" in has:
         notes.append("Reach is shown only at the level it was reported; it cannot be added up "
                      "across days or campaigns.")
+    if caps["revenue_metrics"].enabled:
+        notes.append(ATTRIBUTION_NOTE)
 
     # --- Blocking problems ------------------------------------------------------------------
     if not ({"spend", "revenue", "leads", "conversions"} & has):

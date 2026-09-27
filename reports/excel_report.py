@@ -277,6 +277,48 @@ def _trends(book: _Book, result) -> None:
                   "in the period (partial periods have fewer). Filter on the grain column.")
 
 
+def _channels(book: _Book, result) -> None:
+    ch = result.channels
+    if ch is None or ch.empty:
+        return
+    from analytics.channel import owned_channels, paid_channels
+    paid, owned = paid_channels(ch), owned_channels(ch)
+    ws = book.sheet("Channel_Analysis")
+    ws.write_string(0, 0, "Paid channels. *_index = paid channel value / paid-media average x 100 "
+                    "(100 = average). Owned channels are listed separately below and not ranked.",
+                    book.fmt["subtitle"])
+    end = book.table(ws, paid, start_row=2)
+    if not owned.empty:
+        ws.write_string(end, 0, "Owned channels (not ranked: own audience, mostly fixed costs, ROAS not "
+                        "comparable with paid media)", book.fmt["section"])
+        book.table(ws, owned.drop(columns=[c for c in owned.columns if c.endswith("_index")]),
+                   start_row=end + 1, freeze=False, filter_=False)
+
+
+def _incidents(book: _Book, result) -> None:
+    inc = getattr(result, "incidents", None)
+    if inc is None or inc.empty:
+        return
+
+    def summary(flags):
+        return "; ".join(f"{f['entity']} {f['metric_label']} "
+                         + ("" if f["change_pct"] is None else f"{f['change_pct']:+.0f}%")
+                         + (" (not an improvement)" if f.get("note") else "") for f in flags)
+
+    table = pd.DataFrame({
+        "rank": inc["rank"], "incident_id": inc["incident_id"], "entity_type": inc["entity_type"],
+        "entity": inc["entity"], "period_start": inc["period_start"], "period_end": inc["period_end"],
+        "metrics": inc["metrics"], "estimated_impact_inr": inc["impact_inr"],
+        "impact_direction": inc["impact_direction"], "impact_basis": inc["impact_label"],
+        "severity": inc["severity"], "assessment": inc["sentiment"],
+        "flags": inc["flags"].map(summary), "related_effects": inc["related"].map(summary),
+    })
+    _simple_sheet(book, "Incidents", table,
+                  "Anomaly flags grouped into business incidents, ranked by estimated rupee impact "
+                  "(an estimate from the data, not an accounting figure). Related effects are flags on "
+                  "other campaigns/channels explained by the same event. Individual flags: Anomalies sheet.")
+
+
 def _anomalies(book: _Book, result) -> None:
     a = result.anomalies
     if a.empty:
@@ -384,11 +426,11 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
         _kpi_analysis(book, result)
         _simple_sheet(book, "Campaign_Analysis", result.campaigns,
                       "One row per campaign. Ratios are recomputed from each campaign's totals.")
-        _simple_sheet(book, "Channel_Analysis", result.channels,
-                      "One row per channel. *_index = channel value / overall value x 100 (100 = average).")
+        _channels(book, result)
         _segments(book, result)
         _funnel(book, result)
         _trends(book, result)
+        _incidents(book, result)
         _anomalies(book, result)
         _ai(book, ai)
         _data_quality(book, result, quality_log)

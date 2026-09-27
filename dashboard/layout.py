@@ -10,13 +10,13 @@ import pandas as pd
 import streamlit as st
 
 from analytics.campaign import campaign_table, rank_campaigns
-from analytics.channel import channel_table
+from analytics.channel import channel_table, owned_channels, paid_channels
 from analytics.common import campaign_key
 from analytics.funnel import biggest_drop_off, funnel_by_channel, funnel_table
 from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, period_comparison
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
-from config.fields import FIELD_BY_NAME
+from config.fields import FIELD_BY_NAME, channel_type
 from dashboard import charts, components as ui
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, preset_range)
@@ -372,33 +372,46 @@ def page_channels(filters: Filters) -> None:
     if ch.empty:
         ui.empty_state("Channel analysis needs a channel or platform column.")
         return
+    paid, owned = paid_channels(ch), owned_channels(ch)
+    df = view["df"]
+    key = "channel" if "channel" in df else "platform"
+    paid_kpis = compute_kpis(df[df[key].map(channel_type) == "paid"]) if not paid.empty else {}
     metrics = [k for k in ("roas", "cpl", "cac", "ctr", "cpc", "lead_to_conversion_rate",
-                           "revenue", "spend", "leads", "conversions") if k in ch and ch[k].notna().any()]
-    left, right = st.columns(2, gap="large")
-    with left:
-        metric = st.selectbox("Compare channels on", metrics, key="channel_metric",
-                              format_func=lambda k: KPI_REGISTRY[k].label)
-        overall = view["kpis"].get(metric)
-        better_high = KPI_REGISTRY[metric].higher_is_better
-        ui.show_chart(charts.bar_chart(ch, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                       f"{KPI_REGISTRY[metric].label} by channel",
-                                       ascending=better_high is False,
-                                       reference=overall.value if overall and metric not in
-                                       ("revenue", "spend", "leads", "conversions") else None),
-                      "No data for this metric.")
-    with right:
-        index_cols = [c for c in ch.columns if c.endswith("_index")]
-        if index_cols:
-            idx = st.selectbox("Efficiency index (average = 100)", index_cols, key="channel_index",
-                               format_func=lambda c: KPI_REGISTRY[c.removesuffix("_index")].label)
-            base = idx.removesuffix("_index")
-            ui.show_chart(charts.index_chart(ch, "channel", idx, f"{KPI_REGISTRY[base].label} index vs "
-                                             "average", lower_is_better=KPI_REGISTRY[base].higher_is_better is False),
-                          "No index available.")
-    st.markdown("## Channel table")
+                           "revenue", "spend", "leads", "conversions") if k in paid and paid[k].notna().any()]
+    if metrics:
+        left, right = st.columns(2, gap="large")
+        with left:
+            metric = st.selectbox("Compare paid channels on", metrics, key="channel_metric",
+                                  format_func=lambda k: KPI_REGISTRY[k].label)
+            ref = paid_kpis.get(metric)
+            better_high = KPI_REGISTRY[metric].higher_is_better
+            ui.show_chart(charts.bar_chart(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
+                                           f"{KPI_REGISTRY[metric].label} by paid channel",
+                                           ascending=better_high is False,
+                                           reference=ref.value if ref and metric not in
+                                           ("revenue", "spend", "leads", "conversions") else None,
+                                           reference_label="Paid average"),
+                          "No data for this metric.")
+        with right:
+            index_cols = [c for c in paid.columns if c.endswith("_index") and paid[c].notna().any()]
+            if index_cols:
+                idx = st.selectbox("Efficiency index (paid-media average = 100)", index_cols, key="channel_index",
+                                   format_func=lambda c: KPI_REGISTRY[c.removesuffix("_index")].label)
+                base = idx.removesuffix("_index")
+                ui.show_chart(charts.index_chart(paid, "channel", idx, f"{KPI_REGISTRY[base].label} index vs "
+                                                 "paid-media average",
+                                                 lower_is_better=KPI_REGISTRY[base].higher_is_better is False),
+                              "No index available.")
     cols = ["channel", "spend", "spend_share_pct", "impressions", "clicks", "ctr", "cpc", "leads", "cpl",
             "conversions", "lead_to_conversion_rate", "cac", "revenue", "revenue_share_pct", "roas", "roi"]
-    ui.show_table(ch.sort_values("spend", ascending=False) if "spend" in ch else ch, cols)
+    st.markdown("## Paid channels")
+    ui.show_table(paid.sort_values("spend", ascending=False) if "spend" in paid else paid, cols)
+    if not owned.empty:
+        st.markdown("## Owned channels (not ranked)")
+        st.caption("Owned channels use the company's own audience (for example its email list) and have "
+                   "mostly fixed costs, so their ROAS is not comparable with paid media. They are left "
+                   "out of the rankings and efficiency indices above.")
+        ui.show_table(owned, cols)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -530,6 +543,28 @@ def _anomalies_in_view(anomalies: pd.DataFrame, filters: Filters) -> pd.DataFram
     return anomalies[keep]
 
 
+def _incidents_in_view(incidents: pd.DataFrame, filters: Filters) -> pd.DataFrame:
+    if incidents is None or incidents.empty:
+        return incidents
+    keep = pd.Series(True, index=incidents.index)
+    if filters.date_filtered:
+        keep &= (incidents["period_end"] >= filters.start) & (incidents["period_start"] <= filters.end)
+    selected = filters.dimensions.get("campaign_name")
+    if selected:
+        keep &= incidents["campaigns"].map(lambda cs: bool(set(cs) & set(selected)))
+    for entity_type in ("channel", "region", "platform"):
+        chosen = filters.dimensions.get(entity_type)
+        if chosen:
+            keep &= (incidents["entity_type"] != entity_type) | incidents["entity"].isin(chosen)
+    return incidents[keep]
+
+
+def _impact_text(value, direction, label) -> str:
+    if direction not in ("loss", "gain") or not value:
+        return "Not estimated"
+    return f"{format_value(value, 'money', compact=True)} {direction} ({label})"
+
+
 def page_anomalies(filters: Filters) -> None:
     output = current_output()
     ui.page_header("Anomalies", _filter_caption(filters))
@@ -537,51 +572,96 @@ def page_anomalies(filters: Filters) -> None:
     if caps is not None and not caps.enabled("anomaly_detection"):
         ui.empty_state(caps.capabilities["anomaly_detection"].reason)
         return
-    found = _anomalies_in_view(output.analysis.anomalies, filters)
-    if found.empty:
+    incidents = _incidents_in_view(output.analysis.incidents, filters)
+    flags = _anomalies_in_view(output.analysis.anomalies, filters)
+    if incidents is None or incidents.empty:
         ui.empty_state("No unusual periods were found for the current filters. That is good news: "
                        "performance moved in line with its recent history and the rest of the business.")
         return
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Unusual periods", format_count(len(found)), border=True)
-    c2.metric("High severity", format_count((found["severity"] == "high").sum()), border=True)
-    c3.metric("Positive changes", format_count((found["sentiment"] == "positive").sum()), border=True)
-    st.caption("Each week is compared with the median of the previous 8 weeks, after removing the "
-               "change that all campaigns shared that week (seasonality). A separate daily rule "
-               "looks for tracking outages.")
+    losses = incidents[incidents["impact_direction"] == "loss"]["impact_inr"].sum()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Incidents", format_count(len(incidents)), border=True,
+              help="Related flags grouped into one business event.")
+    c2.metric("High severity", format_count((incidents["severity"] == "high").sum()), border=True)
+    c3.metric("Estimated money at stake", format_value(losses, "money", compact=True), border=True,
+              help="Sum of the estimated losses (extra cost, lost revenue, spend without results).")
+    c4.metric("Individual flags", format_count(len(flags)), border=True)
+    st.caption("Incidents are ranked by estimated rupee impact. Flags on the same entity and period are "
+               "one incident; campaign flags explained by a platform outage or a broader channel/region "
+               "problem are attached as related effects. Impacts are estimates from the data, not "
+               "accounting figures.")
 
-    table = found.assign(
-        Period=[f"{format_date(s)} - {format_date(e)}" for s, e in zip(found["period_start"], found["period_end"])],
-        Entity=found["entity"] + " (" + found["entity_type"] + ")",
-        Metric=found["metric"].map(lambda m: KPI_REGISTRY[m].label if m in KPI_REGISTRY else m),
-        Expected=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(found["baseline"], found["metric"])],
-        Observed=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(found["observed"], found["metric"])],
-        Change=found["pct_change"].map(lambda v: "N/A" if pd.isna(v) else f"{v:+.0f}%"),
-        Severity=found["severity"].str.capitalize(),
-        Assessment=found["sentiment"].map({"negative": "Problem", "positive": "Improvement",
-                                           "check": "Check"}))
-    st.dataframe(table[["Period", "Entity", "Metric", "Expected", "Observed", "Change", "Severity",
-                        "Assessment"]], hide_index=True, width="stretch", height=320)
+    table = pd.DataFrame({
+        "Rank": incidents["rank"],
+        "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in
+                   zip(incidents["period_start"], incidents["period_end"])],
+        "Entity": incidents["entity"] + " (" + incidents["entity_type"] + ")",
+        "What was unusual": incidents["metrics"],
+        "Estimated impact": [_impact_text(v, d, l) for v, d, l in
+                             zip(incidents["impact_inr"], incidents["impact_direction"], incidents["impact_label"])],
+        "Severity": incidents["severity"].str.capitalize(),
+        "Assessment": incidents["sentiment"].map({"negative": "Problem", "positive": "Improvement",
+                                                  "check": "Check"}),
+        "Related effects": incidents["n_related"],
+    })
+    st.dataframe(table, hide_index=True, width="stretch", height=320)
 
-    labels = [f"{r.Period} | {r.Entity} | {r.Metric} {r.Change}" for r in table.itertuples()]
-    choice = st.selectbox("Show details for", range(len(labels)), format_func=lambda i: labels[i],
-                          key="anomaly_pick")
-    row = found.iloc[choice]
-    st.markdown(f"**{row['description']}**")
-    weekly = _entity_weekly(output.clean.clean_df, row["entity_type"], row["entity"])
-    metric = row["metric"]
+    labels = [f"#{rk} {per} | {ent} | {what}" for rk, per, ent, what in
+              zip(table["Rank"], table["Period"], table["Entity"], table["What was unusual"])]
+    choice = st.selectbox("Show details for incident", range(len(labels)), format_func=lambda i: labels[i],
+                          key="incident_pick")
+    inc = incidents.iloc[choice]
+    st.markdown(f"**{inc['headline']}**")
+
+    def flag_table(items):
+        return pd.DataFrame([{
+            "Entity": f"{f['entity']} ({f['entity_type']})", "Metric": f["metric_label"],
+            "Period": f"{format_date(pd.Timestamp(f['period_start']))} - {format_date(pd.Timestamp(f['period_end']))}",
+            "Expected": f["expected"], "Observed": f["observed"],
+            "Change": "N/A" if f["change_pct"] is None else f"{f['change_pct']:+.0f}%",
+            "Assessment": {"negative": "Problem", "positive": "Improvement", "check": "Check"}[f["sentiment"]],
+            "Estimated impact": _impact_text(f["impact_inr"], f.get("impact_direction", "none"), f["impact_label"]),
+            "Note": f.get("note", ""),
+        } for f in items])
+
+    st.markdown("### Flags in this incident")
+    st.dataframe(flag_table(inc["flags"]), hide_index=True, width="stretch")
+    if inc["related"]:
+        st.markdown("### Related effects")
+        st.caption("Flags elsewhere that are explained by this incident (same period, same campaigns).")
+        st.dataframe(flag_table(inc["related"]), hide_index=True, width="stretch")
+
+    main = max(inc["flags"], key=lambda f: f["impact_inr"])
+    metric = main["metric"]
+    start, end = pd.Timestamp(main["period_start"]), pd.Timestamp(main["period_end"])
+    source = output.analysis.anomalies
+    expected = source[(source["entity"] == main["entity"]) & (source["metric"] == metric)
+                      & (source["period_start"] == start)]["baseline"]
+    expected = float(expected.iloc[0]) if len(expected) else None
     fig = None
-    if weekly is not None and row["grain"] == "week":
-        fig = charts.anomaly_chart(weekly, metric, KPI_REGISTRY[metric].fmt, row["period_start"],
-                                   row["period_end"] + pd.Timedelta(days=0), row["baseline"],
-                                   f"{KPI_REGISTRY[metric].label} per week - {row['entity']}")
-    elif row["grain"] == "day":
-        daily = _entity_daily(output.clean.clean_df, row["entity_type"], row["entity"], row["period_start"])
+    if main["method"] == "tracking_outage_rule":
+        daily = _entity_daily(output.clean.clean_df, main["entity_type"], main["entity"], start)
         if daily is not None:
-            fig = charts.anomaly_chart(daily, metric, KPI_REGISTRY[metric].fmt, row["period_start"],
-                                       row["period_end"], row["baseline"],
-                                       f"{KPI_REGISTRY[metric].label} per day - {row['entity']}")
-    ui.show_chart(fig, "No chart is available for this item.")
+            fig = charts.anomaly_chart(daily, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
+                                       f"{KPI_REGISTRY[metric].label} per day - {main['entity']}")
+    else:
+        weekly = _entity_weekly(output.clean.clean_df, main["entity_type"], main["entity"])
+        if weekly is not None:
+            fig = charts.anomaly_chart(weekly, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
+                                       f"{KPI_REGISTRY[metric].label} per week - {main['entity']}")
+    ui.show_chart(fig, "No chart is available for this incident.")
+
+    with st.expander(f"All individual flags ({len(flags)})"):
+        flat = flags.assign(
+            Period=[f"{format_date(s)} - {format_date(e)}" for s, e in zip(flags["period_start"], flags["period_end"])],
+            Entity=flags["entity"] + " (" + flags["entity_type"] + ")",
+            Metric=flags["metric"].map(lambda m: KPI_REGISTRY[m].label if m in KPI_REGISTRY else m),
+            Expected=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(flags["baseline"], flags["metric"])],
+            Observed=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(flags["observed"], flags["metric"])],
+            Change=flags["pct_change"].map(lambda v: "N/A" if pd.isna(v) else f"{v:+.0f}%"),
+            Severity=flags["severity"].str.capitalize())
+        st.dataframe(flat[["Period", "Entity", "Metric", "Expected", "Observed", "Change", "Severity"]],
+                     hide_index=True, width="stretch")
 
 
 def _entity_rows(df, entity_type, entity):

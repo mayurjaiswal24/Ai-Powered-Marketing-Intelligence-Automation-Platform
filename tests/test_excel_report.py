@@ -100,7 +100,8 @@ def test_tables_have_real_numbers_filters_and_frozen_headers(books):
     ws = wb["Channel_Analysis"]
     headers = [c.value for c in ws[3]]
     spend_col = headers.index("Spend") + 1
-    channels = output.analysis.channels.reset_index(drop=True)
+    channels = output.analysis.channels
+    channels = channels[channels["channel_type"] == "paid"].reset_index(drop=True)   # paid block first
     for i, expected in enumerate(channels["spend"], start=4):
         assert ws.cell(i, spend_col).value == pytest.approx(expected)
     assert ws.auto_filter.ref and ws.freeze_panes == "B4"

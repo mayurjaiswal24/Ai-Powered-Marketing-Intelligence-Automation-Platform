@@ -17,6 +17,7 @@ from analytics.campaign import campaign_table
 from analytics.channel import channel_table
 from analytics.findings import Finding, generate_findings
 from analytics.funnel import funnel_by_channel, funnel_table
+from analytics.incidents import INCIDENT_COLUMNS, build_incidents
 from analytics.kpis import KPIResult, compute_kpis
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import all_time_series, seasonality_index
@@ -41,6 +42,7 @@ class AnalysisResult:
     seasonality_note: str
     anomalies: pd.DataFrame
     findings: list[Finding]
+    incidents: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=INCIDENT_COLUMNS))
     capabilities: object = None          # ingestion.validator.ValidationResult
     quality_summary: object = None       # processing.quality.QualitySummary
     notes: list[str] = field(default_factory=list)
@@ -49,7 +51,7 @@ class AnalysisResult:
         """Every result table by name (the names findings refer to)."""
         out = {"kpis": self.kpi_table, "campaigns": self.campaigns, "channels": self.channels,
                "funnel": self.funnel, "funnel_by_channel": self.funnel_by_channel,
-               "anomalies": self.anomalies}
+               "anomalies": self.anomalies, "incidents": self.incidents}
         out.update({f"segment_{k}": v for k, v in self.segments.items()})
         out.update({f"trend_{k}": v for k, v in self.trends.items()})
         if self.seasonality is not None:
@@ -109,7 +111,8 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
         seasonality=seasonality, seasonality_note=season_note, anomalies=anomalies,
         findings=[], capabilities=capabilities, quality_summary=quality_summary,
         notes=list(getattr(capabilities, "notes", []) or []))
-    result.findings = generate_findings(result.tables())
+    result.incidents = build_incidents(anomalies, df)
+    result.findings = generate_findings(result.tables(), data_end=result.metadata.get("date_max"))
     return result
 
 

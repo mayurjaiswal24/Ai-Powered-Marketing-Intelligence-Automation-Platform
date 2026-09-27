@@ -89,11 +89,11 @@ def test_sections_absent_without_data(reports):
     assert "Revenue by month" not in no_rev
     assert "no revenue field was detected" in no_rev
     # Chart titles are inside the images, so check the text captions under the charts.
-    assert "overall ROAS" not in no_rev and "overall CPL" in no_rev
+    assert "Overall ROAS" not in no_rev and "Overall CPL" in no_rev
 
     no_margin = reports["no_margin"][1]
     assert "ROI is hidden because it needs gross profit or margin data" in no_margin
-    assert "overall ROAS" in no_margin
+    assert "Overall ROAS" in no_margin
 
     # Section headings are numbered ("5. Funnel analysis"); the Limitations section may still
     # EXPLAIN why an analysis is missing, which is intended.

@@ -8,7 +8,8 @@ import pandas as pd
 from analytics.kpis import KPI_REGISTRY
 from utils.formatting import format_count, format_date, format_value
 
-MONEY_COLUMNS = {"spend", "budget", "revenue", "gross_profit", "baseline_money", "observed_money"}
+MONEY_COLUMNS = {"spend", "budget", "revenue", "gross_profit", "baseline_money", "observed_money",
+                 "estimated_impact_inr"}
 COUNT_COLUMNS = {"rows", "impressions", "clicks", "leads", "qualified_leads", "opportunities",
                  "conversions", "customers", "orders", "active_days", "value", "days"}
 NICE_NAMES = {
@@ -17,6 +18,9 @@ NICE_NAMES = {
     "trend": "Trend (4 wks)", "trend_change_pct": "Change (4 wks)", "growth_trend": "Trend (4 wks)",
     "growth_pct": "Growth (4 wks)", "anomalies": "Anomalies", "label": "Stage",
     "rate_from_previous": "Conversion from previous", "drop_off_pct": "Drop-off",
+    "estimated_impact_inr": "Estimated impact (₹)", "impact_direction": "Loss or gain",
+    "impact_basis": "How the impact is estimated", "related_effects": "Related effects",
+    "channel_type": "Channel type",
 }
 
 
