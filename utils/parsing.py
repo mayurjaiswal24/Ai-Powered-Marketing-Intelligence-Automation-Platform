@@ -77,7 +77,7 @@ _PLAIN_NUMBER = r"-?\d+(\.\d+)?|-?\.\d+"
 def _parse_formatted(text: pd.Series) -> tuple[pd.Series, pd.Series]:
     has_currency = text.str.contains(_CURRENCY_PATTERN, regex=True)
     work = text.str.replace(_CURRENCY_PATTERN, "", regex=True)
-    work = work.str.replace(r"[\s\u00a0]", "", regex=True)
+    work = work.str.replace("[\\s\u00a0]", "", regex=True)  # \s or no-break space
 
     negative_paren = work.str.fullmatch(r"\(.*\)")
     work = work.str.replace(r"^\((.*)\)$", r"\1", regex=True)
