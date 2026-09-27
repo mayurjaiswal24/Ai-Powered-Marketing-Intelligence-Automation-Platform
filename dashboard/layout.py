@@ -24,6 +24,7 @@ from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, load_raw, prepa
                                 run_pipeline, sample_path)
 from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
+from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
 from utils.formatting import format_count, format_date, format_value
 
@@ -46,7 +47,7 @@ def _reset_for_new_file(raw_df, report, label):
     s = _state()
     s["raw_df"], s["report"], s["source_label"] = raw_df, report, label
     s["overrides"] = {}
-    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path"):
+    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path"):
         s.pop(key, None)
 
 
@@ -221,7 +222,7 @@ def page_upload() -> None:
                 output = run_pipeline(prep, progress=lambda msg: status.write(msg))
                 status.update(label="Analysis complete", state="complete", expanded=False)
             _state()["output"] = output
-            for key in ("view", "view_key", "pdf_path"):
+            for key in ("view", "view_key", "pdf_path", "excel_path"):
                 _state().pop(key, None)
         except (CleaningError, IngestionError) as exc:
             ui.friendly_error(exc)
@@ -677,8 +678,24 @@ def page_reports() -> None:
         st.success(f"Report ready: {Path(pdf_path).name}")
         st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
                            mime="application/pdf", key="download_pdf")
-    st.markdown("## Excel workbook")
-    ui.empty_state("The Excel workbook export is not available yet.")
+    st.markdown("## Analytical Excel workbook")
+    st.caption("Supporting evidence: KPIs, clean data, campaign, channel, segment, funnel and trend "
+               "tables, anomalies, the data-quality log and methodology, as real numbers you can "
+               "sort and filter.")
+    if st.button("Generate Excel", key="generate_excel", type="primary"):
+        try:
+            with st.spinner("Building the Excel workbook..."):
+                path = export_workbook(output.analysis, output.clean.clean_df,
+                                       output.clean.quality_log_df)
+            _state()["excel_path"] = str(path)
+        except WorkbookError as exc:
+            ui.friendly_error(exc)
+    excel_path = _state().get("excel_path")
+    if excel_path and Path(excel_path).exists():
+        st.success(f"Workbook ready: {Path(excel_path).name}")
+        st.download_button("Download Excel", Path(excel_path).read_bytes(),
+                           file_name=Path(excel_path).name, key="download_excel",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if output.run_id:
         st.caption(f"This analysis is saved as run #{output.run_id}; generated reports are recorded "
                    "against it.")
