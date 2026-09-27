@@ -317,20 +317,30 @@ def group_kpis(df: pd.DataFrame, by: str | list[str]) -> pd.DataFrame:
     keys = df[by].astype(object).where(df[by].notna(), "(none)")
     grouped_on = [keys[c] for c in by]
 
-    out = df.groupby(grouped_on).size().rename("rows").to_frame()
+    # Every column that needs summing, grouped ONCE (grouping per metric was slow on big files).
+    columns: dict[str, pd.Series] = {}
     for metric in BASE_METRICS:
         if _has(df, metric):
-            out[metric] = _num(df, metric).groupby(grouped_on).sum(min_count=1)
-
+            columns[metric] = _num(df, metric)
+    ratios = {}
     for key in RATIO_KPIS:
         parts = ratio_parts(df, key)
         if parts is None:
             continue
         num, den, scale, _ = parts
-        n = num.groupby(grouped_on).sum(min_count=1)
-        d = den.groupby(grouped_on).sum(min_count=1)
-        ratio = (n / d.where(d != 0)) * scale
-        out[key] = ratio.replace([np.inf, -np.inf], np.nan)
+        columns[f"__num_{key}"], columns[f"__den_{key}"] = num, den
+        ratios[key] = scale
+    grouped = pd.DataFrame(columns, index=df.index).groupby(grouped_on)
+    out = grouped.size().rename("rows").to_frame()
+    if columns:
+        sums = grouped.sum(min_count=1)
+        for metric in BASE_METRICS:
+            if metric in sums:
+                out[metric] = sums[metric]
+        for key, scale in ratios.items():
+            n, d = sums[f"__num_{key}"], sums[f"__den_{key}"]
+            ratio = (n / d.where(d != 0)) * scale
+            out[key] = ratio.replace([np.inf, -np.inf], np.nan)
 
     out = out.sort_index().reset_index()
     return out

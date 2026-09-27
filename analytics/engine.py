@@ -14,7 +14,7 @@ import pandas as pd
 
 from analytics.anomalies import ANOMALY_COLUMNS, detect_anomalies
 from analytics.campaign import campaign_table
-from analytics.channel import channel_table
+from analytics.channel import channel_table, paid_media_kpis
 from analytics.findings import Finding, generate_findings
 from analytics.funnel import funnel_by_channel, funnel_table
 from analytics.incidents import INCIDENT_COLUMNS, build_incidents
@@ -46,6 +46,8 @@ class AnalysisResult:
     capabilities: object = None          # ingestion.validator.ValidationResult
     quality_summary: object = None       # processing.quality.QualitySummary
     notes: list[str] = field(default_factory=list)
+    # KPIs of paid media only (owned channels left out); {} when there are no channels.
+    paid_kpis: dict[str, KPIResult] = field(default_factory=dict)
 
     def tables(self) -> dict[str, pd.DataFrame]:
         """Every result table by name (the names findings refer to)."""
@@ -82,6 +84,7 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
 
     campaigns = campaign_table(df) if _enabled(capabilities, "campaign_analysis") else pd.DataFrame()
     channels = channel_table(df) if _enabled(capabilities, "channel_analysis") else pd.DataFrame()
+    paid_kpis = paid_media_kpis(df) if not channels.empty else {}
     funnel = funnel_table(df) if _enabled(capabilities, "funnel") else pd.DataFrame()
     funnel_ch = funnel_by_channel(df) if _enabled(capabilities, "funnel") else pd.DataFrame()
 
@@ -110,7 +113,7 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
         funnel=funnel, funnel_by_channel=funnel_ch, segments=segments, trends=trends,
         seasonality=seasonality, seasonality_note=season_note, anomalies=anomalies,
         findings=[], capabilities=capabilities, quality_summary=quality_summary,
-        notes=list(getattr(capabilities, "notes", []) or []))
+        notes=list(getattr(capabilities, "notes", []) or []), paid_kpis=paid_kpis)
     result.incidents = build_incidents(anomalies, df)
     result.findings = generate_findings(result.tables(), data_end=result.metadata.get("date_max"))
     return result

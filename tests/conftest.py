@@ -11,6 +11,7 @@ start from an empty cache; the demo-seed tests switch it on explicitly.
 import dataclasses
 
 import pytest
+from google.genai import _api_client as genai_api_client
 from google.genai import models as genai_models
 
 import ai.demo_seed
@@ -33,4 +34,8 @@ def no_real_gemini(monkeypatch, tmp_path_factory):
     for cls in (genai_models.Models, genai_models.AsyncModels):
         monkeypatch.setattr(cls, "generate_content", _refuse)
         monkeypatch.setattr(cls, "list", _refuse)
+    # The SDK's single door to the network: every request goes through these methods.
+    for name in ("request", "request_streamed", "async_request", "async_request_streamed",
+                 "_request", "_async_request"):
+        monkeypatch.setattr(genai_api_client.BaseApiClient, name, _refuse)
     monkeypatch.setattr(ai.demo_seed, "SEED_PATH", tmp_path_factory.getbasetemp() / "no_seed.json")

@@ -598,6 +598,8 @@ def _ai_section(rep: _Report) -> None:
             if item.get("test_shift_pct"):
                 extra.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
                              "(proposal)")
+            if item.get("at_stake_text"):
+                extra.append(escape(item["at_stake_text"]) + " - calculated by the app")
             ids = ", ".join(item.get("evidence_ids", []))
             status = " <i>(contains unverified figures)</i>" if item.get("status") == "unverified" else ""
             if item.get("weak"):

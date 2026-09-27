@@ -46,7 +46,7 @@ def test_test_shift_is_a_proposal_but_text_percentages_are_checked(pack):
 
 
 def test_prompt_v4_rules():
-    assert PROMPT_VERSION == "v4"
+    assert PROMPT_VERSION >= "v4"             # the v4 rules stay in later versions
     text = " ".join(SYSTEM_INSTRUCTIONS.lower().split())
     for rule in ("already leads, so they can improve lead-to-conversion, not click-to-lead",
                  "compare the incident's length with the comparison window",

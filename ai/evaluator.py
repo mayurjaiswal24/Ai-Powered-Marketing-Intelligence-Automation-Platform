@@ -8,9 +8,13 @@
 3. Quality checks (v3). Failing items are kept but marked WEAK with a warning:
    - a key finding that cites only one deterministic finding just restates it;
    - a recommendation that cites an incident must quote that incident's estimated rupee impact.
-   Recommendations are then re-ranked in code by the rupee impact of the incidents they cite
-   (highest first); recommendations without an incident keep their order after those.
-4. A summary counts kept, verified, unverified, weak and dropped items.
+4. "₹ at stake" per recommendation, calculated in code (never by the AI):
+   - a budget move with a test share: test_shift_pct x the spend of the campaign/channel the
+     budget moves FROM (money put at risk by the test - NOT a projected gain);
+   - a recommendation citing an incident: that incident's estimated rupee impact.
+   The larger of the two is used, and ALL recommendations are ranked by it (highest first);
+   those with nothing at stake keep their order after them.
+5. A summary counts kept, verified, unverified, weak and dropped items.
 """
 
 from __future__ import annotations
@@ -105,7 +109,9 @@ def evaluate(insights: dict, pack) -> tuple[dict, Evaluation]:
                 _quality_checks(key, result, pack, ev)
                 kept_items.append(result)
         if key == "recommendations":
-            kept_items = _rank_by_incident_impact(kept_items, pack)
+            for item in kept_items:
+                _add_at_stake(item, pack)
+            kept_items = rank_by_at_stake(kept_items)
         checked[key] = (kept_items[0] if kept_items else None) if key == "executive_summary" else kept_items
     return checked, ev
 
@@ -142,12 +148,47 @@ def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
         item["warnings"] = item.get("warnings", []) + weak
 
 
-def _rank_by_incident_impact(items: list[dict], pack) -> list[dict]:
-    """Highest rupee impact at stake first (enforced in code, whatever order the AI used)."""
-    def at_stake(item):
-        _, amounts = _incident_impact(item, pack)
-        return max((n.value for n in amounts), default=0.0)
-    ranked = sorted(enumerate(items), key=lambda p: (-at_stake(p[1]), p[0]))
+def budget_source(item: dict, pack):
+    """The campaign/channel evidence item a budget move takes money FROM: the one the AI named in
+    `source_evidence_id`, else (older answers) the cited campaign/channel with the lowest ROAS."""
+    named = pack.by_id.get(str(item.get("source_evidence_id") or "").strip().upper())
+    if named is not None and "spend" in named.values:
+        return named
+    cited = [pack.by_id[e] for e in item.get("evidence_ids", [])
+             if e in pack.by_id and "spend" in pack.by_id[e].values]
+    with_roas = [c for c in cited if "roas" in c.values]
+    if with_roas:
+        return min(with_roas, key=lambda c: c.values["roas"])
+    return cited[0] if len(cited) == 1 else None
+
+
+def _add_at_stake(item: dict, pack) -> None:
+    """Set `rupees_at_stake` (a number) and `at_stake_text` (how it was calculated)."""
+    from utils.formatting import format_inr
+    candidates = []
+    pct = item.get("test_shift_pct")
+    source = budget_source(item, pack) if pct else None
+    if source is not None:
+        spend = source.values["spend"]
+        amount = pct / 100 * spend
+        candidates.append((amount, f"{pct:g}% test shift × {format_inr(spend, compact=True)} spend of "
+                                   f"{source.title} ({source.id}); money at risk, not a projected gain"))
+    _, impacts = _incident_impact(item, pack)
+    if impacts:
+        biggest = max(n.value for n in impacts)
+        candidates.append((biggest, "estimated rupee impact of the incident it addresses"))
+    if candidates:
+        amount, basis = max(candidates, key=lambda c: c[0])
+        item["rupees_at_stake"] = amount
+        item["at_stake_text"] = f"₹ at stake: {format_inr(amount, compact=True)} ({basis})"
+    else:
+        item["rupees_at_stake"] = 0.0
+        item["at_stake_text"] = ""
+
+
+def rank_by_at_stake(items: list[dict]) -> list[dict]:
+    """Highest ₹ at stake first (enforced in code, whatever order the AI used)."""
+    ranked = sorted(enumerate(items), key=lambda p: (-(p[1].get("rupees_at_stake") or 0.0), p[0]))
     return [item for _, item in ranked]
 
 

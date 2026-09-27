@@ -362,6 +362,8 @@ def _ai(book: _Book, ai: dict | None) -> None:
                          "priority": item.get("priority", ""),
                          "metric_to_watch": item.get("metric_to_watch", ""),
                          "test_shift_pct": item.get("test_shift_pct"),
+                         "rupees_at_stake": item.get("rupees_at_stake") if key == "recommendations" else None,
+                         "at_stake_basis": item.get("at_stake_text", "") if key == "recommendations" else "",
                          "check": item.get("status", ""),
                          "quality": "weak: " + "; ".join(item.get("weak_reasons", [])) if item.get("weak") else "ok"})
     if rows:

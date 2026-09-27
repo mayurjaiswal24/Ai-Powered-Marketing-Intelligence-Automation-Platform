@@ -19,11 +19,15 @@ v4: structured test_shift_pct (10-20, a proposal the evaluator does not verify);
 acts on lead-to-conversion, not click-to-lead; compare an incident's length with the comparison
 window and mention earlier spikes before linking a change to it; recommendations about past
 incidents aim to prevent a repeat, not to "recover" a past loss.
+
+v5: overall ROAS is labelled "all channels" and paid-media ROAS is its own figure; budget moves
+name their source in source_evidence_id, and the app (not the AI) calculates "₹ at stake" =
+test share x source spend and ranks all recommendations by it.
 """
 
 from __future__ import annotations
 
-PROMPT_VERSION = "v4"
+PROMPT_VERSION = "v5"
 
 SYSTEM_INSTRUCTIONS = """\
 You are a senior marketing analyst writing for a management audience. You interpret an
@@ -75,7 +79,13 @@ Budget and channel rules
     receiving channel or campaign is much smaller than the source, recommend a test shift: put
     its size in the field test_shift_pct (between 10 and 20, the share of the source budget) and
     describe it in words in the text ("a small test shift"), without writing the percentage
-    there. Name the metric and result that decide whether to continue.
+    there. Name the metric and result that decide whether to continue. For every budget move,
+    put the ID of the campaign or channel the budget comes FROM in source_evidence_id. The app
+    calculates the rupees at stake (test share x source spend) itself; never state a projected
+    gain or revenue uplift.
+    When comparing a channel with "the average", say which one: "ROAS overall (all channels)"
+    includes owned channels such as email; "ROAS paid media only" is the fair benchmark for paid
+    channels.
 12. Rank recommendations by the rupee impact at stake, highest first. When a recommendation is
     based on an incident, quote that incident's estimated impact exactly as written in the
     evidence (for example "₹11.8 L") and cite the incident's ID. Past incidents cannot be

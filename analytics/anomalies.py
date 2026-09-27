@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import json
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -157,12 +159,28 @@ def weekly_anomalies(df: pd.DataFrame, entity_col: str, entity_type: str) -> lis
     return _merge_periods(flagged)
 
 
-def _baseline(table: pd.DataFrame, shift: int, func=None) -> pd.DataFrame:
-    """Statistic of each entity's previous ANOMALY_BASELINE_WEEKS weeks (NaN weeks skipped),
+def _baseline(table: pd.DataFrame, shift: int) -> pd.DataFrame:
+    """Median of each entity's previous ANOMALY_BASELINE_WEEKS weeks (NaN weeks skipped),
     ending just before the window being judged."""
     rolling = table.shift(1).rolling(ANOMALY_BASELINE_WEEKS, min_periods=ANOMALY_MIN_HISTORY_WEEKS)
-    stat = rolling.median() if func is None else rolling.apply(func, raw=True)
-    return stat.shift(shift)
+    return rolling.median().shift(shift)
+
+
+def _baseline_mad(table: pd.DataFrame, shift: int) -> pd.DataFrame:
+    """Median absolute deviation of each entity's previous ANOMALY_BASELINE_WEEKS weeks: the
+    entity's usual week-to-week wobble. Same windows and minimum history as _baseline, computed
+    for all weeks at once with numpy (a per-window Python function was the slowest step)."""
+    weeks, need = ANOMALY_BASELINE_WEEKS, ANOMALY_MIN_HISTORY_WEEKS
+    values = table.shift(1).to_numpy(dtype=float)
+    padded = np.vstack([np.full((weeks - 1, values.shape[1]), np.nan), values])
+    windows = np.lib.stride_tricks.sliding_window_view(padded, weeks, axis=0)   # weeks x entities x window
+    enough = (~np.isnan(windows)).sum(axis=2) >= need
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)            # all-NaN windows -> NaN
+        median = np.nanmedian(windows, axis=2)
+        mad = np.nanmedian(np.abs(windows - median[..., None]), axis=2)
+    result = pd.DataFrame(np.where(enough, mad, np.nan), index=table.index, columns=table.columns)
+    return result.shift(shift)
 
 
 def _common_move(r: pd.DataFrame) -> pd.Series:
@@ -206,7 +224,7 @@ def _judge(t: dict, scale: float, full: pd.DataFrame, metric: str, window: int) 
     # measured on the same seasonality-adjusted scale (single weeks, before this window).
     r1 = (value1 / _baseline(value1.where(ok1), 0)).where(ok1)
     a1 = r1.div(_common_move(r1), axis=0)
-    mad = _baseline(a1, shift, lambda x: np.nanmedian(np.abs(x - np.nanmedian(x))))
+    mad = _baseline_mad(a1, shift)
     spread = np.maximum(MAD_TO_SD * mad / np.sqrt(window), ANOMALY_SCALE_FLOOR)
     score = (a - 1) / spread
     if t["count"] is not None:
@@ -290,10 +308,13 @@ def tracking_outages(df: pd.DataFrame) -> list[dict]:
         return []
     group_col = "platform" if "platform" in df and df["platform"].notna().any() else (
         "channel" if "channel" in df and df["channel"].notna().any() else None)
-    daily = (df.groupby([key, "date"])
-               .agg(spend=("spend", "sum"), clicks=("clicks", lambda s: s.sum(min_count=1)),
-                    leads=("leads", "sum") if "leads" in df else ("clicks", "size"))
-               .reset_index().sort_values([key, "date"]))
+    # Built-in sums (a Python function per campaign-day was slow on files with many campaigns).
+    by_day = df.groupby([key, "date"])
+    daily = pd.DataFrame({
+        "spend": by_day["spend"].sum(),
+        "clicks": by_day["clicks"].sum(min_count=1),        # all clicks missing -> missing, not 0
+        "leads": by_day["leads"].sum() if "leads" in df else by_day["clicks"].size(),
+    }).reset_index().sort_values([key, "date"])
     if group_col:
         owner = df.groupby(key)[group_col].agg(lambda s: s.mode().iat[0] if s.notna().any() else "(none)")
         daily["group"] = daily[key].map(owner)

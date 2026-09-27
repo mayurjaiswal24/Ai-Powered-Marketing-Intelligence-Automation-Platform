@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from config.settings import (CROSSCHECK_MIN_MATCH_SHARE, CROSSCHECK_MIN_ROWS, CROSSCHECK_REL_TOL,
-                             CROSSCHECK_ABS_TOL, CROSSCHECK_SAMPLE_ROWS)
+                             CROSSCHECK_ABS_TOL, CROSSCHECK_SAMPLE_ROWS, CROSSCHECK_SAMPLE_SEED)
 from ingestion.mapper import MappingResult, normalize_header
 from utils.parsing import parse_numbers
 
@@ -131,10 +131,19 @@ def _describe(num: str, den: str, scale: int) -> str:
     return f"{num} ÷ {den}" + (f" × {scale}" if scale != 1 else "")
 
 
+def sample_rows(df: pd.DataFrame, n: int = CROSSCHECK_SAMPLE_ROWS,
+                seed: int = CROSSCHECK_SAMPLE_SEED) -> pd.DataFrame:
+    """Up to `n` rows picked at random from the WHOLE file (not just the top, which is often one
+    month or one campaign). A fixed seed keeps the result repeatable; original order is kept."""
+    if len(df) <= n:
+        return df
+    return df.sample(n=n, random_state=seed).sort_index()
+
+
 def cross_check(df: pd.DataFrame, mapping: MappingResult) -> CrossCheckResult:
     """Compare every recognised own-calculation column with the mapped fields."""
     result = CrossCheckResult()
-    sample = df.head(CROSSCHECK_SAMPLE_ROWS)
+    sample = sample_rows(df)
     cache: dict[str, pd.Series] = {}
 
     def nums(col: str) -> pd.Series:

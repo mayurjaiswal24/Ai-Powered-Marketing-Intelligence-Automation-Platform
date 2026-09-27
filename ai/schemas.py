@@ -32,6 +32,12 @@ class Recommendation(InsightItem):
         default=None, ge=10, le=20,
         description="Only for budget moves that should start as a test: the share of the source "
                     "budget to move first (10-20). Leave empty otherwise.")
+    # For budget moves: the evidence item (campaign or channel) the budget moves FROM. The app
+    # then calculates "₹ at stake" = test share x that item's spend (money at risk, not a gain).
+    source_evidence_id: str | None = Field(
+        default=None,
+        description="Only for budget moves: the ID of the campaign or channel evidence item the "
+                    "budget moves FROM, e.g. 'E14'. Leave empty otherwise.")
 
 
 class AIInsights(BaseModel):

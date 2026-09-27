@@ -9,7 +9,7 @@ from analytics.kpis import KPI_REGISTRY
 from utils.formatting import format_count, format_date, format_value
 
 MONEY_COLUMNS = {"spend", "budget", "revenue", "gross_profit", "baseline_money", "observed_money",
-                 "estimated_impact_inr"}
+                 "estimated_impact_inr", "rupees_at_stake"}
 COUNT_COLUMNS = {"rows", "impressions", "clicks", "leads", "qualified_leads", "opportunities",
                  "conversions", "customers", "orders", "active_days", "value", "days"}
 NICE_NAMES = {

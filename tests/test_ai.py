@@ -55,7 +55,7 @@ def pack(analysis):
 def good_answer(pack) -> dict:
     kpi = next(i for i in pack.items if i.type == "kpi")
     finding = next(i for i in pack.items if i.type == "finding")
-    spend, roas = kpi.facts["Spend"], kpi.facts["ROAS"]
+    spend, roas = kpi.facts["Spend"], kpi.facts["ROAS overall (all channels)"]
     return {
         "executive_summary": {"text": f"Spend was {spend} with a ROAS of {roas}.", "evidence_ids": [kpi.id]},
         "key_findings": [
@@ -95,7 +95,7 @@ def test_evidence_pack_is_compact_and_identified(pack, analysis):
     body = json.loads(pack.json_text)
     assert set(body) == {"dataset", "evidence", "not_available"}
     assert "2025-10-01" not in pack.json_text            # no raw rows / raw dates
-    assert pack.by_id["E01"].facts["ROAS"] == analysis.kpis["roas"].formatted_compact
+    assert pack.by_id["E01"].facts["ROAS overall (all channels)"] == analysis.kpis["roas"].formatted_compact
 
 
 def test_evidence_trimmed_by_priority(analysis):

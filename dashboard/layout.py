@@ -1158,6 +1158,8 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
     if item.get("test_shift_pct"):
         details.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
                        "(a proposal, not a measured figure)")
+    if item.get("at_stake_text"):
+        details.append(item["at_stake_text"] + " - calculated by the app")
     for d in details:
         st.caption(d)
     for w in item.get("warnings", []):

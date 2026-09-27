@@ -15,3 +15,6 @@ xlsxwriter==3.2.9
 pypdf==6.19.0
 google-genai==2.25.0
 pydantic==2.13.5
+# Test-only (Phase 14): coverage report.
+pytest-cov==7.1.0
+coverage==7.16.2

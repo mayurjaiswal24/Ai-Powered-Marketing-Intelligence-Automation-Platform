@@ -33,7 +33,8 @@ MAPPING_MIN_CANDIDATE = 75   # raised from 65: weaker matches produced nonsense 
 LABEL_SIMILARITY = 90
 
 # --- Cross-check with the file's own calculated columns (ingestion/crosscheck.py) ---
-CROSSCHECK_SAMPLE_ROWS = 500       # rows compared (the first N); enough to be sure, fast on big files
+CROSSCHECK_SAMPLE_ROWS = 500       # rows compared: a random sample spread over the whole file
+CROSSCHECK_SAMPLE_SEED = 14        # fixed seed, so the same file always gives the same result
 CROSSCHECK_MIN_ROWS = 5            # fewer comparable rows than this -> no verdict
 CROSSCHECK_MIN_MATCH_SHARE = 0.90  # share of rows that must agree (files round their own ratios)
 CROSSCHECK_REL_TOL = 0.02          # agree within 2% ...

@@ -36,6 +36,16 @@ def channel_table(df: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
     return table.rename(columns={key: "channel"})
 
 
+def paid_media_kpis(df: pd.DataFrame, by: str | None = None) -> dict:
+    """KPIs of the paid channels only (owned channels such as email left out), from sums like
+    every other KPI. Empty when there is no channel column or no paid channel."""
+    key = by or channel_key(df)
+    if key is None:
+        return {}
+    paid_rows = df[df[key].map(channel_type) == "paid"]
+    return compute_kpis(paid_rows) if not paid_rows.empty else {}
+
+
 def paid_channels(table: pd.DataFrame) -> pd.DataFrame:
     return table[table["channel_type"] == "paid"] if "channel_type" in table else table
 

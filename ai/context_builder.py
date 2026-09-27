@@ -30,6 +30,8 @@ class EvidenceItem:
     facts: dict[str, str]
     priority: int          # 1 = must keep ... 5 = first to drop
     id: str = ""
+    # Exact numbers kept for calculations in code (e.g. spend for "₹ at stake"); not sent to AI.
+    values: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {"id": self.id, "type": self.type, "title": self.title, "facts": self.facts}
@@ -74,6 +76,11 @@ def _row_facts(row: pd.Series, metrics: list[str]) -> dict[str, str]:
     return facts
 
 
+def _raw_values(row: pd.Series) -> dict[str, float]:
+    """Exact spend / ROAS of a campaign or channel, for "₹ at stake" (not sent to Gemini)."""
+    return {m: float(row[m]) for m in ("spend", "roas") if m in row and pd.notna(row[m])}
+
+
 def _channel_label(channel) -> str:
     return f"{channel} (owned channel)" if channel_type(channel) == "owned" else str(channel)
 
@@ -90,7 +97,14 @@ def _headline(table: pd.DataFrame) -> str | None:
 # ---------------------------------------------------------------------------------------------
 
 def _kpi_items(result) -> list[EvidenceItem]:
-    facts = {k.label: k.formatted_compact for k in result.kpis.values() if k.available and k.value is not None}
+    facts = {}
+    for k in result.kpis.values():
+        if k.available and k.value is not None:
+            label = "ROAS overall (all channels)" if k.key == "roas" else k.label
+            facts[label] = k.formatted_compact
+    paid_roas = (getattr(result, "paid_kpis", None) or {}).get("roas")
+    if paid_roas is not None and paid_roas.available and paid_roas.value is not None:
+        facts["ROAS paid media only (owned channels excluded)"] = paid_roas.formatted_compact
     notes = [k.note for k in result.kpis.values() if k.available and k.key in ("cac", "aov", "roi") and k.note]
     if notes:
         facts["notes"] = " ".join(notes)
@@ -131,7 +145,8 @@ def _channel_items(result) -> list[EvidenceItem]:
         facts = {"channel type": ("owned - own audience, mostly fixed costs; not comparable with paid "
                                   "media and not ranked" if kind == "owned" else "paid")}
         facts.update(_row_facts(row, metrics))
-        items.append(EvidenceItem("channel", f"Channel: {row['channel']}", facts, 2))
+        items.append(EvidenceItem("channel", f"Channel: {row['channel']}", facts, 2,
+                                  values=_raw_values(row)))
     return items
 
 
@@ -187,7 +202,8 @@ def _campaign_items(result) -> list[EvidenceItem]:
         for _, row in c.sort_values(outcome, ascending=False).head(AI_TOP_CAMPAIGNS).iterrows():
             seen.add(row["campaign"])
             facts = {"channel": _channel_label(row.get("channel", ""))} | _row_facts(row, metrics[1:])
-            items.append(EvidenceItem("campaign", f"Top campaign by {outcome}: {row['campaign']}", facts, 3))
+            items.append(EvidenceItem("campaign", f"Top campaign by {outcome}: {row['campaign']}", facts, 3,
+                                      values=_raw_values(row)))
     metric = _headline(c)
     if metric and "spend_share_pct" in c:
         paid = c["channel"].map(channel_type) == "paid" if "channel" in c else True
@@ -198,7 +214,7 @@ def _campaign_items(result) -> list[EvidenceItem]:
                 continue
             facts = {"channel": _channel_label(row.get("channel", ""))} | _row_facts(row, metrics[1:])
             items.append(EvidenceItem("campaign", f"Weak campaign by {KPI_REGISTRY[metric].label}: "
-                                      f"{row['campaign']}", facts, 3))
+                                      f"{row['campaign']}", facts, 3, values=_raw_values(row)))
     return items
 
 
