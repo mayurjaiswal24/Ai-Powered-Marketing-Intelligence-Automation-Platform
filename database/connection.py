@@ -1,8 +1,9 @@
 """Opening the SQLite database safely.
 
 SQLite needs no server: the whole database is one file (DATABASE_PATH, default
-`marketing_intelligence.db` in the project folder). On Streamlit Community Cloud this file is
-wiped on restart, so the app must always work from an empty database.
+`data/app/marketing_intelligence.db` inside the project folder; the folder is created on first
+use). On Streamlit Community Cloud this file is wiped on restart, so the app must always work
+from an empty database. Old runs are pruned by database/housekeeping.py (KEEP_LAST_RUNS).
 """
 
 from __future__ import annotations

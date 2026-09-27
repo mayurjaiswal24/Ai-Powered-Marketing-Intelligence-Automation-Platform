@@ -166,7 +166,11 @@ class Settings:
     ai_max_calls_per_run: int = 3
     ai_max_calls_per_day: int = 15
     ai_cache_enabled: bool = True
-    database_path: str = "marketing_intelligence.db"
+    # App data lives in data/app/ so the project folder stays clean (git-ignored).
+    database_path: str = "data/app/marketing_intelligence.db"
+    # Housekeeping: only the newest N analysis runs are kept (records, snapshots, cached AI
+    # insights and export folders of older runs are deleted when a new run is saved).
+    keep_last_runs: int = 20
     # Folder for generated PDF/Excel files (relative paths are inside the project folder).
     exports_dir: str = "exports"
     # Uploads above this size are refused with a friendly message.
@@ -193,6 +197,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ai_cache_enabled=_parse_bool(env.get("AI_CACHE_ENABLED"), defaults.ai_cache_enabled),
         database_path=_parse_str(env.get("DATABASE_PATH"), defaults.database_path),
         exports_dir=_parse_str(env.get("EXPORTS_DIR"), defaults.exports_dir),
+        keep_last_runs=_parse_int(env.get("KEEP_LAST_RUNS"), defaults.keep_last_runs, minimum=1),
         max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
         large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
     )

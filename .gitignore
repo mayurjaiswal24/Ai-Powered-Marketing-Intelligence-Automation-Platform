@@ -8,7 +8,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# Local database
+# Local app data (database) and any database file
+data/app/
 *.db
 
 # Generated exports (keep the folder itself)

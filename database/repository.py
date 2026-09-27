@@ -35,6 +35,8 @@ def _now() -> str:
 def session(db_path=None):
     """Connect, make sure the tables exist, then commit and close (see database.connection)."""
     path = get_db_path(db_path)
+    if db_path is None:
+        path.parent.mkdir(parents=True, exist_ok=True)       # first run: create data/app/
     is_new_file = not path.exists()
     with connect(path) as conn:
         if is_new_file or path not in _initialised:
@@ -46,6 +48,8 @@ def session(db_path=None):
 def init_db(db_path=None) -> Path:
     """Create the database file and all tables (safe to call repeatedly)."""
     path = get_db_path(db_path)
+    if db_path is None:
+        path.parent.mkdir(parents=True, exist_ok=True)       # first run: create data/app/
     _initialised.discard(path)
     with session(path):
         pass

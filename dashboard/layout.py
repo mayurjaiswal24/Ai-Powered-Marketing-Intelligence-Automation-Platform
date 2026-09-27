@@ -17,6 +17,7 @@ from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, period_compar
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
+from config.settings import settings
 from dashboard import charts, components as ui
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, preset_range)
@@ -261,15 +262,24 @@ def _recent_analyses() -> None:
         ui.friendly_error(exc)
         return
     st.markdown("## Recent analyses")
+    message = _state().pop("deleted_message", None)
+    if message:
+        st.success(message)
     if recent.empty:
         st.caption("Analyses you run are saved here so you can reopen them later without recalculating.")
         return
-    st.caption("Reopening shows the saved results instantly (no recalculation and no AI call).")
+    st.caption("Reopening shows the saved results instantly (no recalculation and no AI call). "
+               f"Only the newest {settings.keep_last_runs} analyses are kept (KEEP_LAST_RUNS).")
+    state = _state()
     for row in recent.itertuples():
-        c1, c2, c3 = st.columns([5, 3, 1])
+        c1, c2, c3, c4 = st.columns([5, 3, 1, 1])
         c1.markdown(f"**Run #{row.run_id}** - {row.file_name}")
         c2.caption(f"{format_count(row.row_count)} rows | {_format_timestamp(row.created_at)}"
                    + (f" | {row.reports} report(s)" if row.reports else ""))
+        if c4.button("Delete", key=f"delete_run_{row.run_id}"):
+            state["confirm_delete"] = int(row.run_id)
+        if state.get("confirm_delete") == int(row.run_id):
+            _confirm_delete(int(row.run_id), row.file_name)
         if c3.button("Open", key=f"open_run_{row.run_id}"):
             try:
                 output = reopen_run(int(row.run_id))
@@ -291,6 +301,32 @@ _STATUS_LABELS = {
     "ignored": "Not used (your choice)"}
 _NOT_USED = "Not used"
 _LINE_BREAK = "\n"      # markdown lists inside st.success / st.warning need real line breaks
+
+
+def _confirm_delete(run_id: int, file_name: str) -> None:
+    """Second click needed: deleting removes the saved results, reports and cached AI insights."""
+    st.warning(f"Delete analysis run #{run_id} ({file_name})? Its saved results, PDF/Excel "
+               "reports and cached AI insights will be removed. This cannot be undone.")
+    yes, no, _ = st.columns([2, 1, 5])
+    if yes.button("Yes, delete", key=f"confirm_delete_{run_id}", type="primary"):
+        from database.connection import DatabaseError
+        from database.housekeeping import delete_analysis
+        state = _state()
+        state.pop("confirm_delete", None)
+        try:
+            delete_analysis(run_id)
+        except DatabaseError as exc:
+            ui.friendly_error(exc)
+            return
+        output = state.get("output")
+        if output is not None and output.run_id == run_id:      # it was open: close it
+            for key in ("output", "view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
+                state.pop(key, None)
+        state["deleted_message"] = f"Analysis run #{run_id} was deleted."
+        st.rerun()
+    if no.button("Cancel", key=f"cancel_delete_{run_id}"):
+        _state().pop("confirm_delete", None)
+        st.rerun()
 
 
 def _mapping_editor(prep) -> None:

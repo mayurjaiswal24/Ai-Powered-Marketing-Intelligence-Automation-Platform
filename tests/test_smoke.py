@@ -16,7 +16,8 @@ def test_defaults_with_empty_environment():
     assert s.ai_max_calls_per_run == 3
     assert s.ai_max_calls_per_day == 15
     assert s.ai_cache_enabled is True
-    assert s.database_path == "marketing_intelligence.db"
+    assert s.database_path == "data/app/marketing_intelligence.db"
+    assert s.keep_last_runs == 20
     assert s.has_gemini_key is False
     assert s.max_upload_mb == 50
     assert s.large_row_warning == 200_000
@@ -34,7 +35,7 @@ def test_values_are_parsed_safely():
     assert s.ai_max_calls_per_run == 5
     assert s.ai_max_calls_per_day == 15      # bad number -> default
     assert s.ai_cache_enabled is True        # unrecognised word -> default
-    assert s.database_path == "marketing_intelligence.db"  # blank -> default
+    assert s.database_path == "data/app/marketing_intelligence.db"  # blank -> default
 
 
 def test_negative_limits_fall_back_to_default():

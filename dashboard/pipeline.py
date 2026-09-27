@@ -18,6 +18,7 @@ from analytics.engine import AnalysisResult, run_analysis, save_analysis
 from config.settings import PROJECT_ROOT
 from database import repository
 from database.connection import DatabaseError
+from database.housekeeping import apply_retention
 from ingestion.crosscheck import CrossCheckResult, apply_to_mapping, cross_check
 from ingestion.loader import LoadReport, load_file
 from ingestion.mapper import MappingResult, map_fields
@@ -115,6 +116,10 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
             repository.update_run_status(run_id, "complete", db_path=db_path)
         except DatabaseError as exc:
             output.save_error = exc.user_message
+        try:
+            apply_retention(db_path=db_path)     # keep only the newest KEEP_LAST_RUNS runs
+        except (DatabaseError, OSError):
+            pass                                 # housekeeping must never break an analysis
     return output
 
 
