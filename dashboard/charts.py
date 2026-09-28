@@ -15,11 +15,12 @@ import plotly.graph_objects as go
 
 from dashboard import theme
 from analytics.funnel import biggest_drop_off
-from dashboard.chart_standard import group_other
+from dashboard.chart_standard import OWNED_SUFFIX, group_other, label_crosses_line
 from utils.formatting import format_date, format_value
 
 CHART_HEIGHT = 320
 MAX_INCIDENT_MARKERS = 8        # the highest-ranked incidents only, so a trend line stays readable
+LABEL_ROOM = 0.25               # share of the value axis a bar's value label needs on a phone
 
 
 def _has(df: pd.DataFrame | None, *cols: str) -> bool:
@@ -125,9 +126,11 @@ def line_chart(df: pd.DataFrame, x: str, y: str, fmt: str, title: str,
         fill="tozeroy", fillcolor=_hex_to_rgba(theme.PRIMARY, 0.10),
         customdata=hover, hovertemplate="%{customdata}<extra></extra>"))
     last = data.iloc[-1]
+    # The latest-value label sits on the side of the point away from the reference line.
+    below = reference is not None and not pd.isna(reference) and last[y] < reference
     fig.add_trace(go.Scatter(
         x=[last[x]], y=[last[y]], mode="markers+text", text=[format_value(last[y], fmt, compact=True)],
-        textposition="top left", textfont=dict(color=theme.INK_SECONDARY, size=12),
+        textposition="bottom left" if below else "top left", textfont=dict(color=theme.INK_SECONDARY, size=12),
         marker=dict(size=8, color=theme.PRIMARY, line=dict(color=theme.SURFACE, width=2)),
         hoverinfo="skip"))
     if reference is not None and not pd.isna(reference):
@@ -216,12 +219,21 @@ def bar_chart(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
         if reference is not None and not pd.isna(reference):
             lines.append(_vs_reference(v, reference, reference_label))
         hover.append("<br>".join(lines))
+    # A value label that the reference line would cross is printed just after the line instead.
+    axis_max = max([float(v) for v in data[value]] + ([float(reference)] if reference is not None else []))
+    moved = [label_crosses_line(v, reference, axis_max, LABEL_ROOM) for v in data[value]]
     fig.add_trace(go.Bar(
         x=data[value], y=wrapped, orientation="h", marker=dict(color=colors),
-        text=[format_value(v, fmt, compact=True) for v in data[value]], textposition="outside",
+        text=["" if m else format_value(v, fmt, compact=True) for v, m in zip(data[value], moved)],
+        textposition="outside",
         textfont=dict(color=theme.INK_SECONDARY, size=12), cliponaxis=False,
         customdata=np.column_stack([hover, list(labels)]),     # [hover text, raw label for click events]
         hovertemplate="%{customdata[0]}<extra></extra>"))
+    for v, w, m in zip(data[value], wrapped, moved):
+        if m:
+            fig.add_annotation(x=reference, y=w, xanchor="left", xshift=4, showarrow=False,
+                               text=format_value(v, fmt, compact=True),
+                               font=dict(color=theme.INK_SECONDARY, size=12))
     if reference is not None and not pd.isna(reference):
         fig.add_vline(x=reference, line=dict(color=theme.INK_MUTED, width=1, dash="dot"),
                       layer="below")          # value labels stay readable where the line crosses them
@@ -239,25 +251,40 @@ SHARE_SERIES_COLORS = [theme.CONTEXT, theme.FOCUS, theme.ACCENT]   # spend = con
 
 
 def share_comparison_chart(df: pd.DataFrame, category: str, series: dict[str, str],
-                           title: str, subtitle: str | None = None) -> go.Figure | None:
+                           title: str, subtitle: str | None = None,
+                           owned: set[str] | None = None) -> go.Figure | None:
     """Two or three shares side by side per category (e.g. share of spend in grey vs share of
-    revenue in the focus colour). More than 8 categories fold into "Other" (shares add up)."""
+    revenue in the focus colour). More than 8 categories fold into "Other" (shares add up).
+    Owned channels (`owned`) are labelled "(owned)" and drawn lighter and hatched, so they are
+    not read as paid media."""
     cols = [c for c in series.values() if c in df]
     if not _has(df, category) or not cols:
         return None
     data = group_other(df, category, cols, sort_by=cols[0])
     data = data.sort_values(cols[0], ascending=True)
-    labels = data[category].astype(str)
+    is_owned = [c in (owned or set()) for c in data[category].astype(str)]
+    display_order = [wrap_label(f"{c}{OWNED_SUFFIX}" if o else c) for c, o in zip(data[category].astype(str), is_owned)]
+    if is_owned[0] and not all(is_owned):
+        # Plotly draws the legend swatch from the first bar, so a paid row goes first in the data;
+        # the axis keeps the display order.
+        first = is_owned.index(False)
+        data = pd.concat([data.iloc[[first]], data.drop(data.index[first])])
+        is_owned = [is_owned[first]] + is_owned[:first] + is_owned[first + 1:]
+    labels = pd.Series([f"{c}{OWNED_SUFFIX}" if o else c for c, o in zip(data[category].astype(str), is_owned)])
     fig = _base(title, max(CHART_HEIGHT, 60 + 44 * len(data)), subtitle)
     for i, (name, col) in enumerate((n, c) for n, c in series.items() if c in df):
+        color = SHARE_SERIES_COLORS[i]
         fig.add_trace(go.Bar(
             x=data[col], y=labels.map(wrap_label), orientation="h", name=name,
-            marker=dict(color=SHARE_SERIES_COLORS[i]),
+            marker=dict(color=[_hex_to_rgba(color, 0.45) if o else color for o in is_owned],
+                        pattern=dict(shape=["/" if o else "" for o in is_owned], fgcolor=color, size=6))
+            if any(is_owned) else dict(color=color),
             text=[format_value(v, "percent") for v in data[col]], textposition="outside", cliponaxis=False,
             textfont=dict(color=theme.INK_SECONDARY, size=11),
             customdata=[f"{c}<br>{name}: <b>{format_value(v, 'percent')}</b>" for c, v in zip(labels, data[col])],
             hovertemplate="%{customdata}<extra></extra>"))
     fig.update_layout(barmode="group", bargap=0.35, bargroupgap=0.08, margin=dict(r=theme.VALUE_LABEL_MARGIN))
+    fig.update_yaxes(categoryorder="array", categoryarray=display_order)
     _show_legend(fig)
     _format_axis(fig, pd.concat([data[c] for c in cols]), "percent", axis="x")
     fig.update_yaxes(showgrid=False, automargin=True)

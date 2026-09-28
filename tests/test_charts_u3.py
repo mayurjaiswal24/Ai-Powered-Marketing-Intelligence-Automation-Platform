@@ -118,7 +118,11 @@ def test_trend_and_funnel_titles_match_the_analysis(output):
     f = output.analysis.funnel
     title = cs.funnel_title(f, "Marketing Funnel")
     leads = f.set_index("stage").loc["leads", "rate_from_previous"]
-    assert title == f"Biggest Drop: Only {format_value(leads, 'percent')} of Clicks Become Leads"
+    assert title == f"Biggest Drop After the Click: Only {format_value(leads, 'percent')} of Clicks Become Leads"
+    # Without a Clicks stage before the drop, the title stays generic.
+    no_clicks = f[f["stage"] != "clicks"].assign(
+        rate_from_previous=lambda d: d["rate_from_previous"].where(d["stage"] != "impressions"))
+    assert cs.funnel_title(no_clicks, "Marketing Funnel").startswith("Biggest Drop: Only ")
 
 
 def test_subtitle_names_metric_unit_and_period():
@@ -201,3 +205,51 @@ def test_channel_drill_down_and_trend_incidents_render(app):
     assert at.toggle(key="trend_incidents").value is True
     at.toggle(key="trend_incidents").set_value(False).run()
     assert not at.exception
+
+
+# --- Owner review fixes (2026-09-29) -----------------------------------------------------------
+
+def test_partial_edge_weeks_leave_the_line_but_not_the_totals(output):
+    from analytics.trends import time_series
+    trend = time_series(output.clean.clean_df, "week")
+    shown, dropped = cs.full_weeks(trend)
+    edges = int(trend["days"].iloc[0] < 7) + int(trend["days"].iloc[-1] < 7)
+    assert dropped == (edges > 0) and len(shown) == len(trend) - edges
+    assert (shown["days"] == 7).iloc[[0, -1]].all()
+    assert trend["revenue"].sum() == output.analysis.kpis["revenue"].value        # table itself unchanged
+    # A table with fewer than two full weeks is left as it is.
+    tiny = pd.DataFrame({"period": pd.date_range("2026-01-05", periods=2, freq="W-MON"), "days": [3, 7]})
+    assert cs.full_weeks(tiny)[1] is False
+
+
+def test_owned_channels_are_labelled_and_lighter_in_both(output, monkeypatch):
+    ch = output.analysis.channels
+    owned = cs.owned_names(ch["channel"])
+    assert owned == {"Email"}
+    series = {"Share of Spend": "spend_share_pct", "Share of Revenue": "revenue_share_pct"}
+    fig = charts.share_comparison_chart(ch, "channel", series, "t", owned=owned)
+    assert "Email (owned)" in list(fig.data[0].y)
+    i = list(fig.data[0].y).index("Email (owned)")
+    assert fig.data[0].marker.pattern.shape[i] == "/" and fig.data[0].marker.color[i].startswith("rgba")
+    assert fig.data[0].marker.pattern.shape[0] == ""        # legend swatch comes from a paid bar
+    captured = {}
+    monkeypatch.setattr(pdf_charts, "_to_png", lambda f: captured.setdefault("fig", f))
+    pdf_charts.share_png(ch, "channel", series, "t", owned=owned)
+    ax = captured["fig"].axes[0]
+    assert "Email (owned)" in [t.get_text() for t in ax.get_yticklabels()]
+    assert any(p.get_hatch() for p in ax.patches)
+
+
+def test_value_labels_move_clear_of_the_average_line(output, monkeypatch):
+    paid = paid_channels(output.analysis.channels)
+    avg = output.analysis.paid_kpis["roas"].value
+    fig = charts.bar_chart(paid, "channel", "roas", "ratio", "t", reference=avg)
+    moved = [a for a in fig.layout.annotations if a.x == avg and a.xanchor == "left"]
+    assert moved and all(t == "" for t, v in zip(fig.data[0].text, fig.data[0].x)
+                         if cs.label_crosses_line(v, avg, max(max(fig.data[0].x), avg), charts.LABEL_ROOM))
+    shown = [t for t in fig.data[0].text if t] + [a.text for a in moved]
+    assert sorted(shown) == sorted(format_value(v, "ratio", compact=True) for v in paid["roas"])
+    # Line chart: the latest-value label sits on the far side of the reference line.
+    df = pd.DataFrame({"p": pd.date_range("2026-01-05", periods=3, freq="W-MON"), "v": [5.0, 4.0, 3.0]})
+    fig = charts.line_chart(df, "p", "v", "ratio", "t", reference=4.5)
+    assert fig.data[1].textposition == "bottom left"

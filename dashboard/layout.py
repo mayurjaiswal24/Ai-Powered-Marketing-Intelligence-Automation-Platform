@@ -796,10 +796,12 @@ def page_overview(filters: Filters) -> None:
     start, end = cs.date_span(view["df"])
     caps = output.analysis.capabilities
     with left:
+        shown, dropped = cs.full_weeks(trend)
         fig = charts.line_chart(
-            trend, "period", outcome, KPI_REGISTRY[outcome].fmt,
+            shown, "period", outcome, KPI_REGISTRY[outcome].fmt,
             cs.trend_title(view["df"], outcome, f"Weekly {title_case(KPI_REGISTRY[outcome].label)}", capabilities=caps),
-            subtitle=cs.subtitle(outcome, "week", start, end)) if outcome else None
+            subtitle=cs.subtitle(outcome, "week", start, end,
+                                 note=cs.PARTIAL_WEEKS_NOTE if dropped else None)) if outcome else None
         ui.show_chart(fig, "No trend is available because the data has no usable date column.")
     with right:
         ch = view["channels"]
@@ -813,7 +815,8 @@ def page_overview(filters: Filters) -> None:
                                "Where the Money Goes and What It Returns")
         fig = charts.share_comparison_chart(ch, "channel", series, title,
                                             subtitle=cs.subtitle(None, None, start, end,
-                                                                 note="Share of total (%)")) \
+                                                                 note="Share of total (%)"),
+                                            owned=cs.owned_names(ch["channel"])) \
             if not ch.empty else None
         ui.show_chart(fig, "Channel analysis is not available for this data.")
 
@@ -830,10 +833,11 @@ SPARKLINE_WEEKS = 12
 
 def _sparklines(trend: pd.DataFrame, keys: list[str]) -> dict[str, list]:
     """Last 12 full weeks of each KPI from the weekly trend table (partial weeks at the edges of
-    the data are left out, so a short last week never looks like a collapse)."""
+    the data are left out, as on the weekly trend charts, so a short last week never looks like
+    a collapse)."""
     if trend is None or trend.empty:
         return {}
-    full = trend[trend["days"] >= 7] if (trend["days"] >= 7).sum() >= 2 else trend
+    full, _ = cs.full_weeks(trend)
     recent = full.tail(SPARKLINE_WEEKS)
     return {k: [float(v) for v in recent[k].dropna()] for k in keys if k in recent}
 
@@ -860,6 +864,9 @@ def page_trends(filters: Filters) -> None:
     if trend.empty:
         _no_rows_state("No trend data matches the current filters.")
         return
+    dropped = False
+    if grain == "week":                      # partial edge weeks are left out of the weekly lines
+        trend, dropped = cs.full_weeks(trend)
     xfmt = "text" if grain == "month" else "date"
     efficiency_options = [k for k in ("roas", "cpl", "cac", "ctr", "lead_to_conversion_rate", "cpc")
                           if k in trend and trend[k].notna().any()]
@@ -876,7 +883,8 @@ def page_trends(filters: Filters) -> None:
         label = title_case(KPI_REGISTRY[metric].label)
         fig = charts.line_chart(trend, "period", metric, KPI_REGISTRY[metric].fmt,
                                 cs.trend_title(view["df"], metric, f"{label} by {unit}", capabilities=caps),
-                                x_label_fmt=xfmt, subtitle=cs.subtitle(metric, grain, start, end),
+                                x_label_fmt=xfmt, subtitle=cs.subtitle(metric, grain, start, end,
+                                                                       note=cs.PARTIAL_WEEKS_NOTE if dropped else None),
                                 reference=reference, reference_label="Overall")
         return charts.add_incident_markers(fig, incidents) if incidents is not None else fig
 
@@ -1090,12 +1098,14 @@ def page_funnel(filters: Filters) -> None:
                       "There are not enough funnel stages to draw a chart.")
     with right:
         st.markdown("### Stage by Stage")
-        ui.show_table(data, ["label", "value", "rate_from_previous", "drop_off_pct"])
+        ui.show_table(data, ["label", "value", "rate_from_previous", "drop_off_pct"], wrap_headers=True)
         step = biggest_drop_off(data)
         if step is not None:
             st.caption(f"Biggest drop after the click stage: only "
                        f"{format_value(step['rate_from_previous'], 'percent')} move on to "
                        f"{step['label'].lower()}.")
+        if {"impressions", "clicks"} <= set(data["stage"]):
+            st.caption(cs.FUNNEL_CLICK_NOTE)
         if "revenue" in set(data["stage"]):
             rev = data.loc[data["stage"] == "revenue", "value"].iloc[0]
             st.caption(f"Revenue from these conversions: {format_value(rev, 'money')}.")
@@ -1279,9 +1289,13 @@ def page_anomalies(filters: Filters) -> None:
     else:
         weekly = _entity_weekly(output.clean.clean_df, main["entity_type"], main["entity"])
         if weekly is not None:
+            # Weekly anomalies are found on full weeks only, so leaving out partial edge weeks
+            # never hides the flagged period.
+            weekly, dropped = cs.full_weeks(weekly)
             fig = charts.anomaly_chart(weekly, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
                                        f"{title_case(KPI_REGISTRY[metric].label)} per Week: {main['entity']}",
-                                       subtitle=cs.subtitle(metric, "week"))
+                                       subtitle=cs.subtitle(metric, "week",
+                                                            note=cs.PARTIAL_WEEKS_NOTE if dropped else None))
     ui.show_chart(fig, "No chart is available for this incident.")
 
     with st.expander(f"All Individual Flags ({len(flags)})"):
@@ -1308,7 +1322,9 @@ def _entity_weekly(df, entity_type, entity):
     rows = _entity_rows(df, entity_type, entity)
     if rows is None or rows.empty:
         return None
-    return group_kpis(rows, "week_start").rename(columns={"week_start": "period"})
+    weekly = group_kpis(rows, "week_start").rename(columns={"week_start": "period"})
+    weekly["days"] = weekly["period"].map(rows.groupby("week_start")["date"].nunique())   # for partial weeks
+    return weekly
 
 
 def _entity_daily(df, entity_type, entity, around):

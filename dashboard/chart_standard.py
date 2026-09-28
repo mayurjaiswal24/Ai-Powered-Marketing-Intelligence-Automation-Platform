@@ -13,6 +13,7 @@ import pandas as pd
 from analytics.common import direction_of
 from analytics.funnel import biggest_drop_off
 from analytics.kpis import KPI_REGISTRY, period_comparison
+from config.fields import channel_type
 from config.settings import TREND_WINDOW_DAYS
 from dashboard import theme
 from utils.formatting import format_date_range, format_value, title_case
@@ -165,7 +166,9 @@ def trend_title(rows: pd.DataFrame, metric: str, neutral: str, date_col: str = "
 
 
 def funnel_title(funnel: pd.DataFrame, neutral: str) -> str:
-    """'Biggest Drop: Only 5.6% of Clicks Become Leads' (same step as the funnel finding)."""
+    """'Biggest Drop After the Click: Only 5.6% of Clicks Become Leads' (same step as the funnel
+    finding). "After the Click" is only said when a Clicks stage comes before the step; otherwise
+    the title is the plain 'Biggest Drop: Only X% of A Become B'."""
     if funnel is None or funnel.empty:
         return neutral
     data = funnel[funnel["stage"] != "revenue"].sort_values("stage_order").reset_index(drop=True)
@@ -176,5 +179,48 @@ def funnel_title(funnel: pd.DataFrame, neutral: str) -> str:
     if position == 0:
         return neutral
     previous = title_case(data.loc[position - 1, "label"])
-    return (f"Biggest Drop: Only {format_value(step['rate_from_previous'], 'percent')} of "
+    after_click = "clicks" in set(data["stage"].iloc[:position])
+    head = "Biggest Drop After the Click" if after_click else "Biggest Drop"
+    return (f"{head}: Only {format_value(step['rate_from_previous'], 'percent')} of "
             f"{previous} Become {title_case(step['label'])}")
+
+
+# ---------------------------------------------------------------------------------------------
+# Partial weeks, owned channels, labels next to a reference line
+# ---------------------------------------------------------------------------------------------
+
+PARTIAL_WEEKS_NOTE = "Full weeks only"
+FUNNEL_CLICK_NOTE = ("A low impressions-to-clicks rate is normal: most people who see an ad do not "
+                     "click it. That is why the biggest drop is looked for after the click.")
+OWNED_SUFFIX = " (owned)"
+
+
+def full_weeks(trend: pd.DataFrame | None) -> tuple[pd.DataFrame | None, bool]:
+    """A weekly trend table without an incomplete first or last week (fewer than 7 days of data
+    at the edges of the file), so a short edge week never looks like a collapse. Only the chart
+    line changes: totals and KPIs are calculated from all rows. Returns (table, dropped?); the
+    table is left as it is when fewer than two full weeks would remain."""
+    if trend is None or trend.empty or "days" not in trend:
+        return trend, False
+    keep = pd.Series(True, index=trend.index)
+    if trend["days"].iloc[0] < 7:
+        keep.iloc[0] = False
+    if trend["days"].iloc[-1] < 7:
+        keep.iloc[-1] = False
+    if keep.all() or keep.sum() < 2:
+        return trend, False
+    return trend[keep], True
+
+
+def owned_names(names) -> set[str]:
+    """The owned channels (config.fields.channel_type) among `names`, e.g. {'Email'}."""
+    return {str(n) for n in names if str(n) != theme.OTHER_LABEL and channel_type(n) == "owned"}
+
+
+def label_crosses_line(value, reference, axis_max: float, room: float) -> bool:
+    """True when a bar's value label, printed just after the bar end, would be crossed by a
+    vertical reference line: the bar ends left of the line, closer than the label's width
+    (`room`, a share of the axis)."""
+    if value is None or reference is None or pd.isna(value) or pd.isna(reference) or not axis_max:
+        return False
+    return 0 <= reference - value < room * axis_max

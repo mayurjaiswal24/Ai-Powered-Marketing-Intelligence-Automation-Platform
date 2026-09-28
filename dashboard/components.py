@@ -196,9 +196,14 @@ def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4
 # Tables
 # ---------------------------------------------------------------------------------------------
 
-def show_table(df: pd.DataFrame, columns: list[str] | None = None, height: int | None = None) -> None:
+def show_table(df: pd.DataFrame, columns: list[str] | None = None, height: int | None = None,
+               wrap_headers: bool = False) -> None:
+    """`wrap_headers`: a small static table whose long column names wrap instead of being cut off."""
     if df is None or df.empty:
         empty_state("No rows match the current filters.", icon="filter_alt_off")
+        return
+    if wrap_headers:
+        st.table(format_table(df, columns), hide_index=True)
         return
     kwargs = {"height": height} if height else {}
     st.dataframe(format_table(df, columns), hide_index=True, width="stretch", **kwargs)

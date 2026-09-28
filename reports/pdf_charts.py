@@ -15,16 +15,18 @@ import matplotlib
 matplotlib.use("Agg")  # no screen needed
 
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.ticker import FuncFormatter, MaxNLocator, NullLocator  # noqa: E402
 
 from analytics.funnel import biggest_drop_off  # noqa: E402
 from dashboard import theme  # noqa: E402
-from dashboard.chart_standard import group_other  # noqa: E402
+from dashboard.chart_standard import OWNED_SUFFIX, group_other, label_crosses_line  # noqa: E402
 from utils.formatting import format_date, format_value  # noqa: E402
 
 WIDTH_IN = 6.7        # fits the A4 text width
 DPI = 200
+LABEL_ROOM = 0.12     # share of the value axis a bar's value label needs at A4 width
 
 plt.rcParams.update({
     "font.family": "DejaVu Sans",
@@ -138,8 +140,11 @@ def hbar_png(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
         bar_colors = [theme.FOCUS if str(c) == top else theme.CONTEXT for c in data[category]]
     ax.barh(labels, data[value], color=bar_colors, height=0.55)
     span = max(abs(float(data[value].max())), 1e-9)
+    axis_max = max(span, float(reference) if reference is not None and not pd.isna(reference) else 0)
     for i, v in enumerate(data[value]):
-        ax.text(v + span * 0.01, i, format_value(v, fmt, compact=True), va="center",
+        # A label the reference line would cross is printed just after the line instead.
+        x = reference if label_crosses_line(v, reference, axis_max, LABEL_ROOM) else v
+        ax.text(x + span * 0.01, i, format_value(v, fmt, compact=True), va="center",
                 color=theme.INK_SECONDARY, fontsize=8, zorder=4,
                 bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none", alpha=0.85))
     if reference is not None and not pd.isna(reference):
@@ -159,7 +164,9 @@ SHARE_SERIES_COLORS = [theme.CONTEXT, theme.FOCUS, theme.ACCENT]   # same as the
 
 
 def share_png(df: pd.DataFrame, category: str, series: dict[str, str], title: str,
-              subtitle: str | None = None) -> bytes | None:
+              subtitle: str | None = None, owned: set[str] | None = None) -> bytes | None:
+    """Shares side by side per category, as in the app; owned channels are labelled "(owned)"
+    and drawn lighter and hatched."""
     cols = {n: c for n, c in series.items() if c in df}
     if df is None or df.empty or not cols:
         return None
@@ -173,15 +180,22 @@ def share_png(df: pd.DataFrame, category: str, series: dict[str, str], title: st
     for i, (name, col) in enumerate(cols.items()):
         # First series on top within each group, matching the legend order.
         ys = [p + ((n - 1) / 2 - i) * bar_h for p in positions]
-        ax.barh(ys, data[col], height=bar_h * 0.9, color=SHARE_SERIES_COLORS[i], label=name)
+        bars = ax.barh(ys, data[col], height=bar_h * 0.9, color=SHARE_SERIES_COLORS[i], label=name)
+        for bar, c in zip(bars, data[category].astype(str)):
+            if c in (owned or set()):
+                bar.set_alpha(0.45)
+                bar.set_hatch("////")
+                bar.set_edgecolor(SHARE_SERIES_COLORS[i])
         for y, v in zip(ys, data[col]):
             if pd.notna(v):
                 ax.text(v, y, " " + format_value(v, "percent"), va="center", fontsize=6.5,
                         color=theme.INK_SECONDARY)
     ax.set_yticks(list(positions))
-    ax.set_yticklabels([_wrap(c) for c in data[category]])
+    ax.set_yticklabels([_wrap(f"{c}{OWNED_SUFFIX}" if str(c) in (owned or set()) else c)
+                        for c in data[category]])
     # Legend in its own row above the plot and below the title (never over the bars or title).
-    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=n, frameon=False, fontsize=8,
+    handles = [Patch(color=SHARE_SERIES_COLORS[i], label=name) for i, name in enumerate(cols)]
+    ax.legend(handles=handles, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=n, frameon=False, fontsize=8,
               borderaxespad=0.2, handlelength=1.2)
     _title(ax, title, pad=22, subtitle=subtitle)
     ax.set_xlim(right=float(data[list(cols.values())].max().max()) * 1.15)

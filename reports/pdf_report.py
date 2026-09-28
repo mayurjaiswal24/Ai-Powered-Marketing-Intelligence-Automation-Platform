@@ -440,7 +440,8 @@ def _channels(rep: _Report) -> None:
                                    cs.share_title(ch, "channel", result_col,
                                                   list(series)[-1].removeprefix("Share of "),
                                                   "Where the Money Goes and What It Returns"),
-                                   subtitle=cs.subtitle(None, None, *_span(rep), note="Share of total (%)")))
+                                   subtitle=cs.subtitle(None, None, *_span(rep), note="Share of total (%)"),
+                                   owned=cs.owned_names(ch["channel"])))
     metric = "roas" if "roas" in paid and paid["roas"].notna().any() else "cpl"
     if metric in paid and len(paid):
         paid_avg = rep.r.paid_kpis.get(metric)
@@ -501,6 +502,8 @@ def _funnel(rep: _Report) -> None:
     rep.chart(pdf_charts.funnel_png(labelled, cs.funnel_title(labelled, "Marketing Funnel"),
                                     subtitle=cs.subtitle(None, None, *_span(rep), note="All Channels")))
     rep.table(f.assign(label=f["label"].map(title_case)), ["label", "value", "rate_from_previous", "drop_off_pct"])
+    if {"impressions", "clicks"} <= set(f["stage"]):
+        rep.p(cs.FUNNEL_CLICK_NOTE, "caption")
 
 
 def _segments(rep: _Report) -> None:
@@ -527,11 +530,13 @@ def _trends(rep: _Report) -> None:
     eff = "roas" if "roas" in weekly and weekly["roas"].notna().any() else "cpl"
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in weekly), None)
     daily = rep.r.trends.get("day")
+    shown, dropped = cs.full_weeks(weekly)           # partial edge weeks left out of the line only
     for metric in [m for m in (outcome, eff) if m and m in weekly]:
         label = title_case(KPI_REGISTRY[metric].label)
-        rep.chart(pdf_charts.line_png(weekly, "period", metric, KPI_REGISTRY[metric].fmt,
+        rep.chart(pdf_charts.line_png(shown, "period", metric, KPI_REGISTRY[metric].fmt,
                                       cs.trend_title(daily, metric, f"Weekly {label}", date_col="period"),
-                                      subtitle=cs.subtitle(metric, "week", *_span(rep))))
+                                      subtitle=cs.subtitle(metric, "week", *_span(rep),
+                                                           note=cs.PARTIAL_WEEKS_NOTE if dropped else None)))
     if rep.r.seasonality is not None:
         rep.h2("Seasonality index (100 = an average month)")
         season = rep.r.seasonality.copy()
