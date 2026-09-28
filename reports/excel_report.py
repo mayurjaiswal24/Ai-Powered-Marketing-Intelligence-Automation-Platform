@@ -481,15 +481,74 @@ def _profitability(book: _Book, prof) -> None:
         row = book.table(ws, table, start_row=row + 1, columns=cols, freeze=False, filter_=False)
 
 
+def _targets(book: _Book, result) -> None:
+    """U5: sheet "Targets" (only when targets are set): the scorecard with real numbers in each
+    metric's own format, then the monthly and channel comparisons."""
+    if result is None or result.scorecard.empty:
+        return
+    from analytics.targets import TARGET_METRICS, month_label, summary_lines
+    ws = book.sheet("Targets")
+    band = cfg.TARGET_TOLERANCE
+    ws.write_string(0, 0, "Targets entered in the app by the user; actual values for the full dataset. On Target = at "
+                    f"or better than the target; Within {band * 100:.0f}% = up to {band * 100:.0f}% on the wrong "
+                    f"side; monthly spend on target within ±{cfg.SPEND_ON_TARGET_BAND * 100:.0f}%.",
+                    book.fmt["subtitle"])
+    row = 1
+    for line in summary_lines(result):
+        ws.write_string(row, 0, line, book.fmt["subtitle"])
+        row += 1
+    row += 1
+    ws.write_string(row, 0, "Scorecard", book.fmt["section"])
+    row += 1
+    headers = ["Metric", "Compared Over", "Actual", "Target", "Gap", "Gap vs Target (%)", "Status"]
+    for j, h in enumerate(headers):
+        ws.write_string(row, j, h, book.fmt["header"])
+    for r in result.scorecard.itertuples():
+        row += 1
+        fmt = book.number_format(r.fmt)
+        ws.write_string(row, 0, r.label, book.fmt["text"])
+        ws.write_string(row, 1, r.basis, book.fmt["text"])
+        for j, value in ((2, r.actual), (3, r.target), (4, r.gap)):
+            book.write_value(ws, row, j, None if value is None or pd.isna(value) else float(value), fmt)
+        book.write_value(ws, row, 5, None if r.gap_pct is None or pd.isna(r.gap_pct) else float(r.gap_pct),
+                         book.fmt["signed_percent"])
+        ws.write_string(row, 6, r.status, book.fmt["text"])
+    ws.set_column(0, 1, 30)
+    ws.set_column(2, 6, 16)
+    row += 2
+    for title, table, key_col in (("Monthly Targets", result.monthly, "period"),
+                                  ("Status by Channel", result.channels, "channel")):
+        if table is None or table.empty:
+            continue
+        ws.write_string(row, 0, title, book.fmt["section"])
+        row += 1
+        for j, h in enumerate(["Month" if key_col == "period" else "Channel", "Metric", "Actual", "Target",
+                               "Gap vs Target (%)", "Status"]):
+            ws.write_string(row, j, h, book.fmt["header"])
+        for r in table.itertuples():
+            row += 1
+            name = month_label(r.period) if key_col == "period" else r.channel
+            fmt = book.number_format(TARGET_METRICS[r.metric].fmt)
+            ws.write_string(row, 0, str(name), book.fmt["text"])
+            ws.write_string(row, 1, r.label, book.fmt["text"])
+            book.write_value(ws, row, 2, None if r.actual is None or pd.isna(r.actual) else float(r.actual), fmt)
+            book.write_value(ws, row, 3, float(r.target), fmt)
+            book.write_value(ws, row, 4, None if r.gap_pct is None or pd.isna(r.gap_pct) else float(r.gap_pct),
+                             book.fmt["signed_percent"])
+            ws.write_string(row, 5, r.status, book.fmt["text"])
+        row += 2
+
+
 # ---------------------------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------------------------
 
 def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
                       quality_log: pd.DataFrame | None = None, ai: dict | None = None,
-                      profitability=None) -> list[str]:
+                      profitability=None, targets=None) -> list[str]:
     """Write the workbook to a path or binary buffer. Returns the sheet names written.
-    `profitability` (optional) replaces the result's own, e.g. one based on an assumed margin."""
+    `profitability` (optional) replaces the result's own, e.g. one based on an assumed margin.
+    `targets` (optional, U5) adds the "Targets" sheet."""
     generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     try:
         book = _Book(str(output) if isinstance(output, Path) else output)
@@ -501,6 +560,7 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
                       "One row per campaign. Ratios are recomputed from each campaign's totals.")
         _channels(book, result)
         _profitability(book, profitability if profitability is not None else getattr(result, "profitability", None))
+        _targets(book, targets)
         _segments(book, result)
         _funnel(book, result)
         _trends(book, result)
@@ -519,13 +579,13 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
 
 def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: pd.DataFrame | None = None,
                     exports_dir: str | Path | None = None, db_path=None, ai: dict | None = None,
-                    profitability=None) -> Path:
+                    profitability=None, targets=None) -> Path:
     """Save under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Workbook", run_id, "xlsx")
-    generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability)
+    generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability, targets=targets)
     if run_id:
         from database import repository
         from database.connection import DatabaseError

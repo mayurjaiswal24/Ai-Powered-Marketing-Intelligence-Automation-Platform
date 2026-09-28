@@ -16,7 +16,7 @@ from analytics.kpis import KPI_REGISTRY, period_comparison
 from config.fields import channel_type
 from config.settings import TREND_WINDOW_DAYS
 from dashboard import theme
-from utils.formatting import format_date_range, format_value, title_case
+from utils.formatting import format_change, format_date_range, format_value, title_case
 
 # A channel "punches above its weight" when its share of results beats its share of spend by at
 # least this many percentage points (smaller gaps are noise, so the title stays neutral).
@@ -273,3 +273,26 @@ def contribution_trend_title(monthly: pd.DataFrame, neutral: str) -> str:
     if negative:
         return f"Contribution Was Negative in {negative} of {len(values)} Months"
     return f"Contribution Stayed Positive in All {len(values)} Months"
+
+
+# ---------------------------------------------------------------------------------------------
+# Targets title (U5): reads the scorecard, never calculates
+# ---------------------------------------------------------------------------------------------
+
+def targets_title(scorecard: pd.DataFrame, neutral: str) -> str:
+    """'CPL Is Furthest Off Target: +18.2%; 3 of 5 On Target', 'All 4 Metrics Are On Target' or
+    '2 of 4 Metrics On Target; the Rest Are Within 10%'."""
+    if scorecard is None or scorecard.empty or "status" not in scorecard:
+        return neutral
+    rated = scorecard[~scorecard["status"].isin(["Not available", "Partial month"])]
+    if rated.empty:
+        return neutral
+    on = int((rated["status"] == "On Target").sum())
+    off = rated[rated["status"].isin(["Off Target", "Over Target", "Under Target"])]
+    if not off.empty and off["gap_pct"].notna().any():
+        worst = off.loc[off["gap_pct"].abs().idxmax()]
+        return (f"{worst['label']} Is Furthest Off Target: {format_change(worst['gap_pct'])}; "
+                f"{on} of {len(rated)} On Target")
+    if on == len(rated):
+        return f"All {len(rated)} Metrics Are On Target" if len(rated) > 1 else f"{rated.iloc[0]['label']} Is On Target"
+    return f"{on} of {len(rated)} Metrics On Target; the Rest Are Within 10%"

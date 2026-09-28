@@ -64,6 +64,9 @@ def restore_demo_run(payload: dict, settings, db_path=None, session_id: str | No
     prep = payload["prep"]
     output = copy.deepcopy(payload["output"])
     report = prep.report
+    if getattr(output, "layout_key", None) is None and getattr(prep, "raw_df", None) is not None:
+        from ai.mapping import layout_key     # U5: saved targets belong to the column layout
+        output.layout_key = layout_key(prep.raw_df.columns)
     try:
         ds = repository.register_dataset(report.filename, report.file_hash, report.rows,
                                          report.columns, report.file_type, db_path=db_path)

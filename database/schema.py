@@ -15,8 +15,8 @@ import sqlite3
 
 from config.fields import COUNT_FIELDS, FIELDS
 
-SCHEMA_VERSION = 4   # 2: run_snapshots; 3: mapping cache + mapping-call log, runs.session_id;
-                     # 4: learned_mappings (U2)
+SCHEMA_VERSION = 5   # 2: run_snapshots; 3: mapping cache + mapping-call log, runs.session_id;
+                     # 4: learned_mappings (U2); 5: targets (U5)
 
 
 def _record_column_type(name: str, ftype: str) -> str:
@@ -240,6 +240,17 @@ CREATE TABLE IF NOT EXISTS learned_mappings (
     source      TEXT NOT NULL CHECK (source IN ('AI verified', 'user confirmed')),
     times_seen  INTEGER NOT NULL DEFAULT 1,
     last_used   TEXT NOT NULL
+);
+
+-- Targets (U5): the user's target per metric for a column layout (the same layout key as
+-- mapping_cache), so the next file with the same columns shows the same targets. Never written in
+-- public mode (targets then live in the browser session only).
+CREATE TABLE IF NOT EXISTS targets (
+    layout_key  TEXT NOT NULL,
+    metric      TEXT NOT NULL,
+    value       REAL NOT NULL,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (layout_key, metric)
 );
 
 CREATE TABLE IF NOT EXISTS reports (

@@ -55,6 +55,7 @@ TAGS = {
     "Hypothesis": ("#fdf1d6", "#8a5d00"),
     "Recommendation": ("#e0f1e0", "#006300"),
     "User assumption": ("#fdf1d6", "#8a5d00"),     # U4: figures based on a user-entered margin
+    "User target": ("#fdf1d6", "#8a5d00"),         # U5: targets entered in the app
 }
 
 
@@ -178,6 +179,7 @@ class _Report:
         self.r = result
         self.ai = ai
         self.prof = getattr(result, "profitability", None)
+        self.targets = None                        # U5: TargetsResult, only when targets are set
         self.s = _styles()
         self.story: list = []
         self.section_no = 0
@@ -535,6 +537,28 @@ def _profitability(rep: _Report) -> None:
                           "roas_headroom"])
 
 
+def _targets(rep: _Report) -> None:
+    """Performance vs Targets (U5): only when the user set targets; full dataset."""
+    result = rep.targets
+    if result is None or result.scorecard.empty:
+        return
+    from analytics.targets import display_monthly, display_scorecard, summary_lines
+    rep.h1("Performance vs Targets")
+    band = cfg.TARGET_TOLERANCE
+    rep.p(tag("User target") + " " + escape(
+        "Targets were entered in the app by the user; actual values are verified metrics for the full "
+        f"dataset. On Target = at or better than the target; Within {band * 100:.0f}% = up to "
+        f"{band * 100:.0f}% on the wrong side; monthly spend is on target within "
+        f"±{cfg.SPEND_ON_TARGET_BAND * 100:.0f}%. Monthly targets use the latest full month."), "small", raw=True)
+    rep.bullets(summary_lines(result))
+    shown = display_scorecard(result.scorecard)
+    rep.table(shown, list(shown.columns))
+    monthly = display_monthly(result.monthly)
+    if not monthly.empty:
+        rep.h2("Monthly targets")
+        rep.table(monthly, list(monthly.columns))
+
+
 def _funnel(rep: _Report) -> None:
     f = rep.r.funnel
     if f.empty:
@@ -806,18 +830,20 @@ def _appendix(rep: _Report) -> None:
 # ---------------------------------------------------------------------------------------------
 
 def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None,
-                 profitability=None) -> None:
+                 profitability=None, targets=None) -> None:
     """Write the executive report for `result` to a file path or a binary buffer. `profitability`
-    (optional) replaces the result's own, e.g. one based on the user's assumed margin."""
+    (optional) replaces the result's own, e.g. one based on the user's assumed margin. `targets`
+    (optional, U5) adds "Performance vs Targets"."""
     _register_fonts()
     generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     rep = _Report(result, ai)
     if profitability is not None:
         rep.prof = profitability
+    rep.targets = targets
     try:
         _cover(rep, generated)
         for section in (_executive_summary, _kpi_overview, _overall_performance, _channels,
-                        _campaigns, _profitability, _funnel, _segments, _trends, _key_findings,
+                        _campaigns, _profitability, _targets, _funnel, _segments, _trends, _key_findings,
                         _performance_concerns, _ai_section, _data_quality, _methodology,
                         _limitations, _appendix):
             section(rep)
@@ -836,13 +862,13 @@ def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None
 
 
 def export_pdf(result, exports_dir: str | Path | None = None, db_path=None,
-               ai: dict | None = None, profitability=None) -> Path:
+               ai: dict | None = None, profitability=None, targets=None) -> Path:
     """Save the report under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Report", run_id, "pdf")
-    generate_pdf(result, path, ai=ai, profitability=profitability)
+    generate_pdf(result, path, ai=ai, profitability=profitability, targets=targets)
     if run_id:
         from database import repository
         from database.connection import DatabaseError

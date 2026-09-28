@@ -437,3 +437,44 @@ def breakeven_scatter(df: pd.DataFrame, title: str, subtitle: str | None = None)
     _show_legend(fig)
     fig.update_layout(hovermode="closest")
     return fig
+
+
+# ---------------------------------------------------------------------------------------------
+# Targets (U5)
+# ---------------------------------------------------------------------------------------------
+
+def target_bullet_chart(scorecard: pd.DataFrame, title: str, subtitle: str | None = None) -> go.Figure | None:
+    """One bar per metric with a target: actual as % of its target (metrics have different units,
+    so each is shown against its own target), with a labelled dotted target line at 100%. Colour =
+    status (green On Target, amber Within 10%, red off target); the label also says the status.
+    For CPL and CAC a bar past the line is worse; for the others a bar short of it is worse."""
+    if not _has(scorecard, "actual", "target", "label"):
+        return None
+    data = scorecard[scorecard["actual"].notna() & (scorecard["target"].astype(float) > 0)].copy()
+    if data.empty:
+        return None
+    data["pct"] = data["actual"].astype(float) / data["target"].astype(float) * 100
+    data = data.iloc[::-1]                    # plotly draws the first row at the bottom
+    labels = [wrap_label(r.label) for r in data.itertuples()]      # monthly = latest full month (subtitle)
+    row = 46 if any("<br>" in lab for lab in labels) else 34
+    fig = _base(title, max(CHART_HEIGHT, 60 + row * len(data)), subtitle)
+    colors = [theme.TARGET_STATUS_COLORS.get(s, theme.NEUTRAL) for s in data["status"]]
+    text = [f"{format_value(r.actual, r.fmt, compact=True)} vs {format_value(r.target, r.fmt, compact=True)} · {r.status}"
+            for r in data.itertuples()]
+    hover = [f"<b>{r.label}</b><br>Actual <b>{format_value(r.actual, r.fmt)}</b><br>Target "
+             f"{format_value(r.target, r.fmt)}<br>{format_value(r.pct, 'percent')} of target<br>{r.status}"
+             for r in data.itertuples()]
+    fig.add_trace(go.Bar(x=data["pct"], y=labels, orientation="h", marker=dict(color=colors),
+                         text=text, textposition="outside", cliponaxis=False,
+                         textfont=dict(color=theme.INK_SECONDARY, size=12),
+                         customdata=hover, hovertemplate="%{customdata}<extra></extra>"))
+    top = max(float(data["pct"].max()), 100.0)
+    fig.add_vline(x=100, line=dict(color=theme.INK_MUTED, width=1, dash="dot"), layer="below")
+    fig.add_annotation(x=100, y=1.0, yref="paper", yanchor="bottom", showarrow=False, text="Target",
+                       font=dict(color=theme.INK_MUTED, size=11))
+    low = min(float(data["pct"].min()), 0.0)
+    fig.update_xaxes(range=[low, top * 1.6], showgrid=True, gridcolor=theme.GRID, ticksuffix="%",
+                     title_text="Actual as % of Target")
+    fig.update_yaxes(showgrid=False, automargin=True)
+    fig.update_layout(bargap=0.4)
+    return fig

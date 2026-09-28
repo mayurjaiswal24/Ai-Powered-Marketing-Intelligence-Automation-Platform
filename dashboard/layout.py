@@ -19,6 +19,7 @@ from analytics.funnel import biggest_drop_off, funnel_by_channel, funnel_table
 from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, has_profit_data, period_comparison
 from analytics.profitability import TABLE_COLUMNS as PROFIT_COLUMNS
 from analytics.profitability import assumed_margin_label, profitability_analysis, summary_lines
+from analytics import targets as tg
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
@@ -43,7 +44,7 @@ NAV_SECTIONS = [
     ("Data", ["Upload & Profile", "Data Quality"]),
     ("Analysis", ["Executive Overview", "Performance Trends", "Channels", "Campaigns", "Funnel",
                   "Segments", "Anomalies"]),
-    ("Planning", ["Profitability"]),
+    ("Planning", ["Profitability", "Targets"]),
     ("AI", ["AI Insights"]),
     ("Output", ["Reports"]),
     ("", ["About"]),
@@ -54,7 +55,7 @@ PAGE_ICONS = {
     "Upload & Profile": "upload_file", "Data Quality": "fact_check", "Executive Overview": "dashboard",
     "Performance Trends": "trending_up", "Channels": "hub", "Campaigns": "campaign",
     "Funnel": "filter_alt", "Segments": "pie_chart", "Anomalies": "notification_important",
-    "Profitability": "savings",
+    "Profitability": "savings", "Targets": "flag",
     "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
 }
 PAGE_DESCRIPTIONS = {
@@ -72,6 +73,8 @@ PAGE_DESCRIPTIONS = {
                  "estimated ₹ impact.",
     "Profitability": "See which campaigns and channels make money after the cost of what was sold, "
                      "measured against each one's own break-even ROAS.",
+    "Targets": "Set a target for your key metrics and see which ones are on track, by channel and "
+               "by month.",
     "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
                    "every statement cites the evidence it is based on.",
     "Reports": "Download an executive PDF report and an analytical Excel workbook for the full "
@@ -790,7 +793,8 @@ def page_overview(filters: Filters) -> None:
         _no_rows_state()
         return
     trend = time_series(view["df"], "week")
-    ui.kpi_cards(view["kpis"], view["deltas"], OVERVIEW_KPIS, sparklines=_sparklines(trend, OVERVIEW_KPIS))
+    ui.kpi_cards(view["kpis"], view["deltas"], OVERVIEW_KPIS, sparklines=_sparklines(trend, OVERVIEW_KPIS),
+                 notes=tg.overview_notes(view["kpis"], current_targets(), OVERVIEW_KPIS))
     if view["deltas"] is None:
         st.caption("Change arrows compare with the previous period of the same length. Choose "
                    "'Last 30 days' or 'Last 90 days' in the sidebar to see them.")
@@ -1479,6 +1483,142 @@ def page_profitability(filters: Filters) -> None:
 
 
 # ---------------------------------------------------------------------------------------------
+# Page: Targets (Planning)
+# ---------------------------------------------------------------------------------------------
+
+def _targets_slot(output) -> tuple[str, bool]:
+    """(key, session_only): targets are saved per column layout (the mapping-cache key); in public
+    mode, or for an analysis reopened from before U5 (no layout key), they stay in the session."""
+    layout = getattr(output, "layout_key", None)
+    if layout:
+        return layout, _public()
+    return f"session:{output.analysis.metadata.get('dataset_name')}", True
+
+
+def current_targets() -> dict[str, float]:
+    """The user's targets for the open analysis ({} when none are set or they cannot be read)."""
+    output = current_output()
+    if output is None:
+        return {}
+    try:
+        key, session_only = _targets_slot(output)
+        return tg.load_targets(_state(), key, session_only)
+    except Exception:  # noqa: BLE001 - targets must never break a page
+        logger.exception("Could not load targets")
+        return {}
+
+
+def _target_widget_key(slot: str, metric: str) -> str:
+    return f"target_{slot[-12:]}_{metric}"
+
+
+def _save_targets_clicked(slot: str, session_only: bool, metrics: list[str]) -> None:
+    values = {m: _state().get(_target_widget_key(slot, m)) for m in metrics}
+    try:
+        tg.save_targets(_state(), slot, values, session_only)
+        _state()["targets_toast"] = "Targets saved." if tg.clean_targets(values) else "No targets set."
+    except Exception:  # noqa: BLE001 - e.g. the database is locked: keep them for this session
+        logger.exception("Could not save targets")
+        tg.save_targets(_state(), slot, values, True)
+        _state()["targets_toast"] = "Targets are kept for this session only (they could not be saved)."
+
+
+def _clear_targets_clicked(slot: str, session_only: bool, metrics: list[str]) -> None:
+    try:
+        tg.clear_targets(_state(), slot, session_only)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not clear saved targets")
+        tg.clear_targets(_state(), slot, True)
+    for m in metrics:
+        _state().pop(_target_widget_key(slot, m), None)
+    _state()["targets_toast"] = "Targets cleared."
+
+
+def _badge_table(shown: pd.DataFrame, height: int | None = None) -> None:
+    """A text table whose 'Status' columns are coloured badges (the word is always shown)."""
+    if shown is None or shown.empty:
+        ui.empty_state("No rows match the current filters.", icon="filter_alt_off")
+        return
+    status_cols = [c for c in shown.columns if c == "Status" or c.endswith(" Status")]
+    styled = shown.style.map(lambda v: f"background-color: {theme.TARGET_STATUS_BACKGROUND.get(v, theme.PANEL)}; "
+                                       f"color: {theme.INK}; font-weight: 600", subset=status_cols)
+    st.dataframe(styled, hide_index=True, width="stretch", **({"height": height} if height else {}))
+
+
+_TARGET_STEPS = {"money": 100.0, "percent": 0.1, "ratio": 0.1, "count": 10.0}
+
+
+def page_targets(filters: Filters) -> None:
+    output = current_output()
+    view = filtered_view(filters)
+    _header("Targets", filters)
+    df = view["df"]
+    if df.empty:
+        _no_rows_state()
+        return
+    stored = None if filters is not None and filters.active else getattr(output.analysis, "profitability", None)
+    prof = session_profitability(df, stored)
+    metrics = tg.available_metrics(df, output.analysis.capabilities, prof)
+    if not metrics:
+        _data_missing_state(tg.REASON_NO_METRICS)
+        return
+    slot, session_only = _targets_slot(output)
+    targets = current_targets()
+    toast = _state().pop("targets_toast", None)
+    if toast:
+        st.toast(toast, icon=":material/flag:")
+
+    with st.form(f"targets_form_{slot[-12:]}"):
+        ui.card_title("Your Targets", "Enter a target for the metrics you track; leave a box blank for no "
+                      "target. CPL and CAC are on target at or below the target, monthly spend within ±"
+                      f"{config_settings.SPEND_ON_TARGET_BAND * 100:.0f}%, everything else at or above it.")
+        cols = st.columns(3)
+        for i, key in enumerate(metrics):
+            m = tg.TARGET_METRICS[key]
+            cols[i % 3].number_input(
+                f"{m.label} ({m.unit})", value=targets.get(key), min_value=None if key == "roas_headroom" else 0.0,
+                step=_TARGET_STEPS.get(m.fmt, 1.0), key=_target_widget_key(slot, key), placeholder="No target",
+                help=f"{KPI_REGISTRY[tg.MONTHLY_TARGETS.get(key, key)].description} "
+                     + ("Compared month by month." if m.monthly else "Compared over the selected period."))
+        b1, b2, _ = st.columns([1, 1, 3])
+        b1.form_submit_button("Save Targets", type="primary", icon=":material/save:",
+                              on_click=_save_targets_clicked, args=(slot, session_only, metrics))
+        b2.form_submit_button("Clear Targets", icon=":material/delete:",
+                              on_click=_clear_targets_clicked, args=(slot, session_only, metrics))
+    st.caption("Targets are kept for this browser session only." if session_only else
+               "Targets are saved for files with the same columns, so they come back next time.")
+
+    result = tg.targets_analysis(df, targets, output.analysis.capabilities, prof, kpis=view["kpis"])
+    if result is None:
+        ui.empty_state("No targets set yet. Enter a target above and select Save Targets.", icon="flag")
+        return
+    st.markdown("## Scorecard")
+    st.markdown("\n".join(f"- {line}" for line in tg.summary_lines(result)))
+    _badge_table(tg.display_scorecard(result.scorecard))
+    band = config_settings.TARGET_TOLERANCE * 100
+    st.caption(f"Ratio targets are compared over the selected period. Within {band:.0f}% = up to {band:.0f}% "
+               "on the wrong side of the target. Monthly targets use the latest full month; a month with "
+               "fewer days of data than calendar days is not rated.")
+    start, end = cs.date_span(df)
+    ui.show_chart(charts.target_bullet_chart(
+        result.scorecard, cs.targets_title(result.scorecard, "Actual vs Target"),
+        subtitle=cs.subtitle(None, None, start, end, note="Actual as % of Target · Monthly Targets: Latest Full Month")),
+        "No target has an actual value to compare yet.")
+    st.caption("Each bar is the actual value as a share of its own target. For CPL and CAC a bar past the "
+               "target line is worse; for the other metrics a bar short of it is worse.")
+    if not result.channels.empty:
+        st.markdown("## Status by Channel")
+        _badge_table(tg.display_channels(result.channels))
+        st.caption("Each channel's KPIs from its own totals, against the same targets. Owned channels "
+                   "(for example email to the company's own list) have mostly fixed costs, so read their "
+                   "costs with care.")
+    if not result.monthly.empty:
+        st.markdown("## Monthly Targets")
+        months = result.monthly["period"].nunique()
+        _badge_table(tg.display_monthly(result.monthly), height=min(460, 40 + 35 * months))
+
+
+# ---------------------------------------------------------------------------------------------
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
 
@@ -1813,6 +1953,20 @@ def _export_profitability(output):
         return None
 
 
+def _export_targets(output):
+    """Targets vs actual for the exports (full dataset), or None when no target is set."""
+    try:
+        targets = current_targets()
+        if not targets:
+            return None
+        df = output.clean.clean_df
+        return tg.targets_analysis(df, targets, output.analysis.capabilities, _export_profitability(output),
+                                   kpis=output.analysis.kpis)
+    except Exception:  # noqa: BLE001 - a targets problem must not block the reports
+        logger.exception("Could not prepare targets for the reports")
+        return None
+
+
 def page_reports() -> None:
     output = current_output()
     _header("Reports")
@@ -1824,7 +1978,8 @@ def page_reports() -> None:
         if st.button("Generate PDF", key="generate_pdf", type="primary", icon=":material/picture_as_pdf:"):
             try:
                 with st.spinner("Building the PDF report…"):
-                    path = export_pdf(output.analysis, ai=_ai_sections(), profitability=_export_profitability(output))
+                    path = export_pdf(output.analysis, ai=_ai_sections(), profitability=_export_profitability(output),
+                                      targets=_export_targets(output))
                 _state()["pdf_path"] = str(path)
             except ReportError as exc:
                 ui.friendly_error(exc)
@@ -1842,7 +1997,8 @@ def page_reports() -> None:
                 with st.spinner("Building the Excel workbook…"):
                     path = export_workbook(output.analysis, output.clean.clean_df,
                                            output.clean.quality_log_df, ai=_ai_sections(),
-                                           profitability=_export_profitability(output))
+                                           profitability=_export_profitability(output),
+                                           targets=_export_targets(output))
                 _state()["excel_path"] = str(path)
             except WorkbookError as exc:
                 ui.friendly_error(exc)

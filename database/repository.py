@@ -467,6 +467,29 @@ def forget_learned_mappings(db_path=None) -> int:
         return conn.execute("DELETE FROM learned_mappings").rowcount
 
 
+# --- Targets (U5) ----------------------------------------------------------------------------------
+
+def load_targets(layout_key: str, db_path=None) -> dict[str, float]:
+    """{metric: target value} saved for a column layout ({} if none)."""
+    with session(db_path) as conn:
+        rows = conn.execute("SELECT metric, value FROM targets WHERE layout_key = ?", (layout_key,)).fetchall()
+    return {metric: float(value) for metric, value in rows}
+
+
+def save_targets(layout_key: str, targets: dict[str, float], db_path=None) -> None:
+    """Replace every target of a layout with `targets` (a metric left out has no target)."""
+    with session(db_path) as conn:
+        conn.execute("DELETE FROM targets WHERE layout_key = ?", (layout_key,))
+        conn.executemany("INSERT INTO targets (layout_key, metric, value, updated_at) VALUES (?, ?, ?, ?)",
+                         [(layout_key, metric, float(value), _now()) for metric, value in targets.items()])
+
+
+def clear_targets(layout_key: str, db_path=None) -> int:
+    """Delete a layout's targets; returns how many were removed."""
+    with session(db_path) as conn:
+        return conn.execute("DELETE FROM targets WHERE layout_key = ?", (layout_key,)).rowcount
+
+
 def delete_run(run_id: int, db_path=None) -> None:
     """Delete a run and (through ON DELETE CASCADE) everything that belongs to it."""
     with session(db_path) as conn:

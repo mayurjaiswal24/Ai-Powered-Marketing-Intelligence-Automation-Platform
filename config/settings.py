@@ -155,6 +155,13 @@ PROFIT_NEAR_BAND = 0.10
 # Allowed range for the optional, session-only "Assumed gross margin (%)" (blank by default).
 ASSUMED_MARGIN_MIN_PCT = 1.0
 ASSUMED_MARGIN_MAX_PCT = 99.0
+
+# --- Targets vs actual (U5, analytics/targets.py) --------------------------------------------------
+# A metric within 10% of its target on the wrong side is "Within 10%"; further away is "Off Target".
+TARGET_TOLERANCE = 0.10
+# Monthly spend is a plan to hit, not "more is better": within +/-5% of the target is "On Target",
+# within +/-10% is "Within 10%", beyond that "Over Target" or "Under Target".
+SPEND_ON_TARGET_BAND = 0.05
 ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE = 3   # entities needed to estimate "the typical change"
 
 # --- AI (Gemini) ---------------------------------------------------------------------------------

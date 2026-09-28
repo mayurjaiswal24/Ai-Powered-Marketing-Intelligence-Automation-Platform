@@ -168,10 +168,11 @@ def friendly_error(exc: Exception) -> None:
 # ---------------------------------------------------------------------------------------------
 
 def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4,
-              sparklines: dict[str, list] | None = None) -> None:
+              sparklines: dict[str, list] | None = None, notes: dict[str, str] | None = None) -> None:
     """Metric cards for the available KPIs among `keys`, with change vs the previous period and
     (when given) a sparkline of the last 12 weeks. Cost KPIs (CPL, CAC) show a fall as good
-    (green) and a rise as bad (red)."""
+    (green) and a rise as bad (red). `notes` (U5): a small line under a card, e.g.
+    'Target ₹9,000 · On Target'; cards without a note are unchanged."""
     shown = [k for k in keys if k in kpis and kpis[k].available]
     for i in range(0, len(shown), per_row):
         cols = st.columns(per_row)
@@ -190,6 +191,8 @@ def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4
             with col:
                 st.metric(title_case(k.label), k.formatted_compact, delta=delta, delta_color=delta_color,
                           help=help_text, border=True, **chart)
+                if notes and key in notes:
+                    st.caption(notes[key])
 
 
 # ---------------------------------------------------------------------------------------------

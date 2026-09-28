@@ -124,6 +124,13 @@ PROFIT_STATUS_COLORS = {"Profitable": GOOD, "Near break-even": WARNING, "Loss-ma
 PROFIT_STATUS_BACKGROUND = {"Profitable": "#e3f4e8", "Near break-even": "#fff3d1",
                             "Loss-making": "#fde2e1", "Not available": PANEL}
 
+# Target status (U5): green met, amber within 10%, red off target (the word is always shown too).
+TARGET_STATUS_COLORS = {"On Target": GOOD, "Within 10%": WARNING, "Off Target": BAD, "Over Target": BAD,
+                        "Under Target": BAD, "Partial month": NEUTRAL, "Not available": NEUTRAL}
+TARGET_STATUS_BACKGROUND = {"On Target": "#e3f4e8", "Within 10%": "#fff3d1", "Off Target": "#fde2e1",
+                            "Over Target": "#fde2e1", "Under Target": "#fde2e1", "Partial month": PANEL,
+                            "Not available": PANEL}
+
 
 def entity_colors(entities) -> dict[str, str]:
     """Colour per channel/platform: the fixed CHANNEL_COLORS first, then the unused palette

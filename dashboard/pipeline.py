@@ -19,7 +19,7 @@ from config.settings import PROJECT_ROOT
 from database import repository
 from database.connection import DatabaseError
 from database.housekeeping import housekeep
-from ai.mapping import AIMappingOutcome, MappingAssistant, contradicted_ai_columns
+from ai.mapping import AIMappingOutcome, MappingAssistant, contradicted_ai_columns, layout_key
 from ai.mapping import badges as ai_badges
 from ingestion.crosscheck import CrossCheckResult, apply_to_mapping, cross_check
 from ingestion.loader import LoadReport, load_file
@@ -65,6 +65,9 @@ class PipelineOutput:
     run_id: int | None
     is_reupload: bool
     save_error: str | None      # plain-English message if saving to the database failed
+    # U5: the column-layout key (as in the mapping cache) that saved targets belong to. None on
+    # analyses saved before U5 (reopened snapshots); targets then stay in the session only.
+    layout_key: str | None = None
 
 
 def sample_path(label: str) -> Path:
@@ -166,7 +169,8 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
     analysis = run_analysis(cleaned.clean_df, prep.validation, cleaned.quality_summary,
                             dataset_name=prep.report.filename, run_id=run_id)
 
-    output = PipelineOutput(cleaned, analysis, run_id, is_reupload, save_error)
+    output = PipelineOutput(cleaned, analysis, run_id, is_reupload, save_error,
+                            layout_key=layout_key(prep.raw_df.columns))
     if run_id is not None:
         progress("Saving results…")
         try:

@@ -130,12 +130,20 @@ def main() -> None:
     parser.add_argument("--prefix", default="page")
     parser.add_argument("--pages", nargs="+", required=True)
     parser.add_argument("--phone", action="store_true")
+    parser.add_argument("--targets", help='U5: targets to pre-save for the sample, as JSON, e.g. {"cpl": 240}')
     args = parser.parse_args()
     browser = next((b for b in BROWSERS if Path(b).exists()), None)
     if browser is None:
         sys.exit("Chrome or Edge is needed for screenshots.")
     tmp = Path(tempfile.mkdtemp(prefix="mi_shots_"))
     env = dict(os.environ, DATABASE_PATH=str(tmp / "shots.db"), AI_ENABLED="false")
+    if args.targets:                     # saved for the sample's column layout, as the Targets page does
+        sys.path.insert(0, str(ROOT))
+        from ai.mapping import layout_key
+        from dashboard.pipeline import DEFAULT_SAMPLE, load_raw, sample_path
+        from database import repository
+        raw, _ = load_raw(sample_path(DEFAULT_SAMPLE))
+        repository.save_targets(layout_key(raw.columns), json.loads(args.targets), db_path=tmp / "shots.db")
     app = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "app.py", "--server.headless", "true",
                             "--server.port", str(APP_PORT)], cwd=ROOT, env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

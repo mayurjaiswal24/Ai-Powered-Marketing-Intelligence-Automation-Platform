@@ -26,10 +26,10 @@ def test_creator_details_and_signature():
 
 def test_menu_groups_cover_every_page_once():
     assert layout.PAGES[0] == "Upload & Profile" and layout.PAGES[-1] == "About"
-    assert len(layout.PAGES) == len(set(layout.PAGES)) == 13
+    assert len(layout.PAGES) == len(set(layout.PAGES)) == 14
     assert set(layout.PAGE_ICONS) == set(layout.PAGES) == set(layout.PAGE_DESCRIPTIONS)
     starts = layout._nav_section_starts()
-    assert starts == {1: "Data", 3: "Analysis", 10: "Planning", 11: "AI", 12: "Output", 13: ""}
+    assert starts == {1: "Data", 3: "Analysis", 10: "Planning", 12: "AI", 13: "Output", 14: ""}
     css = theme.nav_css(starts)
     assert "nth-child(3)" in css and "'ANALYSIS'" in css
 
