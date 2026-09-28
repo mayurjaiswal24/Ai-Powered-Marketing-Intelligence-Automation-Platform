@@ -32,24 +32,64 @@ def page_header(title: str, caption: str | None = None, eyebrow: str | None = No
     st.markdown("".join(parts), unsafe_allow_html=True)
 
 
+_DEFAULT_NAME = "Marketing Intelligence Platform"
+
+
 def brand_header() -> None:
     """Sidebar top: a small bar-chart logo mark and the product name."""
     st.markdown(
         "<div class='mi-brand'><div class='mi-logo'><span style='height:9px'></span>"
         "<span style='height:14px'></span><span style='height:19px'></span></div>"
-        f"<div><div class='mi-brand-name'>{html.escape(config_settings.APP_NAME)}</div>"
+        f"<div><div class='mi-brand-name'>{html.escape(_detail('APP_NAME') or _DEFAULT_NAME)}</div>"
         "<div class='mi-brand-sub'>Marketing analytics &amp; AI insights</div></div></div>",
         unsafe_allow_html=True)
 
 
+def _detail(name: str) -> str:
+    """A product/creator detail from config/settings.py, or "" if it is missing, so the sidebar
+    footer and the About page can never fail because of a settings change."""
+    value = getattr(config_settings, name, "")
+    return value if isinstance(value, str) else ""
+
+
+def _creator_link() -> str:
+    name, url = html.escape(_detail("CREATOR_NAME")), _detail("CREATOR_LINKEDIN")
+    if url.startswith("https://"):
+        return (f"<a href='{html.escape(url)}' target='_blank' "
+                f"rel='noopener noreferrer'>{name}</a>")
+    return name
+
+
 def signature() -> None:
     """Sidebar footer on every page: creator (LinkedIn, new tab) and version."""
-    st.markdown(
-        "<div class='mi-signature'>Created by "
-        f"<a href='{html.escape(config_settings.CREATOR_LINKEDIN)}' target='_blank' "
-        f"rel='noopener noreferrer'>{html.escape(config_settings.CREATOR_NAME)}</a>"
-        f"<br>v{html.escape(config_settings.APP_VERSION)}</div>",
-        unsafe_allow_html=True)
+    parts = []
+    if _detail("CREATOR_NAME"):
+        parts.append(f"Created by {_creator_link()}")
+    if _detail("APP_VERSION"):
+        parts.append(f"v{html.escape(_detail('APP_VERSION'))}")
+    if parts:
+        st.markdown(f"<div class='mi-signature'>{'<br>'.join(parts)}</div>", unsafe_allow_html=True)
+
+
+def creator_card() -> None:
+    """About page: who built the platform. Rows whose setting is missing are simply left out."""
+    card_title("Created by")
+    parts = []
+    if _detail("CREATOR_NAME"):
+        parts.append(f"<div class='mi-creator-name'>{_creator_link()}</div>")
+    for label, name in (("Education", "CREATOR_TITLE"), ("Previously", "CREATOR_EDUCATION_PREVIOUS"),
+                        ("Focus", "CREATOR_FOCUS")):
+        if _detail(name):
+            parts.append(f"<div class='mi-creator-row'><b>{label}:</b> "
+                         f"{html.escape(_detail(name))}</div>")
+    if _detail("CREATOR_OPEN_TO"):
+        parts.append(f"<div class='mi-open-to'>{html.escape(_detail('CREATOR_OPEN_TO'))}</div>")
+    if _detail("APP_VERSION"):
+        parts.append(f"<div class='mi-creator-row'>{html.escape(_detail('APP_NAME'))} "
+                     f"v{html.escape(_detail('APP_VERSION'))}</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+    if _detail("CREATOR_LINKEDIN").startswith("https://"):
+        st.link_button("Connect on LinkedIn", _detail("CREATOR_LINKEDIN"), icon=":material/open_in_new:")
 
 
 def section_label(text: str) -> None:

@@ -224,3 +224,48 @@ def test_pages_before_analysis_show_empty_state(app):
     at.sidebar.radio(key="page").set_value("Executive Overview").run()
     assert not at.exception
     assert any("Load a dataset" in m.value for m in at.markdown)
+
+
+# --- About page and sidebar footer (static: no data, no database, no AI settings) ---------------
+
+def _about_ok(at):
+    at.sidebar.radio(key="page").set_value("About").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert not at.error, [e.value for e in at.error]
+    text = " ".join(m.value for m in at.markdown)
+    assert "What this platform does" in text and "Mayur Jaiswal" in text
+    assert "Created by" in " ".join(m.value for m in at.sidebar.markdown)
+
+
+def test_about_renders_with_no_data(app):
+    at = app.run()
+    _about_ok(at)
+
+
+def test_about_renders_with_data_loaded(app):
+    at = app.run()
+    at.button(key="load_sample").click().run()
+    at.button(key="run_analysis").click().run()
+    _about_ok(at)
+
+
+def test_about_and_footer_survive_missing_settings(app, monkeypatch):
+    import config.settings as cfg
+    for name in ("APP_NAME", "APP_VERSION", "CREATOR_NAME", "CREATOR_LINKEDIN", "CREATOR_TITLE",
+                 "CREATOR_EDUCATION_PREVIOUS", "CREATOR_FOCUS", "CREATOR_OPEN_TO"):
+        monkeypatch.delattr(cfg, name)
+    at = app.run()
+    at.sidebar.radio(key="page").set_value("About").run()
+    assert not at.exception and not at.error
+    assert any("What this platform does" in m.value for m in at.markdown)
+
+
+def test_every_menu_page_renders_after_loading_sample(app):
+    from dashboard.layout import PAGES as MENU
+    at = app.run()
+    at.button(key="load_sample").click().run()
+    at.button(key="run_analysis").click().run()
+    for page in MENU:
+        at.sidebar.radio(key="page").set_value(page).run()
+        assert not at.exception, (page, [e.value for e in at.exception])
+        assert not any("Something went wrong" in e.value for e in at.error), page

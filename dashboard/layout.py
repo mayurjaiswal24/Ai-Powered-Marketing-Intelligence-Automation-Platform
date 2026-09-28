@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 import io
+import logging
 import uuid
 from pathlib import Path
 
@@ -30,6 +31,8 @@ from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
 from utils.formatting import format_count, format_date, format_datetime_ist, format_value
+
+logger = logging.getLogger("marketing_intelligence")
 
 # Sidebar menu: sections in order, each with its pages. A blank section name = divider only.
 NAV_SECTIONS = [
@@ -182,7 +185,13 @@ def sidebar() -> tuple[str, Filters | None]:
         with st.container(key="mi_nav"):
             page = st.radio("Menu", PAGES, key="page", label_visibility="collapsed",
                             format_func=_nav_label, width="stretch")
-        filters = _sidebar_filters()
+        filters = None
+        if page != "About":           # About is static: no filters, no data
+            try:
+                filters = _sidebar_filters()
+            except Exception:  # noqa: BLE001 - a filter problem must not hide the menu or footer
+                logger.exception("Could not build the sidebar filters")
+                st.caption("Filters are unavailable for this analysis.")
         ui.signature()
         return page, filters
 
@@ -1336,7 +1345,7 @@ def _ai_usage_panel() -> None:
     budget = budget_status(settings, output.run_id if output else None,
                            _state().get("ai_session_calls", 0))
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Gemini calls today (UTC)", f"{usage['calls']} of {settings.ai_max_calls_per_day}", border=True)
+    c1.metric("AI calls today", f"{usage['calls']} of {settings.ai_max_calls_per_day}", border=True)
     c2.metric("Failed calls today", format_count(usage["failed"]), border=True)
     c3.metric("Saved results reused today", format_count(usage["cache_hits"]), border=True,
               help="Cache hits: no API call and no budget used.")
@@ -1416,3 +1425,38 @@ def page_reports() -> None:
 
 def not_ready() -> None:
     ui.empty_state(NOT_READY)
+
+
+# ---------------------------------------------------------------------------------------------
+# About (static: never reads the loaded data, the database or AI settings)
+# ---------------------------------------------------------------------------------------------
+
+ABOUT_FEATURES = [
+    ("Upload any marketing export", "CSV or Excel; columns are recognised automatically and you "
+     "can change any mapping."),
+    ("Clean and check the data", "duplicates, bad dates and impossible values are fixed or "
+     "flagged, and every change is logged."),
+    ("Calculate the KPIs", "CTR, CPC, CPL, CAC, ROAS, AOV and funnel rates, always recomputed "
+     "from totals."),
+    ("Find what changed", "trends, channel and campaign rankings, segments and weekly anomaly "
+     "detection."),
+    ("Explain it in plain language", "optional AI insights that cite the numbers they are based on."),
+    ("Share the results", "a PDF report and an analytical Excel workbook with the same numbers "
+     "as the dashboard."),
+]
+ABOUT_STACK = ("Python · pandas · Streamlit · Plotly · SQLite · Google Gemini · ReportLab · "
+               "matplotlib · XlsxWriter")
+
+
+def page_about() -> None:
+    _header("About")
+    what, who = st.columns([3, 2], gap="large")
+    with what, st.container(border=True):
+        ui.card_title("What this platform does")
+        items = "".join(f"<li><b>{html.escape(title)}</b> - {html.escape(text)}</li>"
+                        for title, text in ABOUT_FEATURES)
+        st.markdown(f"<ul class='mi-about-list'>{items}</ul>", unsafe_allow_html=True)
+        st.caption(f"Built with {ABOUT_STACK}. Every number is calculated in Python; the AI only "
+                   "interprets a summary of those numbers.")
+    with who, st.container(border=True):
+        ui.creator_card()

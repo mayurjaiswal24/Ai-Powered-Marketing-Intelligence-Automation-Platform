@@ -179,6 +179,7 @@ APP_CSS = f"""
   .mi-about-list li {{ margin: 0.25rem 0; }}
   .mi-about-list b {{ color: {INK}; font-weight: 600; }}
   .mi-creator-name {{ font-size: 1.25rem; font-weight: 680; color: {INK}; }}
+  .mi-creator-name a {{ color: {BRAND}; text-decoration: none; }}
   .mi-creator-row {{ margin: 0.35rem 0; color: {INK_SECONDARY}; font-size: 0.92rem; }}
   .mi-creator-row b {{ color: {INK}; font-weight: 600; }}
   .mi-open-to {{ display: inline-block; margin: 0.5rem 0 0.4rem 0; padding: 0.3rem 0.7rem;

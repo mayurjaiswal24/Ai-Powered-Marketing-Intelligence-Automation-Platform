@@ -249,7 +249,7 @@ def test_app_cache_regenerate_confirmation_and_usage(app_env, clean):
 
     at2.sidebar.radio(key="page").set_value("Data Quality").run()
     metrics = {m.label: m.value for m in at2.metric}
-    assert metrics["Gemini calls today (UTC)"] == "2 of 2" and metrics["Calls left now"] == "0"
+    assert metrics["AI calls today"] == "2 of 2" and metrics["Calls left now"] == "0"
     assert metrics["Saved results reused today"] == "0"     # page-open loads are free and not logged
 
     at2.sidebar.radio(key="page").set_value("Reports").run()
