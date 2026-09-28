@@ -28,22 +28,24 @@ class AIError(Exception):
 
 
 MESSAGES = {
-    "disabled": "AI insights are turned off in this app. Everything else works without AI.",
-    "missing_key": "No Gemini API key is set. Add GEMINI_API_KEY to the .env file (or Streamlit "
-                   "secrets) and restart the app.",
-    "missing_model": "No Gemini model is set. Add GEMINI_MODEL to the .env file (a model available "
-                     "on your plan in Google AI Studio) and restart the app.",
-    "invalid_key": "Gemini rejected the API key. Check GEMINI_API_KEY in the .env file.",
-    "model_not_found": "The model named in GEMINI_MODEL was not found or is not available to this "
-                       "key. Check the model name in Google AI Studio.",
-    "quota": "The Gemini usage limit has been reached (too many requests). Please try again later; "
-             "no retry was attempted.",
-    "network": "Gemini could not be reached (network problem or timeout). Please check the "
-               "connection and try again later.",
-    "server": "The Gemini service is temporarily unavailable. Please try again later.",
-    "invalid_response": "Gemini's answer could not be read in the expected format, so it was not "
-                        "shown. Please try again later.",
-    "budget": "The AI call limit for this run has been reached, so no further call was made.",
+    "disabled": "AI Insights are turned off in this app. Everything else works without AI.",
+    "missing_key": "No Google Gemini key is set up for this app. The app owner needs to add it to the "
+                   "app settings and restart the app.",
+    "missing_model": "No Google Gemini model is set up for this app. The app owner needs to add a "
+                     "model available on their Google AI Studio plan, then restart the app.",
+    "invalid_key": "Google Gemini rejected this app's key. The app owner needs to check the key in "
+                   "the app settings.",
+    "model_not_found": "The Google Gemini model set up for this app was not found or is not "
+                       "available to its key. The app owner needs to check the model name in "
+                       "Google AI Studio.",
+    "quota": "The Google Gemini usage limit has been reached, so no further request was made. "
+             "Please try again later.",
+    "network": "Google Gemini could not be reached because of a network problem or a timeout. "
+               "Please check the connection and try again later.",
+    "server": "Google Gemini is temporarily unavailable. Please try again later.",
+    "invalid_response": "Google Gemini's answer could not be read in the expected format, so it was "
+                        "not shown. Please try again later.",
+    "budget": "The AI call limit for this analysis has been reached, so no further call was made.",
     "unknown": "The AI insights could not be generated. The rest of the dashboard is unaffected.",
 }
 

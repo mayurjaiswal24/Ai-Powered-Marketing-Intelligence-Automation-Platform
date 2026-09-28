@@ -60,7 +60,7 @@ class BudgetStatus:
             return (f"This demo allows {self.session_limit} AI calls per session. "
                     "Saved insights still work.")
         if self.calls_this_run >= self.run_limit:
-            return (f"The AI limit for this analysis run ({self.run_limit} calls) has been reached. "
+            return (f"The AI limit for this analysis ({self.run_limit} calls) has been reached. "
                     "Saved insights still work.")
         return ""
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 import pandas as pd
 
 from analytics.kpis import KPI_REGISTRY
-from utils.formatting import format_count, format_date, format_value
+from utils.formatting import format_count, format_date, format_value, title_case
 
 MONEY_COLUMNS = {"spend", "budget", "revenue", "gross_profit", "baseline_money", "observed_money",
                  "estimated_impact_inr", "rupees_at_stake"}
@@ -14,13 +14,15 @@ COUNT_COLUMNS = {"rows", "impressions", "clicks", "leads", "qualified_leads", "o
                  "conversions", "customers", "orders", "active_days", "value", "days"}
 NICE_NAMES = {
     "campaign": "Campaign", "channel": "Channel", "segment": "Segment", "rows": "Rows",
-    "first_date": "First day", "last_date": "Last day", "active_days": "Active days",
-    "trend": "Trend (4 wks)", "trend_change_pct": "Change (4 wks)", "growth_trend": "Trend (4 wks)",
-    "growth_pct": "Growth (4 wks)", "anomalies": "Anomalies", "label": "Stage",
-    "rate_from_previous": "Conversion from previous", "drop_off_pct": "Drop-off",
-    "estimated_impact_inr": "Estimated impact (₹)", "impact_direction": "Loss or gain",
-    "impact_basis": "How the impact is estimated", "related_effects": "Related effects",
-    "channel_type": "Channel type",
+    "first_date": "First Day", "last_date": "Last Day", "active_days": "Active Days",
+    "trend": "Trend (4 Weeks)", "trend_change_pct": "Change (4 Weeks)", "growth_trend": "Trend (4 Weeks)",
+    "growth_pct": "Growth (4 Weeks)", "anomalies": "Anomalies", "label": "Stage",
+    "rate_from_previous": "Conversion from Previous Stage", "drop_off_pct": "Drop-Off",
+    "estimated_impact_inr": "Estimated Impact (₹)", "impact_direction": "Loss or Gain",
+    "impact_basis": "How the Impact Is Estimated", "related_effects": "Related Effects",
+    "channel_type": "Channel Type", "kpi": "KPI", "kpi_name": "KPI", "incident_id": "Incident ID",
+    "evidence_ids": "Evidence IDs", "test_shift_pct": "Test Shift (%)", "rupees_at_stake": "₹ at Stake",
+    "at_stake_basis": "How ₹ at Stake Is Calculated", "change_pct": "Change (%)", "stage": "Stage ID",
 }
 
 
@@ -28,13 +30,13 @@ def column_label(col: str) -> str:
     if col in NICE_NAMES:
         return NICE_NAMES[col]
     if col in KPI_REGISTRY:
-        return KPI_REGISTRY[col].label
+        return title_case(KPI_REGISTRY[col].label)
     if col.endswith("_share_pct"):
-        return f"{col.removesuffix('_share_pct').replace('_', ' ').capitalize()} share"
+        return title_case(f"{col.removesuffix('_share_pct').replace('_', ' ')} share")
     if col.endswith("_index"):
         base = col.removesuffix("_index")
-        return f"{KPI_REGISTRY[base].label if base in KPI_REGISTRY else base} index"
-    return col.replace("_", " ").capitalize()
+        return title_case(f"{KPI_REGISTRY[base].label if base in KPI_REGISTRY else base} index")
+    return title_case(col.replace("_", " "))
 
 
 def column_format(col: str, series: pd.Series) -> str:

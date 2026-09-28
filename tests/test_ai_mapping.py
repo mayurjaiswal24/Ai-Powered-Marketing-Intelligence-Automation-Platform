@@ -161,7 +161,7 @@ def test_red_badge_not_applied_and_blocks(tmp_path):
 
 @pytest.mark.parametrize("settings, errors, expected", [
     (Settings(ai_enabled=False), [], "AI mapping is off"),
-    (AI_ON, [ai_error("quota")], "AI mapping not available"),
+    (AI_ON, [ai_error("quota")], "AI mapping is not available"),
     (dataclasses.replace(AI_ON, ai_max_mapping_calls_per_day=0), [], "daily AI mapping limit"),
 ])
 def test_ai_unavailable_falls_back_to_user_choice(tmp_path, settings, errors, expected):
@@ -253,7 +253,7 @@ def test_app_ai_mapping_banner_and_edit_rerun(ai_app):
     assert box.value == "leads"
     box.set_value("conversions")
     at.button(key=f"apply_all_{layout}").click().run()
-    assert any("mapping changed since the last analysis" in i.value for i in at.info)
+    assert any("mapping has changed since the last analysis" in i.value for i in at.info)
     at.button(key="run_analysis").click().run()
     output = at.session_state["output"]
     assert output.run_id != first_run and not at.exception
@@ -354,7 +354,7 @@ def test_demo_seed_loads_on_empty_database(tmp_path, monkeypatch):
     at.button(key="run_analysis").click().run()
     at.sidebar.radio(key="page").set_value("AI Insights").run()
     assert not at.exception
-    assert any("No API call used" in s.value for s in at.success)
+    assert any("No AI call was used" in s.value for s in at.success)
     with repository.session(tmp_path / "app.db") as conn:
         assert conn.execute("SELECT COUNT(*) FROM ai_insights").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM ai_runs WHERE cache_hit = 0").fetchone()[0] == 0

@@ -131,10 +131,12 @@ def bar_chart(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
         data = data.head(top_n)
     data = data.iloc[::-1]                      # plotly draws the first row at the bottom
     labels = data[category].astype(str)
-    height = max(CHART_HEIGHT, 44 + 30 * len(data))
+    wrapped = labels.map(wrap_label)
+    row = 46 if wrapped.str.contains("<br>").any() else 30     # two-line labels need taller rows
+    height = max(CHART_HEIGHT, 44 + row * len(data))
     fig = _base(title, height)
     fig.add_trace(go.Bar(
-        x=data[value], y=labels.map(wrap_label), orientation="h", marker=dict(color=theme.PRIMARY),
+        x=data[value], y=wrapped, orientation="h", marker=dict(color=theme.PRIMARY),
         text=[format_value(v, fmt, compact=True) for v in data[value]], textposition="outside",
         textfont=dict(color=theme.INK_SECONDARY, size=12), cliponaxis=False,
         customdata=[f"{c}<br><b>{format_value(v, fmt)}</b>" for c, v in zip(labels, data[value])],
@@ -147,7 +149,7 @@ def bar_chart(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
     _format_axis(fig, list(data[value]) + ([reference] if reference is not None else []), fmt, axis="x")
     fig.update_yaxes(showgrid=False, automargin=True)
     fig.update_xaxes(showgrid=True, gridcolor=theme.GRID)
-    fig.update_layout(bargap=0.4)
+    fig.update_layout(bargap=0.4, margin=dict(r=theme.VALUE_LABEL_MARGIN))   # room for the value labels
     return fig
 
 
@@ -199,6 +201,7 @@ def index_chart(df: pd.DataFrame, category: str, index_col: str, title: str,
                        text="Average = 100", font=dict(color=theme.INK_MUTED, size=11))
     fig.update_yaxes(showgrid=False, automargin=True)
     fig.update_xaxes(showgrid=True, gridcolor=theme.GRID)
+    fig.update_layout(margin=dict(r=theme.VALUE_LABEL_MARGIN))              # room for the value labels
     return fig
 
 
@@ -245,7 +248,7 @@ def anomaly_chart(weekly: pd.DataFrame, metric: str, fmt: str, start, end, expec
     fig.add_vrect(x0=pd.Timestamp(start), x1=pd.Timestamp(end), fillcolor=theme.WARNING,
                   opacity=0.12, line_width=0, layer="below")
     fig.add_annotation(x=pd.Timestamp(start), y=1.0, yref="paper", yanchor="bottom", xanchor="left",
-                       showarrow=False, text="Unusual period", font=dict(color=theme.INK_MUTED, size=11))
+                       showarrow=False, text="Unusual Period", font=dict(color=theme.INK_MUTED, size=11))
     if expected is not None and not pd.isna(expected):
         fig.add_shape(type="line", x0=pd.Timestamp(start), x1=pd.Timestamp(end), y0=expected,
                       y1=expected, line=dict(color=theme.INK_SECONDARY, width=2))

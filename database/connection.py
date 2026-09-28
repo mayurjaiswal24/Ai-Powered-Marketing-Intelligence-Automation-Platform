@@ -36,17 +36,17 @@ def friendly_message(error: Exception) -> str:
     """Translate SQLite's technical errors into plain English."""
     text = str(error).lower()
     if "unable to open" in text:
-        return ("The database file could not be opened. Please check that the DATABASE_PATH "
-                "setting points to a folder that exists and can be written to.")
+        return ("The app's database could not be opened, so results cannot be saved or loaded. "
+                "Please try again later, or ask the app owner to check the storage folder.")
     if "readonly" in text or "read-only" in text:
-        return ("The database file is read-only, so results could not be saved. Please check "
-                "the file's permissions or choose a different DATABASE_PATH.")
+        return ("The app's database is read-only, so results could not be saved. Please ask the "
+                "app owner to check the storage permissions.")
     if "locked" in text or "busy" in text:
         return ("The database is busy (another process is using it). Please wait a moment "
                 "and try again.")
     if "malformed" in text or "not a database" in text:
-        return ("The database file is damaged or is not a database. Delete it (it will be "
-                "recreated empty) or choose a different DATABASE_PATH.")
+        return ("The app's database file is damaged. The app owner can delete it, and it will be "
+                "recreated empty.")
     if "disk" in text and "full" in text:
         return "There is not enough disk space to save the results."
     return "A database error stopped the results from being saved or loaded. Please try again."

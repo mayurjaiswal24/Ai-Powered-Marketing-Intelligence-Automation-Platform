@@ -101,12 +101,12 @@ def test_colour_follows_entity_not_rank():
 def test_format_table(outputs):
     a = outputs["Kalpa Learning - clean sample (CSV)"].analysis
     shown = format_table(a.channels, ["channel", "spend", "spend_share_pct", "cpl", "roas", "ctr", "cpl_index"])
-    assert list(shown.columns) == ["Channel", "Spend", "Spend share", "CPL", "ROAS", "CTR", "CPL index"]
+    assert list(shown.columns) == ["Channel", "Spend", "Spend Share", "CPL", "ROAS", "CTR", "CPL Index"]
     assert shown["Spend"].str.startswith("₹").all()
     assert shown["ROAS"].str.endswith("x").all() and shown["CTR"].str.endswith("%").all()
     nan_table = format_table(pd.DataFrame({"roas": [None, 2.0]}))
     assert nan_table["ROAS"].tolist() == ["N/A", "2.00x"]
-    assert column_label("lead_to_conversion_rate") == "Lead-to-conversion rate"
+    assert column_label("lead_to_conversion_rate") == "Lead-to-Conversion Rate"
 
 
 def test_filters(outputs):
@@ -189,7 +189,7 @@ def test_app_messy_excel_end_to_end(app):
     at.button(key="run_analysis").click().run()
     assert not at.exception and any("Analysis ready" in s.value for s in at.success)
     at.sidebar.radio(key="page").set_value("Data Quality").run()
-    assert {m.label: m.value for m in at.metric}["Duplicates removed"] == "25"
+    assert {m.label: m.value for m in at.metric}["Duplicates Removed"] == "25"
     _visit_all_pages(at)
 
 
@@ -223,7 +223,7 @@ def test_pages_before_analysis_show_empty_state(app):
     at = app.run()
     at.sidebar.radio(key="page").set_value("Executive Overview").run()
     assert not at.exception
-    assert any("Load a dataset" in m.value for m in at.markdown)
+    assert any("No analysis is open yet" in m.value for m in at.markdown)
 
 
 # --- About page and sidebar footer (static: no data, no database, no AI settings) ---------------
@@ -233,7 +233,7 @@ def _about_ok(at):
     assert not at.exception, [e.value for e in at.exception]
     assert not at.error, [e.value for e in at.error]
     text = " ".join(m.value for m in at.markdown)
-    assert "What this platform does" in text and "Mayur Jaiswal" in text
+    assert "What This Platform Does" in text and "Mayur Jaiswal" in text
     assert "Created by" in " ".join(m.value for m in at.sidebar.markdown)
 
 
@@ -257,7 +257,7 @@ def test_about_and_footer_survive_missing_settings(app, monkeypatch):
     at = app.run()
     at.sidebar.radio(key="page").set_value("About").run()
     assert not at.exception and not at.error
-    assert any("What this platform does" in m.value for m in at.markdown)
+    assert any("What This Platform Does" in m.value for m in at.markdown)
 
 
 def test_every_menu_page_renders_after_loading_sample(app):

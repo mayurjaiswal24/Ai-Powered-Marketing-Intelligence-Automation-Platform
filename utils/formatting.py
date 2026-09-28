@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 
 NA = "N/A"
 LAKH = 1_00_000
@@ -154,3 +155,57 @@ def format_datetime_ist(value) -> str:
     local = moment.astimezone(IST)
     hour = local.hour % 12 or 12
     return f"{format_date(local)}, {hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+
+
+def format_date_range(start, end) -> str:
+    """'1 Oct 2025 – 30 Sep 2026' (en dash, as the UI style guide asks)."""
+    return f"{format_date(start)} – {format_date(end)}"
+
+
+# ---------------------------------------------------------------------------------------------
+# Display text (docs/UI_STYLE_GUIDE.md). Applied where text is SHOWN, so labels stored in the
+# analysis (and the AI evidence built from them) never change.
+# ---------------------------------------------------------------------------------------------
+
+
+# Short words that stay lowercase inside a Title Case heading (unless they come first).
+_SMALL_WORDS = {"a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor", "of", "on",
+                "or", "per", "the", "to", "via", "vs", "with"}
+_WORD = re.compile(r"[A-Za-z][A-Za-z']*")
+
+
+def title_case(text) -> str:
+    """'Click-to-lead rate' -> 'Click-to-Lead Rate', 'Share of spend' -> 'Share of Spend'.
+    Words that already contain capitals (ROAS, CTR, LinkedIn) are left as they are."""
+    if not isinstance(text, str):
+        return text
+
+    def fix(match: re.Match) -> str:
+        word = match.group(0)
+        if any(ch.isupper() for ch in word):
+            return word
+        if match.start() > 0 and word in _SMALL_WORDS:
+            return word
+        return word[0].upper() + word[1:]
+
+    return _WORD.sub(fix, text)
+
+
+def title_case_label(text) -> str:
+    """Title Case for the label part of 'Label: entity' (e.g. a finding title), leaving the
+    entity (a campaign or channel name from the data) exactly as it is."""
+    if not isinstance(text, str):
+        return text
+    label, sep, rest = text.partition(": ")
+    return title_case(label) + sep + rest
+
+
+def as_sentence(text) -> str:
+    """A short reason such as 'extra spaces removed' shown as 'Extra spaces removed.'"""
+    if not isinstance(text, str):
+        return text
+    text = text.strip()
+    if not text:
+        return text
+    text = text[0].upper() + text[1:]
+    return text if text[-1] in ".!?…" else text + "."

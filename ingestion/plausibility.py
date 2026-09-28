@@ -19,7 +19,7 @@ from ingestion.mapper import MappingResult
 from utils.formatting import format_count, format_inr, format_pct, format_ratio
 from utils.parsing import parse_numbers
 
-HEADLINE = "These numbers look unusual - check the mapping, or the data may be synthetic."
+HEADLINE = "These numbers look unusual. Check the mapping; the data may also be synthetic."
 
 
 @dataclass

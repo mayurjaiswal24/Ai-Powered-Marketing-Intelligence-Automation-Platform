@@ -14,7 +14,7 @@ are often wrong in quiet ways: ratios averaged instead of recalculated, reach ad
 days, a "Total cost" column mistaken for ad spend. AI chat tools make this worse when they are
 asked to calculate: they produce confident numbers that nobody checked.
 
-## What this platform does
+## What This Platform Does
 
 Upload a CSV or Excel export and, with no manual chart building:
 
@@ -130,13 +130,13 @@ Full details, cleaning rules and the anomaly method: [`docs/METHODOLOGY.md`](doc
 
 1. Double-click `run_app.bat` (or run `.venv\Scripts\python -m streamlit run app.py`). The app
    opens at http://localhost:8501.
-2. **Upload & Profile:** upload a file, or press **Load sample dataset**. The Kalpa sample
+2. **Upload & Profile:** upload a file, or press **Load Sample Dataset**. The Kalpa sample
    opens its finished analysis instantly.
 3. Review the mapping (source, check badge and reason for every column; change anything),
-   then press **Run analysis**.
+   then press **Run Analysis**.
 4. Explore the dashboard pages. Filters recalculate every figure.
 5. **AI Insights:** generate an interpretation within the budget (saved insights show with
-   "No API call used").
+   "No AI call was used").
 6. **Reports:** download the executive PDF and the Excel workbook.
 
 Public demo mode (`PUBLIC_MODE=true`) keeps each visitor's analyses in their own browser session,

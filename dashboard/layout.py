@@ -30,7 +30,8 @@ from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
-from utils.formatting import format_count, format_date, format_datetime_ist, format_value
+from utils.formatting import (as_sentence, format_count, format_date, format_date_range,
+                              format_datetime_ist, format_value, title_case)
 
 logger = logging.getLogger("marketing_intelligence")
 
@@ -54,23 +55,25 @@ PAGE_ICONS = {
 PAGE_DESCRIPTIONS = {
     "Upload & Profile": "Turn any marketing export into verified KPIs, insights and ready-to-share "
                         "reports in minutes.",
-    "Data Quality": "What was fixed, flagged or excluded while cleaning, and what it means for the numbers.",
-    "Executive Overview": "The headline numbers, where the money goes and the most important findings.",
-    "Performance Trends": "How results and efficiency move over time.",
+    "Data Quality": "See what was fixed, flagged or excluded during cleaning, and what it means for "
+                    "the numbers.",
+    "Executive Overview": "See the headline numbers, where the money goes and the most important findings.",
+    "Performance Trends": "Follow how results and efficiency change over time.",
     "Channels": "Compare paid channels on cost and return; owned channels are shown separately.",
     "Campaigns": "Rank campaigns, spot the strongest and weakest, and see which are trending.",
-    "Funnel": "How many people move from one stage to the next, and where most are lost.",
-    "Segments": "Performance by customer segment, geography and product.",
-    "Anomalies": "Unusual periods found automatically, ranked by estimated rupee impact.",
+    "Funnel": "See how many people move from one stage to the next, and where most are lost.",
+    "Segments": "Compare performance by customer segment, geography and product.",
+    "Anomalies": "Unusual periods are found automatically, grouped into incidents and ranked by their "
+                 "estimated ₹ impact.",
     "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
                    "every statement cites the evidence it is based on.",
-    "Reports": "Executive PDF and analytical Excel workbook for the full dataset (dashboard filters "
-               "do not apply to exports).",
-    "About": "What this platform does and who built it.",
+    "Reports": "Download an executive PDF report and an analytical Excel workbook for the full "
+               "dataset. Dashboard filters do not apply to exports.",
+    "About": "What the platform does and who created it.",
 }
 OVERVIEW_KPIS = ["revenue", "spend", "leads", "conversions", "roas", "cpl", "cac",
                  "lead_to_conversion_rate"]
-NOT_READY = "Load a dataset and run the analysis first (see Upload & Profile in the sidebar)."
+NOT_READY = "No analysis is open yet. Upload a file or load the sample dataset to begin."
 
 
 # ---------------------------------------------------------------------------------------------
@@ -156,6 +159,39 @@ def current_output():
 
 
 # ---------------------------------------------------------------------------------------------
+# Empty states: an icon, one sentence and (when there is a useful next step) one action button
+# ---------------------------------------------------------------------------------------------
+
+def _go_to_upload() -> None:
+    _state()["page"] = "Upload & Profile"
+
+
+def _clear_filters() -> None:
+    """Button callback: every dimension filter back to 'All' and the date range to all dates."""
+    state = _state()
+    for key in [k for k in state if str(k).startswith("filter_")]:
+        state[key] = []
+    state["date_preset"] = DATE_PRESETS[0]
+
+
+def _no_rows_state(message: str = "No rows match the current filters.", icon: str = "filter_alt_off") -> None:
+    """Nothing to show for the current filters: offer to clear them (only if any are set)."""
+    active = any(_state().get(k) for k in list(_state()) if str(k).startswith("filter_")) or \
+        _state().get("date_preset", DATE_PRESETS[0]) != DATE_PRESETS[0]
+    ui.empty_state(message, icon=icon,
+                   action=("Clear Filters", _clear_filters, "empty_clear_filters") if active else None)
+
+
+def _data_missing_state(message: str) -> None:
+    """The data has no column for this view: offer to change the mapping (or upload another file)."""
+    if "raw_df" in _state():
+        action = ("Edit Mapping", _open_mapping_editor, "empty_edit_mapping")
+    else:
+        action = ("Go to Upload & Profile", _go_to_upload, "empty_go_upload")
+    ui.empty_state(message, icon="table_chart", action=action)
+
+
+# ---------------------------------------------------------------------------------------------
 # Sidebar: navigation + filters
 # ---------------------------------------------------------------------------------------------
 
@@ -208,9 +244,9 @@ def _sidebar_filters() -> Filters | None:
     if "date" in df and df["date"].notna().any():
         data_start, data_end = df["date"].min(), df["date"].max()
         filters.data_start, filters.data_end = data_start, data_end
-        preset = st.radio("Date range", DATE_PRESETS, key="date_preset", horizontal=False)
+        preset = st.radio("Date Range", DATE_PRESETS, key="date_preset", horizontal=False)
         if preset == "Custom range":
-            picked = st.date_input("From - to", value=(data_start.date(), data_end.date()),
+            picked = st.date_input("From – To", value=(data_start.date(), data_end.date()),
                                    min_value=data_start.date(), max_value=data_end.date(),
                                    key="date_custom")
             if isinstance(picked, (tuple, list)) and len(picked) == 2:
@@ -223,11 +259,8 @@ def _sidebar_filters() -> Filters | None:
         options = sorted(df[col].dropna().astype(str).unique())
         filters.dimensions[col] = st.multiselect(label, options, key=f"filter_{col}",
                                                  placeholder="All")
-    if filters.active and st.button("Clear filters", key="clear_filters"):
-        for col, _ in available_filters(df):
-            st.session_state[f"filter_{col}"] = []
-        st.session_state["date_preset"] = DATE_PRESETS[0]
-        st.rerun()
+    if filters.active:
+        st.button("Clear Filters", key="clear_filters", on_click=_clear_filters)
     meta = output.analysis.metadata
     st.caption(f"Dataset: {meta.get('dataset_name')}"
                + (f" · Analysis #{output.run_id}" if output.run_id else ""))
@@ -276,20 +309,21 @@ def _filter_caption(filters: Filters | None) -> str:
 def page_upload() -> None:
     _header("Upload & Profile")
     if _public():
-        st.info("Demo app: your data is kept only for this session and deleted automatically.")
+        st.info("This is a demo: your data is kept only for this session and then deleted "
+                "automatically.")
     ui.steps_guide([
         ("Upload", "Add a CSV or Excel export from any ad platform, CRM or campaign tracker."),
-        ("Check mapping", "The app recognises your columns and cleans the data. Confirm anything "
+        ("Check the Mapping", "The app recognises your columns and cleans the data. Confirm anything "
                           "it is unsure about."),
         ("Analyse", "Run the analysis to get verified KPIs, channel and campaign insights, "
                     "incidents and reports."),
     ])
     left, right = st.columns([3, 2], gap="large")
-    with left, st.container(border=True):
+    with left, st.container(border=True, height="stretch"):
         limit_mb = config_settings.settings.upload_limit_mb      # 10 MB in public mode
-        ui.card_title("Upload your data", f"CSV or Excel, up to {limit_mb} MB. One row per day and "
-                      "campaign works best.")
-        uploaded = st.file_uploader("Marketing data file", type=["csv", "xlsx"], key="uploader",
+        ui.card_title("Upload Your Data", f"Upload a CSV or Excel file of up to {limit_mb} MB. One "
+                      "row per day and campaign works best.")
+        uploaded = st.file_uploader("Marketing Data File", type=["csv", "xlsx"], key="uploader",
                                     max_upload_size=limit_mb, label_visibility="collapsed",
                                     help="One row per day and campaign works best. Maximum size: "
                                          f"{limit_mb} MB.")
@@ -300,12 +334,12 @@ def page_upload() -> None:
                 _reset_for_new_file(raw_df, report, uploaded.name)
             except IngestionError as exc:
                 ui.friendly_error(exc)
-    with right, st.container(border=True):
+    with right, st.container(border=True, height="stretch"):
         ui.card_title("Try the Demo", "No file at hand? Explore the platform with realistic sample "
                       "data from an education brand.")
-        label = st.selectbox("Sample dataset", list(SAMPLE_DATASETS),
+        label = st.selectbox("Sample Dataset", list(SAMPLE_DATASETS),
                              index=list(SAMPLE_DATASETS).index(DEFAULT_SAMPLE), key="sample_choice")
-        if st.button("Load sample dataset", key="load_sample", type="primary",
+        if st.button("Load Sample Dataset", key="load_sample", type="primary",
                      icon=":material/play_arrow:"):
             try:
                 raw_df, report = load_raw(sample_path(label))
@@ -319,31 +353,33 @@ def page_upload() -> None:
         output = current_output()
         if output is not None:
             meta = output.analysis.metadata
-            st.success(f"Opened saved analysis run #{output.run_id} ({meta.get('dataset_name')}, "
+            st.success(f"Opened Analysis #{output.run_id} ({meta.get('dataset_name')}, "
                        f"{format_count(meta.get('rows'))} rows, analysed {_format_timestamp(meta.get('created_at'))}). "
                        "Use the sidebar to explore it, or upload a file to start a new analysis.")
         else:
-            ui.empty_state("No data loaded yet. Upload a file or load a sample dataset to begin.")
+            ui.empty_state("No data is loaded yet. Upload a file or load a sample dataset to begin.",
+                           icon="upload_file")
         _recent_analyses()
         return
 
     report, profile = prep.report, prep.profile
-    st.markdown("## Dataset profile")
-    c1, c2, c3, c4 = st.columns(4)
+    st.markdown("## Dataset Profile")
+    c1, c2, c3, c4 = st.columns([3, 2, 2, 4])        # the date range needs the most room
     c1.metric("File", report.filename if len(report.filename) < 28 else report.filename[:25] + "...",
               border=True, help=report.filename)
     c2.metric("Rows", format_count(profile.rows), border=True)
     c3.metric("Columns", format_count(len(profile.column_names)), border=True)
-    c4.metric("Date range", "N/A" if profile.date_min is None else
-              f"{format_date(profile.date_min)} - {format_date(profile.date_max)}", border=True)
+    c4.metric("Date Range", "N/A" if profile.date_min is None else
+              f"{profile.date_min:%b %Y} – {profile.date_max:%b %Y}", border=True,
+              help=None if profile.date_min is None else format_date_range(profile.date_min, profile.date_max))
     for warning in report.warnings:
         st.info(warning)
 
-    tab_quality, tab_mapping, tab_caps = st.tabs(["Data-quality findings", "Field mapping",
-                                                  "What this data supports"])
+    tab_quality, tab_mapping, tab_caps = st.tabs(["Data Quality Findings", "Field Mapping",
+                                                  "What This Data Supports"])
     with tab_quality:
         if not profile.findings:
-            st.success("No data-quality problems were found.")
+            st.success("No data quality problems were found.")
         for f in profile.findings:
             st.markdown(f"- {f.message}")
         st.caption("These are fixed or flagged automatically during cleaning; every change is logged "
@@ -352,12 +388,12 @@ def page_upload() -> None:
         _mapping_editor(prep)
     with tab_caps:
         for cap in prep.validation.capabilities.values():
-            st.markdown(f"- **{cap.label}**: {'available' if cap.enabled else 'not available'}. "
+            st.markdown(f"- **{title_case(cap.label)}**  \n{'Available' if cap.enabled else 'Not available'}: "
                         f"{cap.reason}")
         for note in prep.validation.notes:
             st.caption(note)
 
-    st.markdown("## Run analysis")
+    st.markdown("## Run the Analysis")
     for message in prep.validation.blocking:
         st.warning(message)
     _ai_mapping_banner(prep)
@@ -366,15 +402,19 @@ def page_upload() -> None:
     _final_mapping_summary(prep)
     state = _state()
     if current_output() is not None and state.get("output_prep_key") not in (None, state.get("prep_key")):
-        st.info("The mapping changed since the last analysis. Press Run analysis to update the results.")
-    run = st.button("Run analysis", type="primary", key="run_analysis",
+        st.info("The mapping has changed since the last analysis. Select Run Analysis to update the "
+                "results.")
+    run = st.button("Run Analysis", type="primary", key="run_analysis",
                     disabled=not prep.validation.can_analyse)
     if run:
         try:
-            with st.status("Running analysis...", expanded=True) as status:
+            with st.status("Analysing your data…", expanded=True) as status:
+                status.write("Reading file…")
+                status.write("Checking mapping…")
                 output = run_pipeline(prep, progress=lambda msg: status.write(msg),
                                       session_id=_session_id() if _public() else None)
                 status.update(label="Analysis complete", state="complete", expanded=False)
+            st.toast("Analysis complete", icon=":material/check_circle:")
             _state()["output"] = output
             _state()["output_prep_key"] = _state().get("prep_key")
             _preload_demo(output, prep.report)
@@ -388,17 +428,18 @@ def page_upload() -> None:
     if output is not None:
         meta = output.analysis.metadata
         st.success(f"Analysis ready: {format_count(meta['rows'])} clean rows. Open Executive "
-                   "Overview in the sidebar.")
+                   "Overview in the sidebar to explore the results.")
         if _state().pop("demo_opened", False):
-            st.caption("The finished sample analysis was opened instantly (it ships with the app, "
-                       "with its saved AI insights). Your own uploads always run the full analysis.")
+            st.caption("The finished sample analysis opened instantly because it comes with the app, "
+                       "together with its saved AI insights. Your own uploads always go through the "
+                       "full analysis.")
         if output.is_reupload:
-            st.info("This exact file was uploaded before; a new analysis run was recorded for it.")
+            st.info("This exact file was uploaded before, so a new analysis was recorded for it.")
         if output.save_error:
-            st.warning(f"The results are shown but were not saved: {output.save_error}")
+            st.warning(f"The results are shown, but they could not be saved. {as_sentence(output.save_error)}")
         if "raw_df" in _state():
-            st.button("Edit mapping and re-run", key="edit_rerun", on_click=_open_mapping_editor,
-                      help="Opens 'Change any mapping' above with your current choices filled in.")
+            st.button("Edit Mapping and Analyse Again", key="edit_rerun", on_click=_open_mapping_editor,
+                      help="Opens Change Any Mapping above, with your current choices filled in.")
     _recent_analyses()
 
 
@@ -411,14 +452,16 @@ def _recent_analyses() -> None:
     except DatabaseError as exc:
         ui.friendly_error(exc)
         return
-    st.markdown("## Recent analyses")
+    st.markdown("## Recent Analyses")
     message = _state().pop("deleted_message", None)
     if message:
         st.success(message)
     if recent.empty:
-        st.caption("Analyses you run are saved here so you can reopen them later without recalculating.")
+        st.caption("Analyses you run are saved here, so you can reopen them later without "
+                   "recalculating.")
         return
-    st.caption("Reopening shows the saved results instantly (no recalculation and no AI call). "
+    st.caption("Reopening an analysis shows its saved results instantly, with no recalculation and "
+               "no AI call. "
                f"Only your {config_settings.settings.keep_last_runs} most recent analyses are kept.")
     state = _state()
     grid = st.columns(2, gap="medium")
@@ -454,7 +497,7 @@ def _recent_analyses() -> None:
 
 _STATUS_LABELS = {
     "confirmed": "Confirmed", "high_confidence": "High confidence (inferred)",
-    "uncertain": "Uncertain - please confirm", "unmapped": "Not recognised",
+    "uncertain": "Uncertain: please confirm", "unmapped": "Not recognised",
     "derived": "Derived metric (recalculated)", "not_used": "Not used (on purpose)",
     "ignored": "Not used (your choice)"}
 _NOT_USED = "Not used"
@@ -498,10 +541,10 @@ def _owns_run(run_id: int) -> bool:
 
 def _confirm_delete(run_id: int, file_name: str) -> None:
     """Second click needed: deleting removes the saved results, reports and cached AI insights."""
-    st.warning(f"Delete analysis run #{run_id} ({file_name})? Its saved results, PDF/Excel "
-               "reports and cached AI insights will be removed. This cannot be undone.")
+    st.warning(f"Delete Analysis #{run_id} ({file_name})? Its saved results, PDF and Excel "
+               "reports and saved AI insights will be removed. This cannot be undone.")
     yes, no = st.columns(2)
-    if yes.button("Yes, delete", key=f"confirm_delete_{run_id}", type="primary"):
+    if yes.button("Yes, Delete", key=f"confirm_delete_{run_id}", type="primary"):
         from database.connection import DatabaseError
         from database.housekeeping import delete_analysis
         state = _state()
@@ -515,7 +558,7 @@ def _confirm_delete(run_id: int, file_name: str) -> None:
         if output is not None and output.run_id == run_id:      # it was open: close it
             for key in ("output", "view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
                 state.pop(key, None)
-        state["deleted_message"] = f"Analysis run #{run_id} was deleted."
+        state["deleted_message"] = f"Analysis #{run_id} was deleted."
         st.rerun()
     if no.button("Cancel", key=f"cancel_delete_{run_id}"):
         _state().pop("confirm_delete", None)
@@ -524,8 +567,8 @@ def _confirm_delete(run_id: int, file_name: str) -> None:
 
 def _source_label(m) -> str:
     if m.source == "user":
-        return "your choice"
-    return "AI" if m.source in ("ai", "ai_rejected") else "rule"
+        return "Your choice"
+    return "AI" if m.source in ("ai", "ai_rejected") else "Rule"
 
 
 def _mapping_editor(prep) -> None:
@@ -534,12 +577,12 @@ def _mapping_editor(prep) -> None:
     from ai.mapping import BADGES
     frame = prep.mapping.to_frame()
     table = pd.DataFrame({
-        "Column in file": frame["column"],
-        "Used as": frame["maps_to"],
+        "Column in File": frame["column"],
+        "Used As": frame["maps_to"].map(title_case),
         "Source": [_source_label(m) for m in prep.mapping.columns],
         "Check": [BADGES.get(prep.badges.get(m.column, ""), "") for m in prep.mapping.columns],
         "Status": frame["status"].map(_STATUS_LABELS).fillna(frame["status"]),
-        "Why": frame["reason"],
+        "Why": frame["reason"].map(as_sentence),
     })
     badge_of = [prep.badges.get(m.column, "") if m.source in ("ai", "ai_rejected") else None
                 for m in prep.mapping.columns]
@@ -550,8 +593,8 @@ def _mapping_editor(prep) -> None:
         return [f"background-color: {colour}" if colour else ""] * len(row)
 
     st.dataframe(table.style.apply(highlight, axis=1), hide_index=True, width="stretch")
-    st.caption("Highlighted rows were mapped by Gemini. Columns that need a decision are also shown "
-               "next to the Run analysis button below.")
+    st.caption("Highlighted rows were mapped by Google Gemini. Columns that need a decision are also "
+               "listed next to the Run Analysis button below.")
     _all_columns_editor(prep)
 
 
@@ -566,7 +609,7 @@ def _all_columns_editor(prep) -> None:
     for this column layout, and win over AI and rules next time."""
     from ai.mapping import layout_key
     layout = layout_key(prep.raw_df.columns)[:10]
-    with st.expander("Change any mapping", expanded=bool(_state().get("edit_mapping"))):
+    with st.expander("Change Any Mapping", expanded=bool(_state().get("edit_mapping"))):
         with st.form(f"mapping_form_{layout}"):
             picks: dict[str, str | None] = {}
             cols = st.columns(3)
@@ -577,7 +620,7 @@ def _all_columns_editor(prep) -> None:
                     f"{m.column}  ({_source_label(m)})", choices, index=choices.index(current),
                     format_func=_choice_label, key=f"map_{layout}_{m.column}")
                 picks[m.column] = None if picked == _NOT_USED else picked
-            submitted = st.form_submit_button("Apply changes", key=f"apply_all_{layout}")
+            submitted = st.form_submit_button("Apply Changes", key=f"apply_all_{layout}")
         if submitted:
             changed = {}
             for m in prep.mapping.columns:
@@ -595,7 +638,7 @@ def _field_choices(first: str | None = None, suggestions: list[str] = ()) -> lis
 
 
 def _choice_label(choice: str) -> str:
-    return FIELD_BY_NAME[choice].label if choice in FIELD_BY_NAME else choice
+    return title_case(FIELD_BY_NAME[choice].label) if choice in FIELD_BY_NAME else choice
 
 
 def _confirm_columns(prep) -> None:
@@ -608,13 +651,13 @@ def _confirm_columns(prep) -> None:
     if not pending and not chosen:
         return
     if pending:
-        st.markdown("**Please confirm what these columns mean**")
+        st.markdown("**Confirm What These Columns Mean**")
         st.caption("Business-critical fields (Date, Spend, Revenue, Leads, Conversions) are never "
                    "guessed; analysis starts once you confirm them. Other columns are optional.")
     picks: dict[str, str | None] = {}
     groups = [(pending, None)]
     if chosen:
-        groups.append((chosen, st.expander(f"Your mapping choices ({len(chosen)})",
+        groups.append((chosen, st.expander(f"Your Mapping Choices ({len(chosen)})",
                                            expanded=not pending)))
     for group, container in groups:
         for m in group:
@@ -628,11 +671,11 @@ def _confirm_columns(prep) -> None:
                 picked = st.selectbox(
                     f"'{m.column}' contains", choices, index=choices.index(default),
                     format_func=_choice_label, key=f"confirm_{m.column}",
-                    help=m.reason or None)
+                    help=as_sentence(m.reason) or None)
                 if m.status == "uncertain" and m.reason:
-                    st.caption(f"Why asked: {m.reason}.")
+                    st.caption(f"Why we ask: {as_sentence(m.reason)}")
             picks[m.column] = None if picked == _NOT_USED else picked
-    if st.button("Apply choices", key="apply_mapping", type="secondary"):
+    if st.button("Apply Choices", key="apply_mapping", type="secondary"):
         _apply_user_choices(prep, picks)
 
 
@@ -680,9 +723,9 @@ def _final_mapping_summary(prep) -> None:
             tags.append(BADGES[prep.badges[m.column]])
         elif m.field in verified:
             tags.append("verified ✓")
-        parts.append(f"{FIELD_BY_NAME[m.field].label} ← '{m.column}' ({', '.join(tags)})")
+        parts.append(f"{title_case(FIELD_BY_NAME[m.field].label)} ← '{m.column}' ({', '.join(tags)})")
     skipped = [m.column for m in prep.mapping.columns if m.status not in ("confirmed", "high_confidence")]
-    st.markdown("**Final mapping summary**")
+    st.markdown("**Final Mapping Summary**")
     st.caption(" · ".join(parts))
     if skipped:
         st.caption(f"Not used ({len(skipped)}): " + ", ".join(skipped))
@@ -710,7 +753,7 @@ def page_overview(filters: Filters) -> None:
     view = filtered_view(filters)
     _header("Executive Overview", filters)
     if view["df"].empty:
-        ui.empty_state("No rows match the current filters.")
+        _no_rows_state()
         return
     ui.kpi_cards(view["kpis"], view["deltas"], OVERVIEW_KPIS)
     if view["deltas"] is None:
@@ -724,25 +767,25 @@ def page_overview(filters: Filters) -> None:
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in trend), None)
     with left:
         fig = charts.line_chart(trend, "period", outcome, KPI_REGISTRY[outcome].fmt,
-                                f"Weekly {KPI_REGISTRY[outcome].label.lower()}") if outcome else None
-        ui.show_chart(fig, "No trend is available (the data has no usable date column).")
+                                f"Weekly {title_case(KPI_REGISTRY[outcome].label)}") if outcome else None
+        ui.show_chart(fig, "No trend is available because the data has no usable date column.")
     with right:
         ch = view["channels"]
-        series = {"Share of spend": "spend_share_pct"}
+        series = {"Share of Spend": "spend_share_pct"}
         if "revenue_share_pct" in ch:
-            series["Share of revenue"] = "revenue_share_pct"
+            series["Share of Revenue"] = "revenue_share_pct"
         elif "leads_share_pct" in ch:
-            series["Share of leads"] = "leads_share_pct"
-        fig = charts.share_comparison_chart(ch, "channel", series, "Where the money goes and what it returns") \
+            series["Share of Leads"] = "leads_share_pct"
+        fig = charts.share_comparison_chart(ch, "channel", series, "Where the Money Goes and What It Returns") \
             if not ch.empty else None
         ui.show_chart(fig, "Channel analysis is not available for this data.")
 
-    st.markdown("## Key findings")
-    st.caption("Rule-based analytical findings for the full dataset (not affected by filters).")
+    st.markdown("## Key Findings")
+    st.caption("These rule-based findings cover the full dataset and are not affected by filters.")
     if output.analysis.findings:
         ui.findings_list(output.analysis.findings, limit=5)
     else:
-        ui.empty_state("No findings could be produced from this data.")
+        ui.empty_state("No findings could be produced from this data.", icon="lightbulb")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -753,33 +796,36 @@ def page_trends(filters: Filters) -> None:
     view = filtered_view(filters)
     _header("Performance Trends", filters)
     if "date" not in view["df"] or view["df"].empty:
-        ui.empty_state("Trends need a date column and at least one row in the current filters.")
+        _no_rows_state("Trends need a date column and at least one row that matches the current "
+                       "filters.")
         return
-    grain_label = st.segmented_control("Time grain", ["Daily", "Weekly", "Monthly"], default="Weekly",
+    grain_label = st.segmented_control("Time Grain", ["Daily", "Weekly", "Monthly"], default="Weekly",
                                        key="trend_grain") or "Weekly"
     grain = {"Daily": "day", "Weekly": "week", "Monthly": "month"}[grain_label]
     trend = time_series(view["df"], grain)
     if trend.empty:
-        ui.empty_state("No trend data for the current filters.")
+        _no_rows_state("No trend data matches the current filters.")
         return
     xfmt = "text" if grain == "month" else "date"
     efficiency_options = [k for k in ("roas", "cpl", "cac", "ctr", "lead_to_conversion_rate", "cpc")
                           if k in trend and trend[k].notna().any()]
-    items = [(m, f"{KPI_REGISTRY[m].label}") for m in ("revenue", "spend", "conversions", "leads")
+    unit = {"Daily": "Day", "Weekly": "Week", "Monthly": "Month"}[grain_label]
+    items = [(m, title_case(KPI_REGISTRY[m].label)) for m in ("revenue", "spend", "conversions", "leads")
              if m in trend and trend[m].notna().any()][:3]
     cols = st.columns(2, gap="large")
     for i, (metric, label) in enumerate(items):
         with cols[i % 2]:
             ui.show_chart(charts.line_chart(trend, "period", metric, KPI_REGISTRY[metric].fmt,
-                                            f"{label} by {grain_label.lower().rstrip('ly') or 'day'}",
-                                            x_label_fmt=xfmt), f"No {label.lower()} data.")
+                                            f"{label} by {unit}",
+                                            x_label_fmt=xfmt), f"No {label.lower()} data is available.")
     with cols[len(items) % 2]:
         if efficiency_options:
-            eff = st.selectbox("Efficiency metric", efficiency_options, key="trend_eff",
-                               format_func=lambda k: KPI_REGISTRY[k].label)
+            eff = st.selectbox("Efficiency Metric", efficiency_options, key="trend_eff",
+                               format_func=lambda k: title_case(KPI_REGISTRY[k].label))
             ui.show_chart(charts.line_chart(trend, "period", eff, KPI_REGISTRY[eff].fmt,
-                                            f"{KPI_REGISTRY[eff].label} over time", x_label_fmt=xfmt),
-                          "No efficiency data.")
+                                            f"{title_case(KPI_REGISTRY[eff].label)} over Time",
+                                            x_label_fmt=xfmt),
+                          "No efficiency data is available.")
     if (trend["days"] < {"day": 1, "week": 7, "month": 28}[grain]).any():
         st.caption("The first or last period may be partial (fewer days of data), so it can look "
                    "lower than the others.")
@@ -794,7 +840,7 @@ def page_channels(filters: Filters) -> None:
     _header("Channels", filters)
     ch = view["channels"]
     if ch.empty:
-        ui.empty_state("Channel analysis needs a channel or platform column.")
+        _data_missing_state("Channel analysis needs a channel or platform column.")
         return
     paid, owned = paid_channels(ch), owned_channels(ch)
     df = view["df"]
@@ -805,33 +851,35 @@ def page_channels(filters: Filters) -> None:
     if metrics:
         left, right = st.columns(2, gap="large")
         with left:
-            metric = st.selectbox("Compare paid channels on", metrics, key="channel_metric",
-                                  format_func=lambda k: KPI_REGISTRY[k].label)
+            metric = st.selectbox("Compare Paid Channels on", metrics, key="channel_metric",
+                                  format_func=lambda k: title_case(KPI_REGISTRY[k].label))
             ref = paid_kpis.get(metric)
             better_high = KPI_REGISTRY[metric].higher_is_better
             ui.show_chart(charts.bar_chart(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                           f"{KPI_REGISTRY[metric].label} by paid channel",
+                                           f"{title_case(KPI_REGISTRY[metric].label)} by Paid Channel",
                                            ascending=better_high is False,
                                            reference=ref.value if ref and metric not in
                                            ("revenue", "spend", "leads", "conversions") else None,
-                                           reference_label="Paid average"),
-                          "No data for this metric.")
+                                           reference_label="Paid Average"),
+                          "No data is available for this metric.")
         with right:
             index_cols = [c for c in paid.columns if c.endswith("_index") and paid[c].notna().any()]
             if index_cols:
-                idx = st.selectbox("Efficiency index (paid-media average = 100)", index_cols, key="channel_index",
-                                   format_func=lambda c: KPI_REGISTRY[c.removesuffix("_index")].label)
+                idx = st.selectbox("Efficiency Index (Paid-Media Average = 100)", index_cols,
+                                   key="channel_index",
+                                   format_func=lambda c: title_case(KPI_REGISTRY[c.removesuffix("_index")].label))
                 base = idx.removesuffix("_index")
-                ui.show_chart(charts.index_chart(paid, "channel", idx, f"{KPI_REGISTRY[base].label} index vs "
-                                                 "paid-media average",
+                ui.show_chart(charts.index_chart(paid, "channel", idx,
+                                                 f"{title_case(KPI_REGISTRY[base].label)} Index vs "
+                                                 "Paid-Media Average",
                                                  lower_is_better=KPI_REGISTRY[base].higher_is_better is False),
-                              "No index available.")
+                              "No index is available.")
     cols = ["channel", "spend", "spend_share_pct", "impressions", "clicks", "ctr", "cpc", "leads", "cpl",
             "conversions", "lead_to_conversion_rate", "cac", "revenue", "revenue_share_pct", "roas", "roi"]
-    st.markdown("## Paid channels")
+    st.markdown("## Paid Channels")
     ui.show_table(paid.sort_values("spend", ascending=False) if "spend" in paid else paid, cols)
     if not owned.empty:
-        st.markdown("## Owned channels (not ranked)")
+        st.markdown("## Owned Channels (Not Ranked)")
         st.caption("Owned channels use the company's own audience (for example its email list) and have "
                    "mostly fixed costs, so their ROAS is not comparable with paid media. They are left "
                    "out of the rankings and efficiency indices above.")
@@ -848,7 +896,7 @@ def page_campaigns(filters: Filters) -> None:
     _header("Campaigns", filters)
     table = view["campaigns"]
     if table.empty:
-        ui.empty_state("Campaign analysis needs a campaign name or ID column.")
+        _data_missing_state("Campaign analysis needs a campaign name or ID column.")
         return
     anomalies = output.analysis.anomalies
     counts = anomalies[anomalies["entity_type"] == "campaign"].groupby("entity").size() \
@@ -857,25 +905,25 @@ def page_campaigns(filters: Filters) -> None:
 
     metrics = [k for k in ("conversions", "revenue", "roas", "cpl", "cac", "leads", "spend", "ctr",
                            "lead_to_conversion_rate") if k in table and table[k].notna().any()]
-    c1, c2, c3 = st.columns([2, 1, 1])
-    metric = c1.selectbox("Rank campaigns by", metrics, key="campaign_rank",
-                          format_func=lambda k: KPI_REGISTRY[k].label)
-    worst_first = c2.toggle("Show weakest first", key="campaign_worst")
-    min_share = c3.number_input("Min. spend share %", 0.0, 50.0, 0.0, 0.5, key="campaign_min_share",
+    c1, c2, c3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+    metric = c1.selectbox("Rank Campaigns by", metrics, key="campaign_rank",
+                          format_func=lambda k: title_case(KPI_REGISTRY[k].label))
+    worst_first = c2.toggle("Show Weakest First", key="campaign_worst")
+    min_share = c3.number_input("Minimum Spend Share (%)", 0.0, 50.0, 0.0, 0.5, key="campaign_min_share",
                                 help="Hide small campaigns whose ratios are unreliable.")
     better_high = KPI_REGISTRY[metric].higher_is_better
     ascending = (better_high is False) != worst_first if better_high is not None else worst_first
     ranked = rank_campaigns(table, metric, ascending=ascending, min_spend_share=min_share)
     ui.show_chart(charts.bar_chart(ranked.head(10), "campaign", metric, KPI_REGISTRY[metric].fmt,
-                                   f"Top 10 campaigns by {KPI_REGISTRY[metric].label}"
-                                   + (" (weakest first)" if worst_first else ""),
-                                   ascending=ascending), "No campaigns match.")
+                                   f"Top 10 Campaigns by {title_case(KPI_REGISTRY[metric].label)}"
+                                   + (" (Weakest First)" if worst_first else ""),
+                                   ascending=ascending), "No campaigns match the current settings.")
     cols = ["rank", "campaign", "channel", "spend", "leads", "cpl", "conversions", "cac", "revenue",
             "roas", "trend", "trend_change_pct", "anomalies", "first_date", "last_date"]
     ui.show_table(ranked.assign(trend=ranked["trend"].str.capitalize()) if "trend" in ranked else ranked,
                   cols, height=460)
     st.caption("Trend compares the last 4 weeks of the selected data with the 4 weeks before. "
-               "Anomalies counts unusual periods found for the campaign on the full dataset.")
+               "Anomalies counts the unusual periods found for each campaign in the full dataset.")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -887,16 +935,18 @@ def page_funnel(filters: Filters) -> None:
     _header("Funnel", filters)
     funnel, by_channel = view["funnel"], view["funnel_by_channel"]
     if funnel.empty:
-        ui.empty_state("A funnel needs at least two stages, for example Clicks and Leads.")
+        _data_missing_state("A funnel needs at least two stages, for example Clicks and Leads.")
         return
     scopes = ["All channels"] + (sorted(by_channel["scope"].unique()) if not by_channel.empty else [])
-    scope = st.selectbox("Funnel for", scopes, key="funnel_scope")
+    scope = st.selectbox("Show Funnel for", scopes, key="funnel_scope")
     data = funnel if scope == "All channels" else by_channel[by_channel["scope"] == scope]
+    data = data.assign(label=data["label"].map(title_case))
     left, right = st.columns([3, 2], gap="large")
     with left:
-        ui.show_chart(charts.funnel_chart(data, f"Funnel - {scope}"), "Not enough funnel stages.")
+        ui.show_chart(charts.funnel_chart(data, f"Funnel: {scope}"),
+                      "There are not enough funnel stages to draw a chart.")
     with right:
-        st.markdown("### Stage by stage")
+        st.markdown("### Stage by Stage")
         ui.show_table(data, ["label", "value", "rate_from_previous", "drop_off_pct"])
         step = biggest_drop_off(data)
         if step is not None:
@@ -912,7 +962,7 @@ def page_funnel(filters: Filters) -> None:
 # Page: Segments / Geography / Product
 # ---------------------------------------------------------------------------------------------
 
-SEGMENT_KIND_LABELS = {"segment": "Customer segments", "geography": "Geography", "product": "Products"}
+SEGMENT_KIND_LABELS = {"segment": "Customer Segments", "geography": "Geography", "product": "Products"}
 _KIND_CAPABILITY = {"segment": "segment_analysis", "geography": "geography_analysis",
                     "product": "product_analysis"}
 
@@ -929,22 +979,24 @@ def page_segments(filters: Filters) -> None:
         if not caps or caps.get(_KIND_CAPABILITY[kind]) is None or caps[_KIND_CAPABILITY[kind]].enabled:
             kinds.setdefault(kind, []).append(dim)
     if not kinds:
-        ui.empty_state("No segment, geography or product columns were found in this data.")
+        _data_missing_state("No segment, geography or product columns were found in this data.")
         return
     tabs = st.tabs([SEGMENT_KIND_LABELS[k] for k in kinds])
     for tab, (kind, dims) in zip(tabs, kinds.items()):
         with tab:
-            dim = st.selectbox("Break down by", dims, key=f"seg_dim_{kind}",
-                               format_func=lambda d: FIELD_BY_NAME[d].label) if len(dims) > 1 else dims[0]
+            dim = st.selectbox("Break Down by", dims, key=f"seg_dim_{kind}",
+                               format_func=lambda d: title_case(FIELD_BY_NAME[d].label)) \
+                if len(dims) > 1 else dims[0]
             table = segment_table(df, dim)
             metrics = [k for k in ("revenue", "roas", "cac", "aov", "conversions", "cpl", "leads",
                                    "lead_to_conversion_rate", "spend") if k in table and table[k].notna().any()]
             metric = st.selectbox("Metric", metrics, key=f"seg_metric_{kind}",
-                                  format_func=lambda k: KPI_REGISTRY[k].label)
+                                  format_func=lambda k: title_case(KPI_REGISTRY[k].label))
             ui.show_chart(charts.bar_chart(table, "segment", metric, KPI_REGISTRY[metric].fmt,
-                                           f"{KPI_REGISTRY[metric].label} by {FIELD_BY_NAME[dim].label.lower()}",
+                                           title_case(f"{KPI_REGISTRY[metric].label} by "
+                                                      f"{FIELD_BY_NAME[dim].label.lower()}"),
                                            ascending=KPI_REGISTRY[metric].higher_is_better is False),
-                          "No data for this breakdown.")
+                          "No data is available for this breakdown.")
             ui.show_table(table, ["segment", "spend", "leads", "conversions", "revenue",
                                   "revenue_share_pct", "cac", "aov", "roas", "growth_pct", "growth_trend"])
 
@@ -994,45 +1046,46 @@ def page_anomalies(filters: Filters) -> None:
     _header("Anomalies", filters)
     caps = output.analysis.capabilities
     if caps is not None and not caps.enabled("anomaly_detection"):
-        ui.empty_state(caps.capabilities["anomaly_detection"].reason)
+        _data_missing_state(caps.capabilities["anomaly_detection"].reason)
         return
     incidents = _incidents_in_view(output.analysis.incidents, filters)
     flags = _anomalies_in_view(output.analysis.anomalies, filters)
     if incidents is None or incidents.empty:
-        ui.empty_state("No unusual periods were found for the current filters. That is good news: "
-                       "performance moved in line with its recent history and the rest of the business.")
+        _no_rows_state("No unusual periods were found for the current filters. That is good news: "
+                       "performance moved in line with its recent history and the rest of the business.",
+                       icon="task_alt")
         return
     losses = incidents[incidents["impact_direction"] == "loss"]["impact_inr"].sum()
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Incidents", format_count(len(incidents)), border=True,
-              help="Related flags grouped into one business event.")
-    c2.metric("High severity", format_count((incidents["severity"] == "high").sum()), border=True)
-    c3.metric("Estimated money at stake", format_value(losses, "money", compact=True), border=True,
+              help="Related flags grouped into one business incident.")
+    c2.metric("High Severity", format_count((incidents["severity"] == "high").sum()), border=True)
+    c3.metric("Estimated Money at Stake", format_value(losses, "money", compact=True), border=True,
               help="Sum of the estimated losses (extra cost, lost revenue, spend without results).")
-    c4.metric("Individual flags", format_count(len(flags)), border=True)
-    st.caption("Incidents are ranked by estimated rupee impact. Flags on the same entity and period are "
-               "one incident; campaign flags explained by a platform outage or a broader channel/region "
-               "problem are attached as related effects. Impacts are estimates from the data, not "
-               "accounting figures.")
+    c4.metric("Individual Flags", format_count(len(flags)), border=True)
+    st.caption("Incidents are ranked by their estimated ₹ impact. Flags on the same entity and period "
+               "form one incident, and campaign flags explained by a platform outage or a wider channel "
+               "or region problem are attached as related effects. Impacts are estimates from the data, "
+               "not accounting figures.")
 
     table = pd.DataFrame({
         "Rank": incidents["rank"],
-        "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in
+        "Period": [format_date_range(s, e) for s, e in
                    zip(incidents["period_start"], incidents["period_end"])],
         "Entity": incidents["entity"] + " (" + incidents["entity_type"] + ")",
-        "What was unusual": incidents["metrics"],
-        "Estimated impact": [_impact_text(v, d, l) for v, d, l in
+        "What Was Unusual": incidents["metrics"],
+        "Estimated Impact": [_impact_text(v, d, l) for v, d, l in
                              zip(incidents["impact_inr"], incidents["impact_direction"], incidents["impact_label"])],
         "Severity": incidents["severity"].str.capitalize(),
         "Assessment": incidents["sentiment"].map({"negative": "Problem", "positive": "Improvement",
                                                   "check": "Check"}),
-        "Related effects": incidents["n_related"],
+        "Related Effects": incidents["n_related"],
     })
     st.dataframe(table, hide_index=True, width="stretch", height=320)
 
-    labels = [f"#{rk} {per} | {ent} | {what}" for rk, per, ent, what in
-              zip(table["Rank"], table["Period"], table["Entity"], table["What was unusual"])]
-    choice = st.selectbox("Show details for incident", range(len(labels)), format_func=lambda i: labels[i],
+    labels = [f"#{rk} {per} · {ent} · {what}" for rk, per, ent, what in
+              zip(table["Rank"], table["Period"], table["Entity"], table["What Was Unusual"])]
+    choice = st.selectbox("Show Details for Incident", range(len(labels)), format_func=lambda i: labels[i],
                           key="incident_pick")
     inc = incidents.iloc[choice]
     st.markdown(f"**{inc['headline']}**")
@@ -1040,18 +1093,18 @@ def page_anomalies(filters: Filters) -> None:
     def flag_table(items):
         return pd.DataFrame([{
             "Entity": f"{f['entity']} ({f['entity_type']})", "Metric": f["metric_label"],
-            "Period": f"{format_date(pd.Timestamp(f['period_start']))} - {format_date(pd.Timestamp(f['period_end']))}",
+            "Period": format_date_range(pd.Timestamp(f["period_start"]), pd.Timestamp(f["period_end"])),
             "Expected": f["expected"], "Observed": f["observed"],
             "Change": "N/A" if f["change_pct"] is None else f"{f['change_pct']:+.0f}%",
             "Assessment": {"negative": "Problem", "positive": "Improvement", "check": "Check"}[f["sentiment"]],
-            "Estimated impact": _impact_text(f["impact_inr"], f.get("impact_direction", "none"), f["impact_label"]),
-            "Note": f.get("note", ""),
+            "Estimated Impact": _impact_text(f["impact_inr"], f.get("impact_direction", "none"), f["impact_label"]),
+            "Note": as_sentence(f.get("note", "")),
         } for f in items])
 
-    st.markdown("### Flags in this incident")
+    st.markdown("### Flags in This Incident")
     st.dataframe(flag_table(inc["flags"]), hide_index=True, width="stretch")
     if inc["related"]:
-        st.markdown("### Related effects")
+        st.markdown("### Related Effects")
         st.caption("Flags elsewhere that are explained by this incident (same period, same campaigns).")
         st.dataframe(flag_table(inc["related"]), hide_index=True, width="stretch")
 
@@ -1067,19 +1120,19 @@ def page_anomalies(filters: Filters) -> None:
         daily = _entity_daily(output.clean.clean_df, main["entity_type"], main["entity"], start)
         if daily is not None:
             fig = charts.anomaly_chart(daily, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
-                                       f"{KPI_REGISTRY[metric].label} per day - {main['entity']}")
+                                       f"{title_case(KPI_REGISTRY[metric].label)} per Day: {main['entity']}")
     else:
         weekly = _entity_weekly(output.clean.clean_df, main["entity_type"], main["entity"])
         if weekly is not None:
             fig = charts.anomaly_chart(weekly, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
-                                       f"{KPI_REGISTRY[metric].label} per week - {main['entity']}")
+                                       f"{title_case(KPI_REGISTRY[metric].label)} per Week: {main['entity']}")
     ui.show_chart(fig, "No chart is available for this incident.")
 
-    with st.expander(f"All individual flags ({len(flags)})"):
+    with st.expander(f"All Individual Flags ({len(flags)})"):
         flat = flags.assign(
-            Period=[f"{format_date(s)} - {format_date(e)}" for s, e in zip(flags["period_start"], flags["period_end"])],
+            Period=[format_date_range(s, e) for s, e in zip(flags["period_start"], flags["period_end"])],
             Entity=flags["entity"] + " (" + flags["entity_type"] + ")",
-            Metric=flags["metric"].map(lambda m: KPI_REGISTRY[m].label if m in KPI_REGISTRY else m),
+            Metric=flags["metric"].map(lambda m: title_case(KPI_REGISTRY[m].label) if m in KPI_REGISTRY else m),
             Expected=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(flags["baseline"], flags["metric"])],
             Observed=[format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(flags["observed"], flags["metric"])],
             Change=flags["pct_change"].map(lambda v: "N/A" if pd.isna(v) else f"{v:+.0f}%"),
@@ -1114,7 +1167,8 @@ def _entity_daily(df, entity_type, entity, around):
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
 
-AI_BANNER = "AI-generated interpretation of verified metrics. Hypotheses require validation."
+AI_BANNER = ("This is an AI-generated interpretation of verified metrics. Hypotheses need to be "
+             "validated before you act on them.")
 
 
 def page_ai() -> None:
@@ -1137,19 +1191,19 @@ def page_ai() -> None:
                  if settings.ai_cache_enabled else None)
         if saved is None:
             if not settings.ai_enabled:
-                st.info("AI is turned off in this app. The dashboard, findings, anomalies and reports "
-                        "are complete without AI.")
+                ui.empty_state("AI Insights are turned off in this app. The dashboard, findings, "
+                               "incidents and reports are complete without AI.", icon="auto_awesome")
             else:
-                st.warning("AI is switched on but not fully set up: the Gemini key or model name is "
-                           "missing from the app settings. Add both, then restart the app.")
+                st.warning("AI Insights are switched on but not fully set up: the Google Gemini key or "
+                           "model name is missing from the app settings. Add both, then restart the app.")
             return
         state["ai_run"] = saved
 
     st.info(AI_BANNER)
     pack = build_evidence(output.analysis, model=settings.gemini_model)
-    st.caption(f"Gemini receives {len(pack.items)} evidence items ({format_count(pack.size)} characters) "
-               "from the full dataset - no raw rows. Filters do not change the AI input.")
-    with st.expander("See the evidence pack sent to Gemini"):
+    st.caption(f"Google Gemini receives a summary of {len(pack.items)} verified facts from the full "
+               "dataset, never the raw rows. Dashboard filters do not change what the AI sees.")
+    with st.expander("See the Summary Sent to Google Gemini"):
         st.json(pack.json_text, expanded=False)
 
     # Saved insights for exactly this evidence are shown straight away: no API call.
@@ -1158,15 +1212,15 @@ def page_ai() -> None:
         if cached is not None:
             state["ai_run"] = cached
     budget = budget_status(settings, output.run_id, state.get("ai_session_calls", 0))
-    session_text = (f" · this session: {budget.calls_this_session} of {budget.session_limit}"
+    session_text = (f" · This session: {budget.calls_this_session} of {budget.session_limit}"
                     if budget.session_limit is not None else "")
-    st.caption(f"AI calls used today: {budget.calls_today} of {budget.day_limit} · this analysis: "
-               f"{budget.calls_this_run} of {budget.run_limit}{session_text} · saved results are "
+    st.caption(f"AI calls used today: {budget.calls_today} of {budget.day_limit} · This analysis: "
+               f"{budget.calls_this_run} of {budget.run_limit}{session_text} · Saved insights are "
                f"{'reused automatically' if settings.ai_cache_enabled else 'not reused'}.")
 
     def request(force: bool) -> None:
         try:
-            with st.spinner("Asking Gemini to interpret the evidence..."):
+            with st.spinner("Asking Google Gemini to interpret the verified findings…"):
                 result = get_insights(output.analysis, settings,
                                       lambda: ai_client.client_from_settings(settings),
                                       run_id=output.run_id, force=force,
@@ -1179,31 +1233,31 @@ def page_ai() -> None:
 
     notice = state.pop("ai_notice", None)
     if notice:
-        st.error(f"The new call did not succeed, so the saved insights are still shown. {notice}")
+        st.error(f"The new AI call did not succeed, so the saved insights are still shown. {notice}")
     run = state.get("ai_run")
     if read_only:
-        st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No API call used.")
+        st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No AI call was used.")
         st.caption("New AI calls are switched off in this app, so the saved insights are shown.")
     elif run is None or not run.ok:
         if budget.remaining <= 0:
             st.warning(budget.reason)
-        if st.button("Generate AI insights", key="generate_ai", type="primary",
+        if st.button("Generate AI Insights", key="generate_ai", type="primary",
                      disabled=budget.remaining <= 0):
             request(force=False)
     else:
         if run.from_cache:
-            st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No API call used.")
+            st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No AI call was used.")
         if not state.get("ai_confirm"):
-            if st.button("Regenerate insights", key="regenerate_ai"):
+            if st.button("Regenerate Insights", key="regenerate_ai"):
                 state["ai_confirm"] = True
                 st.rerun()
         else:
-            st.warning(f"Regenerating makes a new Gemini call and uses the budget ({budget.remaining} "
-                       "call(s) left). The saved insights stay available if it fails.")
+            st.warning(f"Regenerating makes a new AI call and uses one of the calls left "
+                       f"({budget.remaining}). The saved insights stay available if it fails.")
             if budget.remaining <= 0:
                 st.caption(budget.reason)
             c_yes, c_no = st.columns([1, 4])
-            if c_yes.button("Yes, make a new call", key="confirm_regenerate", type="primary",
+            if c_yes.button("Yes, Make a New Call", key="confirm_regenerate", type="primary",
                             disabled=budget.remaining <= 0):
                 state["ai_confirm"] = False
                 previous = run
@@ -1218,7 +1272,8 @@ def page_ai() -> None:
                 st.rerun()
     run = state.get("ai_run")
     if run is None:
-        ui.empty_state("No AI insights yet. Press 'Generate AI insights' to make one Gemini call.")
+        ui.empty_state("No AI insights yet. Select Generate AI Insights above to make one AI call.",
+                       icon="auto_awesome")
         return
     if run.error is not None:
         ui.friendly_error(run.error)
@@ -1226,29 +1281,32 @@ def page_ai() -> None:
 
     ev = run.evaluation
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Statements kept", format_count(ev["kept"]), border=True)
-    c2.metric("All figures verified", format_count(ev["verified"]), border=True)
-    c3.metric("Unverified figures", format_count(ev["unverified"]), border=True)
+    c1.metric("Statements Kept", format_count(ev["kept"]), border=True,
+              help="Statements that cite valid evidence and are shown below.")
+    c2.metric("All Figures Verified", format_count(ev["verified"]), border=True,
+              help="Statements whose every figure matches the verified numbers they cite.")
+    c3.metric("Unverified Figures", format_count(ev["unverified"]), border=True,
+              help="Statements with at least one figure that could not be matched to their evidence.")
     c4.metric("Weak", format_count(ev.get("weak", 0)), border=True,
-              help="Kept but weak: restates a single finding, or leaves out the rupee impact of the "
+              help="Kept but weak: it restates a single finding, or leaves out the ₹ impact of the "
                    "incident it relies on.")
-    c5.metric("Dropped (no evidence)", format_count(ev["dropped"]), border=True)
-    usage = ("saved result, no call used" if run.from_cache else
-             f"{run.calls_made} call(s), about {format_count(run.input_tokens)} input and "
-             f"{format_count(run.output_tokens)} output tokens")
-    st.caption(f"Written by {run.model} · {usage}.")
+    c5.metric("Dropped", format_count(ev["dropped"]), border=True,
+              help="Statements removed because they cited no valid evidence.")
+    usage = ("saved insights, no AI call used" if run.from_cache else
+             f"{run.calls_made} AI call{'s' if run.calls_made != 1 else ''}")
+    st.caption(f"Written by Google Gemini ({run.model}) · {usage}.")
     for key, title, label in SECTIONS:
         raw = run.insights.get(key)
         items = raw if isinstance(raw, list) else ([raw] if raw else [])
         if not items:
             continue
-        st.markdown(f"## {title}")
+        st.markdown(f"## {title_case(title)}")
         for i, item in enumerate(items):
             _ai_item(item, label, run.pack, evidence_lookup, f"{key}_{i}")
     if ev["dropped_items"]:
-        with st.expander(f"{ev['dropped']} statement(s) removed because they cited no valid evidence"):
+        with st.expander(f"Statements Removed for Lack of Evidence ({ev['dropped']})"):
             for d in ev["dropped_items"]:
-                st.markdown(f"- *{d['section']}*: {d['text']} ({d['reason']})")
+                st.markdown(f"- *{title_case(d['section'])}*: {d['text']} ({d['reason']})")
 
 
 def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
@@ -1262,19 +1320,20 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
     if item.get("validation_step"):
         details.append(f"How to validate: {item['validation_step']}")
     if item.get("metric_to_watch"):
-        details.append(f"Priority: {item.get('priority', '')} | Metric to watch: {item['metric_to_watch']}")
+        details.append(f"Priority: {str(item.get('priority', '')).capitalize()} · Metric to watch: "
+                       f"{item['metric_to_watch']}")
     if item.get("test_shift_pct"):
         details.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
-                       "(a proposal, not a measured figure)")
+                       "(a proposal, not a measured figure).")
     if item.get("at_stake_text"):
-        details.append(item["at_stake_text"] + " - calculated by the app")
+        details.append(item["at_stake_text"] + ", calculated by the app.")
     for d in details:
         st.caption(d)
     for w in item.get("warnings", []):
         st.warning(w)
     with st.expander(f"Evidence {ids}"):
         for ev_item in lookup(pack, item.get("evidence_ids", [])):
-            st.markdown(f"**{ev_item['id']} - {ev_item['title']}**")
+            st.markdown(f"**{ev_item['id']}: {ev_item['title']}**")
             st.markdown(chr(10).join(f"- {k}: {v}" for k, v in ev_item["facts"].items()))
 
 
@@ -1282,45 +1341,52 @@ def page_quality() -> None:
     output = current_output()
     _header("Data Quality")
     if "raw_df" in _state():
-        st.button("Edit mapping and re-run", key="edit_rerun_quality", on_click=_open_mapping_editor,
+        st.button("Edit Mapping and Analyse Again", key="edit_rerun_quality", on_click=_open_mapping_editor,
                   help="Opens Upload & Profile with your current choices filled in.")
     else:
         st.caption("To change the mapping of a reopened analysis, upload the file again.")
     summary = output.clean.quality_summary
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Rows uploaded", format_count(summary.rows_in), border=True)
-    c2.metric("Rows analysed", format_count(summary.rows_out), border=True)
-    c3.metric("Duplicates removed", format_count(summary.removed_duplicates), border=True)
-    c4.metric("Rows with a quality flag", format_count(summary.flagged_rows), border=True)
-    st.markdown("## What this means for the analysis")
+    c1.metric("Rows Uploaded", format_count(summary.rows_in), border=True)
+    c2.metric("Rows Analysed", format_count(summary.rows_out), border=True)
+    c3.metric("Duplicates Removed", format_count(summary.removed_duplicates), border=True)
+    c4.metric("Rows with a Quality Flag", format_count(summary.flagged_rows), border=True)
+    st.markdown("## What This Means for the Analysis")
     if summary.limitations:
         for text in summary.limitations:
             st.markdown(f"- {text}")
     else:
         st.success("No limitations: the data could be used as supplied.")
 
-    st.markdown("## Change log")
+    st.markdown("## Change Log")
     log = output.clean.quality_log_df
     if log.empty:
-        ui.empty_state("No changes were needed.")
+        ui.empty_state("No changes were needed: the data was used as supplied.", icon="task_alt")
         return
     f1, f2 = st.columns(2)
-    severities = f1.multiselect("Severity", ["error", "warning", "info"], key="dq_sev", placeholder="All")
-    actions = f2.multiselect("Type of change", sorted(log["action"].unique()), key="dq_action",
-                             placeholder="All", format_func=lambda a: a.replace("_", " "))
+    severities = f1.multiselect("Severity", ["error", "warning", "info"], key="dq_sev", placeholder="All",
+                                format_func=str.capitalize)
+    actions = f2.multiselect("Type of Change", sorted(log["action"].unique()), key="dq_action",
+                             placeholder="All", format_func=lambda a: a.replace("_", " ").capitalize())
     shown = log
     if severities:
         shown = shown[shown["severity"].isin(severities)]
     if actions:
         shown = shown[shown["action"].isin(actions)]
-    display = shown.rename(columns={"row": "Row in file (0 = first data row)", "column": "Column",
-                                    "original_value": "Original value", "cleaned_value": "Cleaned value",
+    display = shown.rename(columns={"row": "Data Row", "column": "Column",
+                                    "original_value": "Original Value", "cleaned_value": "Cleaned Value",
                                     "action": "Action", "reason": "Reason", "severity": "Severity"})
-    display["Action"] = display["Action"].str.replace("_", " ")
+    display["Data Row"] = display["Data Row"] + 1           # 1 = first row under the headings
+    display["Column"] = display["Column"].map(
+        lambda c: title_case(FIELD_BY_NAME[c].label) if c in FIELD_BY_NAME else c)
+    display["Action"] = display["Action"].str.replace("_", " ").str.capitalize()
+    display["Reason"] = display["Reason"].map(as_sentence)
+    display["Severity"] = display["Severity"].str.capitalize()
     st.dataframe(display, hide_index=True, width="stretch", height=360)
     buffer = io.StringIO()
     log.to_csv(buffer, index=False)
-    st.download_button("Download the full change log (CSV)", buffer.getvalue(),
+    st.caption("Data Row 1 is the first row under the column headings in your file.")
+    st.download_button("Download Change Log (CSV)", buffer.getvalue(),
                        file_name="data_quality_log.csv", mime="text/csv", key="dq_download")
     _ai_usage_panel()
 
@@ -1332,7 +1398,7 @@ def _ai_usage_panel() -> None:
     from database import repository
     from database.connection import DatabaseError
     settings = config_settings.settings
-    st.markdown("## AI usage")
+    st.markdown("## AI Usage")
     if not settings.ai_enabled:
         st.caption("AI is turned off in this app, so no AI calls are made.")
         return
@@ -1345,16 +1411,14 @@ def _ai_usage_panel() -> None:
     budget = budget_status(settings, output.run_id if output else None,
                            _state().get("ai_session_calls", 0))
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("AI calls today", f"{usage['calls']} of {settings.ai_max_calls_per_day}", border=True)
-    c2.metric("Failed calls today", format_count(usage["failed"]), border=True)
-    c3.metric("Saved results reused today", format_count(usage["cache_hits"]), border=True,
-              help="Cache hits: no API call and no budget used.")
-    c4.metric("Calls left now", format_count(budget.remaining), border=True,
-              help="The lower of the daily limit and the per-run limit.")
-    st.caption(f"Text processed today: about {format_count(usage['input_tokens'])} tokens sent and "
-               f"{format_count(usage['output_tokens'])} received. The daily and per-analysis limits "
-               "are set in the app settings; Google's free-tier quotas can change. The AI day "
-               "restarts at 5:30 AM India time.")
+    c1.metric("AI Calls Today", f"{usage['calls']} of {settings.ai_max_calls_per_day}", border=True)
+    c2.metric("Failed Calls Today", format_count(usage["failed"]), border=True)
+    c3.metric("Saved Insights Reused Today", format_count(usage["cache_hits"]), border=True,
+              help="Reusing saved insights needs no AI call and uses none of the limit.")
+    c4.metric("AI Calls Left", format_count(budget.remaining), border=True,
+              help="The lower of the daily limit and the limit for this analysis.")
+    st.caption("The daily and per-analysis limits are set by the app owner, and Google's free-tier "
+               "limits can change. The AI day restarts at 5:30 AM India time.")
 
 
 def _format_timestamp(iso: str | None) -> str:
@@ -1384,29 +1448,29 @@ def page_reports() -> None:
     output = current_output()
     _header("Reports")
     pdf_col, excel_col = st.columns(2, gap="medium")
-    with pdf_col, st.container(border=True):
-        ui.card_title("Executive PDF report", "A consulting-style report with KPIs, channel, campaign, "
+    with pdf_col, st.container(border=True, height="stretch"):
+        ui.card_title("Executive PDF Report", "A consulting-style report with KPIs, channel, campaign, "
                       "funnel and segment analysis, findings, performance concerns, data quality, "
                       "methodology and limitations.")
         if st.button("Generate PDF", key="generate_pdf", type="primary", icon=":material/picture_as_pdf:"):
             try:
-                with st.spinner("Building the PDF report..."):
+                with st.spinner("Building the PDF report…"):
                     path = export_pdf(output.analysis, ai=_ai_sections())
                 _state()["pdf_path"] = str(path)
             except ReportError as exc:
                 ui.friendly_error(exc)
         pdf_path = _state().get("pdf_path")
         if pdf_path and Path(pdf_path).exists():
-            st.success(f"Report ready: {Path(pdf_path).name}")
+            st.success(f"Your PDF report is ready: {Path(pdf_path).name}")
             st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
                                mime="application/pdf", key="download_pdf", icon=":material/download:")
-    with excel_col, st.container(border=True):
-        ui.card_title("Analytical Excel workbook", "Supporting evidence: KPIs, clean data, campaign, "
-                      "channel, segment, funnel and trend tables, anomalies, the data-quality log and "
-                      "methodology, as real numbers you can sort and filter.")
+    with excel_col, st.container(border=True, height="stretch"):
+        ui.card_title("Analytical Excel Workbook", "All the supporting evidence (KPIs, clean data, "
+                      "campaign, channel, segment, funnel and trend tables, incidents, the data quality "
+                      "log and methodology) as real numbers you can sort and filter.")
         if st.button("Generate Excel", key="generate_excel", type="primary", icon=":material/table_view:"):
             try:
-                with st.spinner("Building the Excel workbook..."):
+                with st.spinner("Building the Excel workbook…"):
                     path = export_workbook(output.analysis, output.clean.clean_df,
                                            output.clean.quality_log_df, ai=_ai_sections())
                 _state()["excel_path"] = str(path)
@@ -1414,17 +1478,17 @@ def page_reports() -> None:
                 ui.friendly_error(exc)
         excel_path = _state().get("excel_path")
         if excel_path and Path(excel_path).exists():
-            st.success(f"Workbook ready: {Path(excel_path).name}")
+            st.success(f"Your Excel workbook is ready: {Path(excel_path).name}")
             st.download_button("Download Excel", Path(excel_path).read_bytes(),
                                file_name=Path(excel_path).name, key="download_excel", icon=":material/download:",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if output.run_id:
-        st.caption(f"This is saved as analysis #{output.run_id}; generated reports are recorded "
-                   "against it.")
+        st.caption(f"This is Analysis #{output.run_id}. Generated reports are saved with it.")
 
 
 def not_ready() -> None:
-    ui.empty_state(NOT_READY)
+    ui.empty_state(NOT_READY, icon="upload_file",
+                   action=("Go to Upload & Profile", _go_to_upload, "empty_go_upload"))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1432,31 +1496,32 @@ def not_ready() -> None:
 # ---------------------------------------------------------------------------------------------
 
 ABOUT_FEATURES = [
-    ("Upload any marketing export", "CSV or Excel; columns are recognised automatically and you "
-     "can change any mapping."),
-    ("Clean and check the data", "duplicates, bad dates and impossible values are fixed or "
+    ("Upload Any Marketing Export", "Upload a CSV or Excel file. Columns are recognised automatically, "
+     "and you can change any mapping."),
+    ("Clean and Validate the Data", "Duplicates, invalid dates and impossible values are fixed or "
      "flagged, and every change is logged."),
-    ("Calculate the KPIs", "CTR, CPC, CPL, CAC, ROAS, AOV and funnel rates, always recomputed "
-     "from totals."),
-    ("Find what changed", "trends, channel and campaign rankings, segments and weekly anomaly "
-     "detection."),
-    ("Explain it in plain language", "optional AI insights that cite the numbers they are based on."),
-    ("Share the results", "a PDF report and an analytical Excel workbook with the same numbers "
-     "as the dashboard."),
+    ("Calculate Verified KPIs", "CTR, CPC, CPL, CAC, ROAS, AOV and funnel rates are always "
+     "recalculated from totals."),
+    ("Detect What Changed", "Trends, channel and campaign rankings, segment performance, and "
+     "incidents ranked by their ₹ impact."),
+    ("Explain Results in Plain Language", "Optional AI insights that cite the verified numbers "
+     "behind every statement."),
+    ("Share the Results", "A PDF report and an analytical Excel workbook that match the dashboard "
+     "exactly."),
 ]
-ABOUT_STACK = ("Python · pandas · Streamlit · Plotly · SQLite · Google Gemini · ReportLab · "
-               "matplotlib · XlsxWriter")
+ABOUT_FOOTER = ("Built with Python, pandas, Streamlit, Plotly, SQLite, Google Gemini, ReportLab, "
+                "Matplotlib and XlsxWriter. Every number is calculated in Python; the AI only "
+                "interprets a verified summary of those numbers.")
 
 
 def page_about() -> None:
     _header("About")
     what, who = st.columns([3, 2], gap="large")
-    with what, st.container(border=True):
-        ui.card_title("What this platform does")
-        items = "".join(f"<li><b>{html.escape(title)}</b> - {html.escape(text)}</li>"
+    with what, st.container(border=True, height="stretch"):
+        ui.card_title("What This Platform Does")
+        items = "".join(f"<li><b>{html.escape(title)}</b><span>{html.escape(text)}</span></li>"
                         for title, text in ABOUT_FEATURES)
         st.markdown(f"<ul class='mi-about-list'>{items}</ul>", unsafe_allow_html=True)
-        st.caption(f"Built with {ABOUT_STACK}. Every number is calculated in Python; the AI only "
-                   "interprets a summary of those numbers.")
-    with who, st.container(border=True):
+        st.caption(ABOUT_FOOTER)
+    with who, st.container(border=True, height="stretch"):
         ui.creator_card()

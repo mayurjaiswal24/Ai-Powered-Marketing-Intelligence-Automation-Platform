@@ -116,11 +116,11 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
                  db_path=None, session_id: str | None = None) -> PipelineOutput:
     """Clean, store and analyse. Database problems do not stop the analysis: the results are
     still shown, with a note that they were not saved."""
-    progress("Cleaning and standardising the data")
+    progress("Cleaning data…")
     cleaned = clean_dataset(prep.raw_df, prep.mapping)
 
     run_id, is_reupload, save_error = None, False, None
-    progress("Saving the cleaned data")
+    progress("Saving cleaned data…")
     try:
         ds = repository.register_dataset(prep.report.filename, prep.report.file_hash,
                                          prep.report.rows, prep.report.columns,
@@ -137,13 +137,13 @@ def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda 
         save_error = exc.user_message
         run_id = None
 
-    progress("Calculating KPIs, trends, funnel, segments and anomalies")
+    progress("Calculating KPIs…")
     analysis = run_analysis(cleaned.clean_df, prep.validation, cleaned.quality_summary,
                             dataset_name=prep.report.filename, run_id=run_id)
 
     output = PipelineOutput(cleaned, analysis, run_id, is_reupload, save_error)
     if run_id is not None:
-        progress("Saving the analysis results")
+        progress("Saving results…")
         try:
             save_analysis(analysis, run_id, db_path=db_path)
             repository.save_run_snapshot(run_id, pickle.dumps(output), db_path=db_path)

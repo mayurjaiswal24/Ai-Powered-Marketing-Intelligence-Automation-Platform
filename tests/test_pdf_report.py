@@ -48,7 +48,7 @@ def test_pdf_generates_for_every_dataset(reports):
     for name, (_, text, pages) in reports.items():
         assert pages >= 5, name
         assert "Marketing Intelligence Report" in text
-        assert "Executive summary" in text and "Methodology" in text and "Limitations" in text
+        assert "Executive Summary" in text and "Methodology" in text and "Limitations" in text
 
 
 def test_rupee_sign_renders(reports):
@@ -71,7 +71,7 @@ def test_findings_and_anomalies_included(reports):
     flat = squash(text)
     for f in result.findings:
         assert squash(f.text) in flat, f.id
-    assert "Performance concerns" in text
+    assert "Performance Concerns" in text
     assert "trackingoutage" in flat.lower()
 
 
@@ -86,7 +86,7 @@ def test_content_labels_and_no_invented_ai(reports):
 
 def test_sections_absent_without_data(reports):
     no_rev = reports["no_revenue"][1]
-    assert "Revenue by month" not in no_rev
+    assert "Revenue by Month" not in no_rev
     assert "no revenue field was detected" in no_rev
     # Chart titles are inside the images, so check the text captions under the charts.
     assert "Overall ROAS" not in no_rev and "Overall CPL" in no_rev
@@ -99,16 +99,16 @@ def test_sections_absent_without_data(reports):
     # EXPLAIN why an analysis is missing, which is intended.
     meta = reports["meta"][1]
     headings = {re.sub(r"^\d+\. ", "", line) for line in meta.splitlines() if re.match(r"^\d+\. ", line)}
-    assert "Channel analysis" not in headings
-    assert "Segment, geography and product analysis" not in headings
-    assert "Funnel analysis" in headings                    # impressions -> clicks -> leads exist
+    assert "Channel Analysis" not in headings
+    assert "Segment, Geography and Product Analysis" not in headings
+    assert "Funnel Analysis" in headings                    # impressions -> clicks -> leads exist
     assert "Channel analysis is unavailable" in meta
 
 
 def test_messy_report_mentions_quality_work(reports):
     result, text, _ = reports["messy"]
     flat = squash(text)
-    assert "Duplicaterowsremoved" in flat and "25" in text
+    assert "DuplicateRowsRemoved" in flat and "25" in text
     assert "80rowshavenousablerevenue" in flat
 
 
@@ -146,5 +146,5 @@ def test_reports_page_generates_pdf(tmp_path, monkeypatch):
     at.sidebar.radio(key="page").set_value("Reports").run()
     at.button(key="generate_pdf").click().run()
     assert not at.exception and not at.error
-    assert any("Report ready" in s.value for s in at.success)
+    assert any("report is ready" in s.value for s in at.success)
     assert list((tmp_path / "exports").rglob("*.pdf"))

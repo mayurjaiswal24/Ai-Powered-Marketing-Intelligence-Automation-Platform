@@ -11,6 +11,7 @@ from config.settings import Settings
 from dashboard.pipeline import SAMPLE_DIR, load_raw, prepare, run_pipeline
 from database import repository as repo
 from reports.excel_report import export_workbook, generate_workbook
+from utils.formatting import title_case
 
 ROOT = Path(__file__).resolve().parent.parent
 DATASETS = {
@@ -47,7 +48,7 @@ def kpi_rows(wb) -> dict[str, object]:
             started = True
             continue
         if started and label:
-            if label == "Not available for this dataset":
+            if label == "Not Available for This Dataset":
                 break
             rows[label] = value
     return rows
@@ -76,9 +77,9 @@ def test_key_kpi_cells_are_numbers_equal_to_analysis(books):
     cells = kpi_rows(wb)
     for k in output.analysis.kpis.values():
         if not k.available:
-            assert k.label not in cells
+            assert title_case(k.label) not in cells
             continue
-        cell = cells[k.label]
+        cell = cells[title_case(k.label)]
         assert isinstance(cell.value, (int, float)), k.key          # a number, not text
         assert cell.value == pytest.approx(k.value, rel=1e-12), k.key
     assert "₹" in cells["Spend"].number_format
@@ -118,9 +119,9 @@ def test_messy_quality_log_included(books):
     output, _, wb = books["messy"]
     ws = wb["Data_Quality"]
     values = {ws.cell(r, 1).value: ws.cell(r, 2).value for r in range(1, 10)}
-    assert values["Duplicate rows removed"] == 25
+    assert values["Duplicate Rows Removed"] == 25
     all_text = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
-    assert "invalid_value_removed" in all_text and "duplicate_removed" in all_text
+    assert "Invalid value removed" in all_text and "Duplicate removed" in all_text
 
 
 def test_ai_sheet_only_with_ai_output(tmp_path):
@@ -154,5 +155,5 @@ def test_reports_page_generates_excel(tmp_path, monkeypatch):
     at.sidebar.radio(key="page").set_value("Reports").run()
     at.button(key="generate_excel").click().run()
     assert not at.exception and not at.error
-    assert any("Workbook ready" in s.value for s in at.success)
+    assert any("workbook is ready" in s.value for s in at.success)
     assert list((tmp_path / "exports").rglob("*.xlsx"))

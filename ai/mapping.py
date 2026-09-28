@@ -204,8 +204,8 @@ class MappingAssistant:
         if cached:
             wanted = {m.column for m in problems}
             return AIMappingOutcome(decisions={c: d for c, d in cached.items() if c in wanted},
-                                    source="cache", note="AI mapping reused for this column layout "
-                                    "(no new Gemini call).")
+                                    source="cache", note="The saved AI mapping for these columns was "
+                                    "reused (no new AI call).")
         if not self.allow_call:
             return AIMappingOutcome(note=self.blocked_note)
         reason = self._not_available()
@@ -224,7 +224,7 @@ class MappingAssistant:
         if self.client_factory is None or not s.ai_enabled:
             return "AI mapping is off, so the columns below need your choice."
         if not s.has_gemini_key or not s.gemini_model:
-            return "AI mapping is not configured (no Gemini key or model), so the columns below need your choice."
+            return "AI mapping is not set up in this app, so the columns below need your choice."
         from ai.cache import today_start_utc
         from database import repository
         from database.connection import DatabaseError
@@ -266,13 +266,13 @@ class MappingAssistant:
                 if exc.kind == "server" and getattr(client, "use_fallback", lambda: False)():
                     outcome.model = client.model
                     continue
-                outcome.note = f"AI mapping not available ({exc.user_message}) The columns below need your choice."
+                outcome.note = f"AI mapping is not available. {exc.user_message} The columns below need your choice."
                 return outcome
             try:
                 decisions, rejected = validate_answer(response.text, problems, mapping)
             except (ValidationError, ValueError):
                 self._log(key, client, False, "invalid_response", response)
-                outcome.note = ("Gemini's mapping answer could not be read, so the columns below "
+                outcome.note = ("Google Gemini's mapping answer could not be read, so the columns below "
                                 "need your choice.")
                 return outcome
             self._log(key, client, True, response=response)
@@ -280,7 +280,7 @@ class MappingAssistant:
             outcome.model = getattr(client, "model", outcome.model)
             self._save(key, decisions)
             return outcome
-        outcome.note = "AI mapping not available (Gemini is busy). The columns below need your choice."
+        outcome.note = "AI mapping is not available (Google Gemini is busy). The columns below need your choice."
         return outcome
 
     def _save(self, key: str, decisions: dict) -> None:
@@ -297,7 +297,7 @@ class MappingAssistant:
 BADGES = {
     "verified": "AI · verified",
     "check": "AI · not verified, please check",
-    "failed": "AI mapping failed a check — please choose",
+    "failed": "AI · failed a check, please choose",
 }
 
 

@@ -10,7 +10,7 @@ import streamlit as st
 import config.settings as config_settings
 from analytics.kpis import KPI_REGISTRY
 from dashboard.tables import column_format, column_label, format_table  # noqa: F401
-from utils.formatting import format_change
+from utils.formatting import format_change, title_case, title_case_label
 
 # ---------------------------------------------------------------------------------------------
 # Text blocks
@@ -111,8 +111,15 @@ def card_title(title: str, subtitle: str | None = None) -> None:
                 unsafe_allow_html=True)
 
 
-def empty_state(message: str) -> None:
-    st.markdown(f"<div class='mi-empty'>{html.escape(message)}</div>", unsafe_allow_html=True)
+def empty_state(message: str, icon: str = "info", action=None) -> None:
+    """The same empty state everywhere: an icon, one sentence and, when there is a useful next
+    step, one action button. `icon` is a Material Symbols name; `action` is (label, callback, key)."""
+    st.markdown(f"<div class='mi-empty'><span class='mi-empty-icon' aria-hidden='true'>"
+                f"{html.escape(icon)}</span><span>{html.escape(message)}</span></div>",
+                unsafe_allow_html=True)
+    if action is not None:
+        label, callback, key = action
+        st.button(label, key=key, on_click=callback, type="primary")
 
 
 def show_chart(fig, empty_message: str) -> None:
@@ -127,7 +134,7 @@ def findings_list(findings, limit: int | None = None) -> None:
     for f in findings[:limit] if limit else findings:
         st.markdown(
             f"<div class='mi-finding'><span class='mi-tag'>{html.escape(f.type)}</span>"
-            f"<span class='mi-title'>{html.escape(f.title)}</span><br>{html.escape(f.text)}</div>",
+            f"<span class='mi-title'>{html.escape(title_case_label(f.title))}</span><br>{html.escape(f.text)}</div>",
             unsafe_allow_html=True)
 
 
@@ -136,7 +143,7 @@ def friendly_error(exc: Exception) -> None:
     (the technical detail is kept out of the UI)."""
     message = getattr(exc, "user_message", None) or (
         "Something went wrong while preparing this view. Please reload the data and try again. "
-        "If it keeps happening, check that the file is a normal marketing export.")
+        "If it keeps happening, check that the file is a standard marketing export.")
     st.error(message)
 
 
@@ -158,9 +165,10 @@ def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4
                 delta = format_change(d.pct_change)
                 better = KPI_REGISTRY[key].higher_is_better
                 delta_color = "off" if better is None else ("normal" if better else "inverse")
-            help_text = f"{KPI_REGISTRY[key].formula_text}. {k.note}".strip()
+            spec = KPI_REGISTRY[key]
+            help_text = f"{spec.description}  \nFormula: {spec.formula_text}." + (f"  \n{k.note}" if k.note else "")
             with col:
-                st.metric(k.label, k.formatted_compact, delta=delta, delta_color=delta_color,
+                st.metric(title_case(k.label), k.formatted_compact, delta=delta, delta_color=delta_color,
                           help=help_text, border=True)
 
 
@@ -170,7 +178,7 @@ def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4
 
 def show_table(df: pd.DataFrame, columns: list[str] | None = None, height: int | None = None) -> None:
     if df is None or df.empty:
-        empty_state("No rows to show for the current filters.")
+        empty_state("No rows match the current filters.", icon="filter_alt_off")
         return
     kwargs = {"height": height} if height else {}
     st.dataframe(format_table(df, columns), hide_index=True, width="stretch", **kwargs)

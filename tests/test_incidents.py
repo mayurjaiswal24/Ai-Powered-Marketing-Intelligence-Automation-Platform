@@ -141,7 +141,7 @@ def test_attribution_limitation_everywhere(clean, tmp_path):
     path = tmp_path / "a.pdf"
     generate_pdf(clean.analysis, path)
     text = " ".join("".join(p.extract_text() for p in PdfReader(str(path)).pages).split())
-    assert "upper-funnel channels" in text and "Owned channels (not ranked)" in text
+    assert "upper-funnel channels" in text and "Owned Channels (Not Ranked)" in text
     no_rev_raw, rep = load_raw(SAMPLE_DIR / "marketing_no_revenue.csv")
     no_rev = run_pipeline(prepare(no_rev_raw, rep), db_path=tmp_path / "n.db").analysis
     assert ATTRIBUTION_NOTE not in no_rev.notes                 # no ROAS, no ROAS caveat
@@ -155,9 +155,9 @@ def test_excel_has_incidents_and_owned_block(clean, tmp_path):
     assert sheets.index("Incidents") < sheets.index("Anomalies")
     wb = load_workbook(path)
     values = [c.value for row in wb["Channel_Analysis"].iter_rows() for c in row if isinstance(c.value, str)]
-    assert any(v.startswith("Owned channels") for v in values)
+    assert any(v.startswith("Owned Channels") for v in values)
     inc = wb["Incidents"]
-    assert isinstance(inc.cell(4, [c.value for c in inc[3]].index("Estimated impact (₹)") + 1).value, float)
+    assert isinstance(inc.cell(4, [c.value for c in inc[3]].index("Estimated Impact (₹)") + 1).value, float)
 
 
 # --- Prompt v2 ---------------------------------------------------------------------------------

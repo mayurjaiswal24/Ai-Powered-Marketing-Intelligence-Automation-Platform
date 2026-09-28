@@ -74,7 +74,7 @@ def test_load_sample_opens_the_finished_analysis_instantly(demo_on, tmp_path, mo
     assert any("Analysis ready" in s.value for s in at.success)
     assert any("opened instantly" in c.value for c in at.caption)
     at.sidebar.radio(key="page").set_value("AI Insights").run()
-    assert any("No API call used" in s.value for s in at.success)
+    assert any("No AI call was used" in s.value for s in at.success)
     at.sidebar.radio(key="page").set_value("Executive Overview").run()
     assert not at.exception
 

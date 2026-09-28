@@ -150,7 +150,7 @@ def test_per_run_budget(outputs, tmp_path):
     status = budget_status(settings, run_id, db_path=db)
     assert status.calls_this_run == 1 and status.remaining == 0
     blocked = get_insights(out.analysis, settings, CountingFactory([]), run_id=run_id, force=True, db_path=db)
-    assert blocked.error.kind == "budget" and "this analysis run" in blocked.error.user_message
+    assert blocked.error.kind == "budget" and "this analysis (" in blocked.error.user_message
 
 
 def test_unsaved_run_uses_session_counter(clean, tmp_path):
@@ -249,12 +249,12 @@ def test_app_cache_regenerate_confirmation_and_usage(app_env, clean):
 
     at2.sidebar.radio(key="page").set_value("Data Quality").run()
     metrics = {m.label: m.value for m in at2.metric}
-    assert metrics["AI calls today"] == "2 of 2" and metrics["Calls left now"] == "0"
-    assert metrics["Saved results reused today"] == "0"     # page-open loads are free and not logged
+    assert metrics["AI Calls Today"] == "2 of 2" and metrics["AI Calls Left"] == "0"
+    assert metrics["Saved Insights Reused Today"] == "0"     # page-open loads are free and not logged
 
     at2.sidebar.radio(key="page").set_value("Reports").run()
     at2.button(key="generate_pdf").click().run()
-    assert not at2.exception and any("Report ready" in s.value for s in at2.success)
+    assert not at2.exception and any("report is ready" in s.value for s in at2.success)
 
 
 def test_app_ai_off_message(tmp_path, monkeypatch):
@@ -265,6 +265,6 @@ def test_app_ai_off_message(tmp_path, monkeypatch):
     at.button(key="load_sample").click().run()
     at.button(key="run_analysis").click().run()
     at.sidebar.radio(key="page").set_value("AI Insights").run()
-    assert any("AI is turned off" in i.value for i in at.info)
+    assert any("AI Insights are turned off" in m.value for m in at.markdown)
     at.sidebar.radio(key="page").set_value("Data Quality").run()
     assert not at.exception

@@ -43,7 +43,8 @@ def main() -> None:
         elif page == "About":
             layout.page_about()
         elif layout.current_output() is None:
-            ui.page_header(page, layout.PAGE_DESCRIPTIONS.get(page))
+            ui.page_header(page, layout.PAGE_DESCRIPTIONS.get(page),
+                           eyebrow=layout.PAGE_SECTION.get(page) or None)
             layout.not_ready()
         elif page in PAGE_RENDERERS:
             PAGE_RENDERERS[page](filters)

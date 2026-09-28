@@ -17,11 +17,13 @@ import pandas as pd
 
 from analytics.kpis import KPI_REGISTRY, RATIO_KPIS
 from config import settings as cfg
+from config.fields import FIELD_BY_NAME
 from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import column_format, column_label
 from reports import export_filename
-from utils.formatting import format_count, format_date, format_datetime_ist, pct_decimals
+from utils.formatting import (as_sentence, format_count, format_date, format_datetime_ist,
+                              pct_decimals, title_case)
 
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
                else PROJECT_ROOT / settings.exports_dir)
@@ -191,24 +193,24 @@ def _executive_kpis(book: _Book, result, generated: str) -> None:
                     "executive PDF. All figures cover the full dataset.", book.fmt["subtitle"])
     ws.write_string(2, 0, cfg.REPORT_SIGNATURE, book.fmt["subtitle"])
     info = [("Dataset", str(meta.get("dataset_name") or "N/A")),
-            ("Period covered", f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}"),
-            ("Rows analysed", format_count(meta.get("rows"))),
-            ("Analysis run", f"#{meta['run_id']}" if meta.get("run_id") else "Not saved"),
+            ("Period Covered", f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}"),
+            ("Rows Analysed", format_count(meta.get("rows"))),
+            ("Analysis", f"#{meta['run_id']}" if meta.get("run_id") else "Not saved"),
             ("Generated", generated)]
     for i, (label, value) in enumerate(info, start=3):
         ws.write_string(i, 0, label, book.fmt["label"])
         ws.write_string(i, 1, value, book.fmt["text"])
 
     start = 10
-    ws.write_string(start - 1, 0, "Key performance indicators (verified metrics)", book.fmt["section"])
-    headers = ["KPI", "Value", "How it is calculated", "Note"]
+    ws.write_string(start - 1, 0, "Key Performance Indicators (Verified Metrics)", book.fmt["section"])
+    headers = ["KPI", "Value", "How It Is Calculated", "Note"]
     for j, h in enumerate(headers):
         ws.write_string(start, j, h, book.fmt["header"])
     row = start + 1
     for k in result.kpis.values():
         if not k.available:
             continue
-        ws.write_string(row, 0, k.label, book.fmt["text"])
+        ws.write_string(row, 0, title_case(k.label), book.fmt["text"])
         book.write_value(ws, row, 1, k.value, book.fmt[_kpi_format_name(k.key, k.value)])
         ws.write_string(row, 2, k.formula_text, book.fmt["wrap"])
         ws.write_string(row, 3, k.note or "", book.fmt["wrap"])
@@ -216,10 +218,10 @@ def _executive_kpis(book: _Book, result, generated: str) -> None:
     unavailable = [k for k in result.kpis.values() if not k.available]
     if unavailable:
         row += 1
-        ws.write_string(row, 0, "Not available for this dataset", book.fmt["section"])
+        ws.write_string(row, 0, "Not Available for This Dataset", book.fmt["section"])
         for k in unavailable:
             row += 1
-            ws.write_string(row, 0, k.label, book.fmt["text"])
+            ws.write_string(row, 0, title_case(k.label), book.fmt["text"])
             ws.write_string(row, 2, k.reason_unavailable, book.fmt["wrap"])
     ws.set_column(0, 0, 26)
     ws.set_column(1, 1, 18)
@@ -235,10 +237,11 @@ def _kpi_analysis(book: _Book, result) -> None:
     k["note"] = k["note"].where(k["available"] == "Yes", k["reason_unavailable"])
     ws.write_string(0, 0, "Every KPI with the numbers behind it (audit trail). Ratios = numerator / "
                     "denominator of summed totals.", book.fmt["subtitle"])
-    table = k[["label", "value", "numerator", "denominator", "available", "formula", "note"]]
+    k["kpi_name"] = k["label"].map(title_case)
+    table = k[["kpi_name", "value", "numerator", "denominator", "available", "formula", "note"]]
     # One number format per row is needed for "value" (money, %, x...), so write it by hand.
     end = book.table(ws, table.drop(columns=["value"]), start_row=2,
-                     formats={"numerator": "number", "denominator": "number", "label": "text",
+                     formats={"numerator": "number", "denominator": "number", "kpi_name": "text",
                               "available": "text", "formula": "text", "note": "text"})
     ws.write_string(2, len(table.columns) - 1, "Value", book.fmt["header"])
     for i, row in enumerate(k.itertuples(), start=3):
@@ -277,7 +280,8 @@ def _funnel(book: _Book, result) -> None:
         return
     table = pd.concat(parts, ignore_index=True).rename(columns={"scope": "channel_scope"})
     _simple_sheet(book, "Funnel_Analysis", table,
-                  "Stage totals and stage-to-stage conversion. channel_scope 'all' = all channels.")
+                  "Stage totals and stage-to-stage conversion. A Channel Scope of 'all' means all "
+                  "channels together.")
 
 
 def _trends(book: _Book, result) -> None:
@@ -291,8 +295,9 @@ def _trends(book: _Book, result) -> None:
         return
     table = pd.concat(parts, ignore_index=True)
     _simple_sheet(book, "Trend_Analysis", table,
-                  "Daily, weekly (Monday start) and monthly totals and KPIs. 'days' = days with data "
-                  "in the period (partial periods have fewer). Filter on the grain column.")
+                  "Daily, weekly (starting on Monday) and monthly totals and KPIs. Days is the number "
+                  "of days with data in the period (partial periods have fewer). Filter on the Grain "
+                  "column.")
 
 
 def _channels(book: _Book, result) -> None:
@@ -302,13 +307,13 @@ def _channels(book: _Book, result) -> None:
     from analytics.channel import owned_channels, paid_channels
     paid, owned = paid_channels(ch), owned_channels(ch)
     ws = book.sheet("Channel_Analysis")
-    ws.write_string(0, 0, "Paid channels. *_index = paid channel value / paid-media average x 100 "
-                    "(100 = average). Owned channels are listed separately below and not ranked.",
+    ws.write_string(0, 0, "Paid channels. Each Index column = paid channel value / paid-media average "
+                    "× 100 (100 = average). Owned channels are listed separately below and not ranked.",
                     book.fmt["subtitle"])
     end = book.table(ws, paid, start_row=2)
     if not owned.empty:
-        ws.write_string(end, 0, "Owned channels (not ranked: own audience, mostly fixed costs, ROAS not "
-                        "comparable with paid media)", book.fmt["section"])
+        ws.write_string(end, 0, "Owned Channels (Not Ranked: Own Audience, Mostly Fixed Costs, ROAS Not "
+                        "Comparable with Paid Media)", book.fmt["section"])
         book.table(ws, owned.drop(columns=[c for c in owned.columns if c.endswith("_index")]),
                    start_row=end + 1, freeze=False, filter_=False)
 
@@ -332,9 +337,10 @@ def _incidents(book: _Book, result) -> None:
         "flags": inc["flags"].map(summary), "related_effects": inc["related"].map(summary),
     })
     _simple_sheet(book, "Incidents", table,
-                  "Anomaly flags grouped into business incidents, ranked by estimated rupee impact "
+                  "Anomaly flags grouped into business incidents, ranked by their estimated ₹ impact "
                   "(an estimate from the data, not an accounting figure). Related effects are flags on "
-                  "other campaigns/channels explained by the same event. Individual flags: Anomalies sheet.")
+                  "other campaigns or channels explained by the same incident. Individual flags are on "
+                  "the Anomalies sheet.")
 
 
 def _anomalies(book: _Book, result) -> None:
@@ -344,9 +350,9 @@ def _anomalies(book: _Book, result) -> None:
     table = a.drop(columns=["details_json"], errors="ignore").rename(
         columns={"baseline": "expected", "pct_change": "change_pct"})
     _simple_sheet(book, "Anomalies", table,
-                  "Unusual periods (weekly robust score or daily tracking-outage rule). 'expected' is "
+                  "Unusual periods (weekly robust score or daily tracking-outage rule). Expected is "
                   "the level expected from recent weeks and the rest of the business. Values use the "
-                  "metric's own unit (see the metric column).")
+                  "metric's own unit (see the Metric column).")
 
 
 def _ai(book: _Book, ai: dict | None) -> None:
@@ -357,7 +363,7 @@ def _ai(book: _Book, ai: dict | None) -> None:
     for key, title, label in SECTIONS:
         raw = ai.get(key)
         for item in raw if isinstance(raw, list) else ([raw] if raw else []):
-            rows.append({"section": title, "type": label, "text": item.get("text", ""),
+            rows.append({"section": title_case(title), "type": label, "text": item.get("text", ""),
                          "evidence_ids": ", ".join(item.get("evidence_ids", [])),
                          "validation_step": item.get("validation_step", ""),
                          "priority": item.get("priority", ""),
@@ -369,9 +375,9 @@ def _ai(book: _Book, ai: dict | None) -> None:
                          "quality": "weak: " + "; ".join(item.get("weak_reasons", [])) if item.get("weak") else "ok"})
     if rows:
         _simple_sheet(book, "AI_Insights", pd.DataFrame(rows),
-                      "AI-GENERATED content (Google Gemini): interpretation of the verified evidence. "
-                      "Hypotheses require validation. 'check' = whether every figure matched the "
-                      "cited evidence.")
+                      "AI-GENERATED content (Google Gemini): an interpretation of the verified evidence. "
+                      "Hypotheses need to be validated before you act on them. Check shows whether every "
+                      "figure matched the cited evidence.")
 
 
 def _data_quality(book: _Book, result, log: pd.DataFrame | None) -> None:
@@ -379,23 +385,30 @@ def _data_quality(book: _Book, result, log: pd.DataFrame | None) -> None:
     if q is None:
         return
     ws = book.sheet("Data_Quality")
-    ws.write_string(0, 0, "Data quality", book.fmt["title"])
-    items = [("Rows in uploaded file", q.rows_in), ("Rows analysed", q.rows_out),
-             ("Duplicate rows removed", q.removed_duplicates),
-             ("Summary rows removed", q.removed_summary_rows), ("Rows with a quality flag", q.flagged_rows)]
+    ws.write_string(0, 0, "Data Quality", book.fmt["title"])
+    items = [("Rows in Uploaded File", q.rows_in), ("Rows Analysed", q.rows_out),
+             ("Duplicate Rows Removed", q.removed_duplicates),
+             ("Summary Rows Removed", q.removed_summary_rows), ("Rows with a Quality Flag", q.flagged_rows)]
     for i, (label, value) in enumerate(items, start=2):
         ws.write_string(i, 0, label, book.fmt["label"])
         ws.write_number(i, 1, value, book.fmt["count"])
     row = 2 + len(items) + 1
-    ws.write_string(row, 0, "What this means for the analysis", book.fmt["section"])
+    ws.write_string(row, 0, "What This Means for the Analysis", book.fmt["section"])
     for text in q.limitations or ["No limitations: the data could be used as supplied."]:
         row += 1
         ws.write_string(row, 0, f"- {text}", book.fmt["text"])
     row += 2
     if log is not None and not log.empty:
-        ws.write_string(row, 0, "Change log (row = 0-based data row of the uploaded file)", book.fmt["section"])
-        table = log.rename(columns={"row": "row_in_file", "column": "column_name"})
-        book.table(ws, table, start_row=row + 1, formats={"row_in_file": "index"}, freeze=False,
+        ws.write_string(row, 0, "Change Log (Data Row 1 = the First Row under the Column Headings)",
+                        book.fmt["section"])
+        table = log.rename(columns={"row": "data_row", "column": "column_name"})
+        table["data_row"] = table["data_row"] + 1
+        table["column_name"] = table["column_name"].map(
+            lambda c: title_case(FIELD_BY_NAME[c].label) if c in FIELD_BY_NAME else c)
+        table["action"] = table["action"].str.replace("_", " ").str.capitalize()
+        table["reason"] = table["reason"].map(as_sentence)
+        table["severity"] = table["severity"].str.capitalize()
+        book.table(ws, table, start_row=row + 1, formats={"data_row": "index"}, freeze=False,
                    labels=True)
     ws.set_column(0, 0, 30)
     ws.set_column(1, 1, 16)
@@ -404,7 +417,7 @@ def _data_quality(book: _Book, result, log: pd.DataFrame | None) -> None:
 def _methodology(book: _Book, result) -> None:
     ws = book.sheet("Methodology")
     ws.write_string(0, 0, "Methodology", book.fmt["title"])
-    rows = [{"kpi": KPI_REGISTRY[k].label, "formula": KPI_REGISTRY[k].formula_text,
+    rows = [{"kpi": title_case(KPI_REGISTRY[k].label), "formula": KPI_REGISTRY[k].formula_text,
              "meaning": KPI_REGISTRY[k].description, "used_in_this_dataset":
              "Yes" if result.kpis.get(k) is not None and result.kpis[k].available else "No"}
             for k in RATIO_KPIS]

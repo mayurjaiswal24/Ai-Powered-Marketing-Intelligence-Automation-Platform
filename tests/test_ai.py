@@ -300,7 +300,7 @@ def test_ai_page_when_disabled(app, monkeypatch):
     monkeypatch.setattr(config_settings, "settings", Settings(ai_enabled=False))
     at = _run_to_ai_page(app)
     assert not at.exception
-    assert any("turned off" in i.value for i in at.info)
+    assert any("turned off" in m.value for m in at.markdown)
 
 
 def test_ai_page_with_fake_client(app, monkeypatch, pack):
@@ -315,7 +315,7 @@ def test_ai_page_with_fake_client(app, monkeypatch, pack):
     assert not at.exception and not at.error
     assert len(fake.calls) == 1
     labels = {m.label: m.value for m in at.metric}
-    assert labels["Dropped (no evidence)"] == "2" and labels["Unverified figures"] == "1"
+    assert labels["Dropped"] == "2" and labels["Unverified Figures"] == "1"
     rendered = " ".join(str(getattr(e, "value", "")) for e in at.main)
     assert "test-key-123" not in rendered                  # the key is never shown
 

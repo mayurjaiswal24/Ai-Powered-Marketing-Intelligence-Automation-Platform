@@ -32,7 +32,8 @@ from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import format_table
 from reports import export_filename, pdf_charts
-from utils.formatting import format_count, format_date, format_datetime_ist, format_value
+from utils.formatting import (format_count, format_date, format_date_range, format_datetime_ist,
+                              format_value, title_case, title_case_label)
 
 FONT_DIR = PROJECT_ROOT / "assets" / "fonts"
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
@@ -42,7 +43,7 @@ PAGE_W, PAGE_H = A4
 MARGIN = 18 * mm
 TEXT_W = PAGE_W - 2 * MARGIN
 
-AI_NOT_GENERATED = "AI insights were not generated for this run."
+AI_NOT_GENERATED = "AI insights were not generated for this analysis."
 
 # Content labels (SPEC §16): background tint + text colour, so they stay readable in print.
 TAGS = {
@@ -75,8 +76,8 @@ def _register_fonts() -> None:
         pdfmetrics.registerFont(TTFont("DejaVu", str(FONT_DIR / "DejaVuSans.ttf")))
         pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(FONT_DIR / "DejaVuSans-Bold.ttf")))
     except Exception as exc:  # noqa: BLE001
-        raise ReportError("The report font is missing (assets/fonts). Reinstall the project files "
-                          "and try again.") from exc
+        raise ReportError("The report font is missing. Please reinstall the app files and try "
+                          "again.") from exc
     pdfmetrics.registerFontFamily("DejaVu", normal="DejaVu", bold="DejaVu-Bold",
                                   italic="DejaVu", boldItalic="DejaVu-Bold")
 
@@ -161,7 +162,7 @@ def _decorate(meta: dict, generated: str):
         canvas.setFont("DejaVu", 7.5)
         canvas.setFillColor(colors.HexColor(theme.INK_MUTED))
         canvas.drawString(MARGIN, 10 * mm, cfg.REPORT_SIGNATURE)
-        canvas.drawString(MARGIN, 6.5 * mm, f"Generated {generated} | Confidential - internal use")
+        canvas.drawString(MARGIN, 6.5 * mm, f"Generated {generated} · Confidential: internal use only")
         canvas.restoreState()
     return on_page
 
@@ -182,10 +183,10 @@ class _Report:
     def h1(self, title: str) -> None:
         self.section_no += 1
         self.story.append(CondPageBreak(60 * mm))
-        self.story.append(Paragraph(f"{self.section_no}. {escape(title)}", self.s["h1"]))
+        self.story.append(Paragraph(f"{self.section_no}. {escape(title_case(title))}", self.s["h1"]))
 
     def h2(self, title: str) -> None:
-        self.story.append(Paragraph(escape(title), self.s["h2"]))
+        self.story.append(Paragraph(escape(title_case(title)), self.s["h2"]))
 
     def p(self, text: str, style: str = "body", raw: bool = False) -> None:
         self.story.append(Paragraph(text if raw else escape(text), self.s[style]))
@@ -273,13 +274,13 @@ def _cover(rep: _Report, generated: str) -> None:
     rep.story.append(Spacer(1, 55 * mm))
     rep.story.append(Paragraph(REPORT_TITLE, s["cover_title"]))
     rep.story.append(Spacer(1, 4 * mm))
-    rep.story.append(Paragraph("Performance, efficiency and data-quality review generated "
-                               "automatically from verified analytics", s["cover_sub"]))
+    rep.story.append(Paragraph("A performance, efficiency and data quality review generated "
+                               "automatically from verified analytics.", s["cover_sub"]))
     rep.story.append(Spacer(1, 14 * mm))
     rows = [("Dataset", meta.get("dataset_name") or "N/A"),
-            ("Period covered", f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}"),
-            ("Rows analysed", format_count(meta.get("rows"))),
-            ("Analysis run", f"#{meta['run_id']}" if meta.get("run_id") else "Not saved"),
+            ("Period Covered", f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}"),
+            ("Rows Analysed", format_count(meta.get("rows"))),
+            ("Analysis", f"#{meta['run_id']}" if meta.get("run_id") else "Not saved"),
             ("Generated", generated)]
     t = Table([[Paragraph(escape(a), s["kpi_label"]), Paragraph(escape(str(b)), s["body"])] for a, b in rows],
               colWidths=[40 * mm, TEXT_W - 40 * mm])
@@ -340,11 +341,11 @@ def _executive_summary(rep: _Report) -> None:
         at_stake = problems[problems["impact_direction"] == "loss"]["impact_inr"].sum()
         rep.p(f"Anomaly detection found {len(inc)} incidents ({len(r.anomalies)} individual flags); "
               f"{len(problems)} are performance problems with an estimated "
-              f"{format_value(at_stake, 'money', compact=True)} at stake. See Performance concerns.")
+              f"{format_value(at_stake, 'money', compact=True)} at stake. See Performance Concerns.")
     q = r.quality_summary
     if q is not None:
-        rep.p(q.limitations[0] if q.limitations else "No data-quality limitations affect these results.")
-    rep.notice(AI_NOT_GENERATED if not rep.ai else "AI interpretation is included in the AI insights section.")
+        rep.p(q.limitations[0] if q.limitations else "No data quality limitations affect these results.")
+    rep.notice(AI_NOT_GENERATED if not rep.ai else "AI interpretation is included in the AI Insights section.")
 
 
 def _kpi_overview(rep: _Report) -> None:
@@ -354,8 +355,8 @@ def _kpi_overview(rep: _Report) -> None:
     rows = []
     for k in rep.r.kpis.values():
         if k.available:
-            rows.append({"KPI": k.label, "Value": k.formatted, "How it is calculated": k.formula_text,
-                         "Note": k.note})
+            rows.append({"KPI": title_case(k.label), "Value": k.formatted,
+                         "How It Is Calculated": k.formula_text, "Note": k.note})
     df = pd.DataFrame(rows)
     _plain_table(rep, df, [38 * mm, 32 * mm, 55 * mm, TEXT_W - 125 * mm])
     unavailable = [k for k in rep.r.kpis.values() if not k.available]
@@ -402,12 +403,12 @@ def _overall_performance(rep: _Report) -> None:
     if monthly is None or monthly.empty:
         return
     rep.h1("Overall performance")
-    rep.p(tag("Verified metric") + " Monthly totals. Partial first/last months are marked by their "
+    rep.p(tag("Verified metric") + " Monthly totals. Partial first and last months are marked by their "
           "day count in the table.", "small", raw=True)
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in monthly), None)
     for metric in [m for m in (outcome, "spend") if m]:
         rep.chart(pdf_charts.line_png(monthly, "period", metric, KPI_REGISTRY[metric].fmt,
-                                      f"{KPI_REGISTRY[metric].label} by month", date_axis=False))
+                                      f"{title_case(KPI_REGISTRY[metric].label)} by Month", date_axis=False))
     cols = ["period", "days", "spend", "leads", "cpl", "conversions", "revenue", "roas"]
     rep.table(monthly.rename(columns={"period": "month"}), ["month"] + cols[1:])
 
@@ -420,18 +421,18 @@ def _channels(rep: _Report) -> None:
     paid, owned = paid_channels(ch), owned_channels(ch)
     rep.h1("Channel analysis")
     rep.p(tag("Verified metric") + " Shares of spend and results by channel. Efficiency index = paid "
-          "channel value / paid-media average x 100 (100 = average). Owned channels are reported "
+          "channel value / paid-media average × 100 (100 = average). Owned channels are reported "
           "separately and not ranked.", "small", raw=True)
-    series = {"Share of spend": "spend_share_pct"}
+    series = {"Share of Spend": "spend_share_pct"}
     if "revenue_share_pct" in ch:
-        series["Share of revenue"] = "revenue_share_pct"
+        series["Share of Revenue"] = "revenue_share_pct"
     elif "leads_share_pct" in ch:
-        series["Share of leads"] = "leads_share_pct"
-    rep.chart(pdf_charts.share_png(ch, "channel", series, "Where the money goes and what it returns"))
+        series["Share of Leads"] = "leads_share_pct"
+    rep.chart(pdf_charts.share_png(ch, "channel", series, "Where the Money Goes and What It Returns"))
     metric = "roas" if "roas" in paid and paid["roas"].notna().any() else "cpl"
     if metric in paid and len(paid):
         rep.chart(pdf_charts.hbar_png(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                      f"{KPI_REGISTRY[metric].label} by paid channel",
+                                      f"{title_case(KPI_REGISTRY[metric].label)} by Paid Channel",
                                       ascending=KPI_REGISTRY[metric].higher_is_better is False),
                   f"Paid channels only. Overall {KPI_REGISTRY[metric].label} (all channels): "
                   f"{rep.r.kpis[metric].formatted}.")
@@ -442,7 +443,7 @@ def _channels(rep: _Report) -> None:
     if not owned.empty:
         rep.h2("Owned channels (not ranked)")
         for _, row in owned.iterrows():
-            parts = [f"spend {format_value(row['spend'], 'money', compact=True)}"]
+            parts = [f"Spend {format_value(row['spend'], 'money', compact=True)}"]
             for m in ("revenue", "conversions", "roas"):
                 if m in owned and pd.notna(row.get(m)):
                     parts.append(f"{KPI_REGISTRY[m].label} {format_value(row[m], KPI_REGISTRY[m].fmt, compact=True)}")
@@ -461,7 +462,8 @@ def _campaigns(rep: _Report) -> None:
           "of data with the 4 weeks before.", "small", raw=True)
     ranked = c.sort_values(outcome, ascending=False) if outcome else c
     metric = "roas" if "roas" in c and c["roas"].notna().any() else "cpl"
-    rep.chart(pdf_charts.hbar_png(ranked, "campaign", outcome, "count", f"Campaigns by {outcome}", top_n=10))
+    rep.chart(pdf_charts.hbar_png(ranked, "campaign", outcome, "count", title_case(f"Campaigns by {outcome}"),
+                                  top_n=10))
     rep.table(ranked, ["campaign", "channel", "spend", "leads", "cpl", "conversions", "cac", "revenue",
                        metric, "trend"], max_rows=10)
 
@@ -473,8 +475,8 @@ def _funnel(rep: _Report) -> None:
     rep.h1("Funnel analysis")
     rep.p(tag("Verified metric") + " Only the stages present in the data are shown. The chart uses "
           "a logarithmic scale so the smaller lower stages stay visible.", "small", raw=True)
-    rep.chart(pdf_charts.funnel_png(f, "Marketing funnel"))
-    rep.table(f, ["label", "value", "rate_from_previous", "drop_off_pct"])
+    rep.chart(pdf_charts.funnel_png(f.assign(label=f["label"].map(title_case)), "Marketing Funnel"))
+    rep.table(f.assign(label=f["label"].map(title_case)), ["label", "value", "rate_from_previous", "drop_off_pct"])
 
 
 def _segments(rep: _Report) -> None:
@@ -502,10 +504,10 @@ def _trends(rep: _Report) -> None:
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in weekly), None)
     if outcome:
         rep.chart(pdf_charts.line_png(weekly, "period", outcome, KPI_REGISTRY[outcome].fmt,
-                                      f"Weekly {KPI_REGISTRY[outcome].label.lower()}"))
+                                      f"Weekly {title_case(KPI_REGISTRY[outcome].label)}"))
     if eff in weekly:
         rep.chart(pdf_charts.line_png(weekly, "period", eff, KPI_REGISTRY[eff].fmt,
-                                      f"Weekly {KPI_REGISTRY[eff].label}"))
+                                      f"Weekly {title_case(KPI_REGISTRY[eff].label)}"))
     if rep.r.seasonality is not None:
         rep.h2("Seasonality index (100 = an average month)")
         season = rep.r.seasonality.copy()
@@ -525,7 +527,7 @@ def _key_findings(rep: _Report) -> None:
         return
     rep.h1("Key findings")
     for f in rep.r.findings:
-        rep.p(f"{tag('Analytical finding')} <b>{escape(f.title)}</b><br/>{escape(f.text)}", raw=True)
+        rep.p(f"{tag('Analytical finding')} <b>{escape(title_case_label(f.title))}</b><br/>{escape(f.text)}", raw=True)
 
 
 def _impact(value, direction, label) -> str:
@@ -540,16 +542,17 @@ def _performance_concerns(rep: _Report) -> None:
         return
     rep.h1("Performance concerns")
     rep.p(tag("Analytical finding") + " Incidents from the anomaly detector (method in Methodology), "
-          "ranked by estimated rupee impact. Flags on the same entity and period form one incident; "
-          "effects on other campaigns/channels in the same event are listed as related effects. They "
-          "describe what changed and by how much, not why; impacts are estimates.", "small", raw=True)
+          "ranked by their estimated ₹ impact. Flags on the same entity and period form one incident; "
+          "effects on other campaigns or channels in the same incident are listed as related effects. "
+          "They describe what changed and by how much, not why; impacts are estimates.", "small", raw=True)
     problems = inc[inc["sentiment"] != "positive"]
     if problems.empty:
         rep.p("No problem incidents were detected.")
     for r in problems.head(8).itertuples():
         lines = [f"<b>#{r.rank} {escape(r.entity)} ({escape(r.entity_type)}), {format_date(r.period_start)} to "
-                 f"{format_date(r.period_end)}</b> - {escape(r.metrics)}; "
-                 f"{escape(_impact(r.impact_inr, r.impact_direction, r.impact_label))}. Severity {r.severity}."]
+                 f"{format_date(r.period_end)}</b>: {escape(r.metrics)}; "
+                 f"{escape(_impact(r.impact_inr, r.impact_direction, r.impact_label))}. "
+                 f"Severity: {str(r.severity).capitalize()}."]
         for f in r.flags[:3]:
             change = "" if f["change_pct"] is None else f" ({f['change_pct']:+.0f}%)"
             note = f" {f['note']}" if f.get("note") else ""
@@ -576,13 +579,14 @@ def _performance_concerns(rep: _Report) -> None:
 def _ai_section(rep: _Report) -> None:
     rep.h1("AI insights, investigation areas and recommendations")
     if not rep.ai:
-        rep.notice(AI_NOT_GENERATED + " This section would contain Gemini's interpretation of the "
+        rep.notice(AI_NOT_GENERATED + " This section would contain Google Gemini's interpretation of the "
                    "verified evidence, possible explanations (hypotheses), areas to investigate and "
                    "recommendations, each clearly labelled. The rest of this report is complete "
                    "without it.")
         return
-    rep.notice("AI-generated interpretation of verified metrics (Google Gemini). Hypotheses require "
-               "validation. Evidence IDs refer to the evidence pack stored with this analysis.")
+    rep.notice("This section is an AI-generated interpretation of verified metrics by Google Gemini. "
+               "Hypotheses need to be validated before you act on them. Evidence IDs refer to the "
+               "verified facts stored with this analysis.")
     from ai.schemas import SECTIONS
     for key, title, label in SECTIONS:
         raw = rep.ai.get(key)
@@ -596,13 +600,13 @@ def _ai_section(rep: _Report) -> None:
             if item.get("validation_step"):
                 extra.append(f"How to validate: {escape(item['validation_step'])}")
             if item.get("metric_to_watch"):
-                extra.append(f"Priority: {escape(str(item.get('priority', '')))}; metric to watch: "
-                             f"{escape(item['metric_to_watch'])}")
+                extra.append(f"Priority: {escape(str(item.get('priority', '')).capitalize())} · Metric to "
+                             f"watch: {escape(item['metric_to_watch'])}")
             if item.get("test_shift_pct"):
                 extra.append(f"Suggested test shift: {item['test_shift_pct']:.0f}% of the source budget "
-                             "(proposal)")
+                             "(a proposal, not a measured figure).")
             if item.get("at_stake_text"):
-                extra.append(escape(item["at_stake_text"]) + " - calculated by the app")
+                extra.append(escape(item["at_stake_text"]) + ", calculated by the app.")
             ids = ", ".join(item.get("evidence_ids", []))
             status = " <i>(contains unverified figures)</i>" if item.get("status") == "unverified" else ""
             if item.get("weak"):
@@ -617,10 +621,10 @@ def _data_quality(rep: _Report) -> None:
     if q is None:
         return
     rep.h1("Data quality")
-    rows = [("Rows in uploaded file", format_count(q.rows_in)), ("Rows analysed", format_count(q.rows_out)),
-            ("Duplicate rows removed", format_count(q.removed_duplicates)),
-            ("Summary rows removed", format_count(q.removed_summary_rows)),
-            ("Rows with a quality flag", format_count(q.flagged_rows))]
+    rows = [("Rows in Uploaded File", format_count(q.rows_in)), ("Rows Analysed", format_count(q.rows_out)),
+            ("Duplicate Rows Removed", format_count(q.removed_duplicates)),
+            ("Summary Rows Removed", format_count(q.removed_summary_rows)),
+            ("Rows with a Quality Flag", format_count(q.flagged_rows))]
     _plain_table(rep, pd.DataFrame(rows, columns=["Measure", "Value"]), [70 * mm, 40 * mm])
     if q.counts_by_action:
         rep.h2("Changes made during cleaning")
@@ -629,14 +633,14 @@ def _data_quality(rep: _Report) -> None:
         changes["Change"] = changes["Change"].str.replace("_", " ").str.capitalize()
         changes["Count"] = changes["Count"].map(format_count)
         _plain_table(rep, changes, [70 * mm, 40 * mm])
-    rep.p("Every individual change (row, original value, new value, reason) is in the data-quality "
+    rep.p("Every individual change (row, original value, new value and reason) is in the data quality "
           "log in the dashboard and the Excel workbook.", "caption")
 
 
 def _methodology(rep: _Report) -> None:
     rep.h1("Methodology")
     rep.h2("KPI definitions")
-    rows = [{"KPI": KPI_REGISTRY[k].label, "Formula": KPI_REGISTRY[k].formula_text,
+    rows = [{"KPI": title_case(KPI_REGISTRY[k].label), "Formula": KPI_REGISTRY[k].formula_text,
              "Meaning": KPI_REGISTRY[k].description}
             for k in RATIO_KPIS if k in rep.r.kpis and rep.r.kpis[k].available]
     _plain_table(rep, pd.DataFrame(rows), [34 * mm, 58 * mm, TEXT_W - 92 * mm])
@@ -701,7 +705,7 @@ def _appendix(rep: _Report) -> None:
         rep.h2("All incidents (ranked by estimated impact)")
         rows = pd.DataFrame({
             "#": inc["rank"].astype(str),
-            "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in zip(inc["period_start"], inc["period_end"])],
+            "Period": [format_date_range(s, e) for s, e in zip(inc["period_start"], inc["period_end"])],
             "Entity": inc["entity"] + " (" + inc["entity_type"] + ")",
             "Metrics": inc["metrics"],
             "Impact": [_impact(v, d, l).replace("estimated ", "") for v, d, l in
@@ -713,9 +717,9 @@ def _appendix(rep: _Report) -> None:
     if not a.empty:
         rep.h2("All individual flags")
         rows = pd.DataFrame({
-            "Period": [f"{format_date(s)} - {format_date(e)}" for s, e in zip(a["period_start"], a["period_end"])],
+            "Period": [format_date_range(s, e) for s, e in zip(a["period_start"], a["period_end"])],
             "Entity": a["entity"] + " (" + a["entity_type"] + ")",
-            "Metric": a["metric"].map(lambda m: KPI_REGISTRY[m].label if m in KPI_REGISTRY else m),
+            "Metric": a["metric"].map(lambda m: title_case(KPI_REGISTRY[m].label) if m in KPI_REGISTRY else m),
             "Expected": [format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(a["baseline"], a["metric"])],
             "Observed": [format_value(v, KPI_REGISTRY[m].fmt) for v, m in zip(a["observed"], a["metric"])],
             "Change": a["pct_change"].map(lambda v: "N/A" if pd.isna(v) else f"{v:+.0f}%"),

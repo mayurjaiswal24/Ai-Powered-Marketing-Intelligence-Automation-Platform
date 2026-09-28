@@ -15,9 +15,9 @@ from utils.formatting import format_date
 # (column, label) in display order. A filter is offered only if the column has values.
 DIMENSION_FILTERS = [
     ("channel", "Channel"), ("platform", "Platform"), ("campaign_name", "Campaign"),
-    ("region", "Region"), ("product_category", "Product / course category"),
-    ("product", "Product / course"), ("customer_segment", "Customer segment"),
-    ("customer_type", "Customer type"),
+    ("region", "Region"), ("product_category", "Product / Course Category"),
+    ("product", "Product / Course"), ("customer_segment", "Customer Segment"),
+    ("customer_type", "Customer Type"),
 ]
 
 DATE_PRESETS = ["All dates", "Last 30 days", "Last 90 days", "Custom range"]
@@ -80,4 +80,4 @@ def describe(filters: Filters) -> str:
         if values:
             shown = ", ".join(values[:3]) + (f" +{len(values) - 3} more" if len(values) > 3 else "")
             parts.append(f"{labels.get(col, col)}: {shown}")
-    return "Filtered view - " + "; ".join(parts) if parts else "Showing all data"
+    return "Filtered view: " + "; ".join(parts) if parts else "Showing all data"

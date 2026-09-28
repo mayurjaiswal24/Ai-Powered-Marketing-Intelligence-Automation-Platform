@@ -46,13 +46,17 @@ NEUTRAL = "#898781"
 BRAND = "#1c5cab"
 BRAND_SOFT = "#e8f0fb"
 BORDER = "#e4e3dd"
+BORDER_HOVER = "#cfcdc4"
 CARD_SHADOW = "0 1px 2px rgba(16, 24, 40, 0.05)"
+CARD_SHADOW_HOVER = "0 4px 12px rgba(16, 24, 40, 0.08)"
+TRANSITION = "0.15s ease"
 
 TEMPLATE_NAME = "marketing"
 # Row highlight in the mapping table for columns mapped by Gemini, by check result.
 AI_ROW_BACKGROUND = {"verified": "#e3f4e8", "check": "#fff3d1", "failed": "#fde2e1", "": "#e8f0fb"}
 TOP_MARGIN = 56                 # room for the title plus a small note above the plot
 TOP_MARGIN_WITH_LEGEND = 84     # title row + legend row
+VALUE_LABEL_MARGIN = 64         # right margin so values printed after the longest bar are not cut off
 LABEL_WRAP = 24                 # category labels longer than this wrap onto a second line
 TITLE_WRAP = 60
 
@@ -142,8 +146,31 @@ APP_CSS = f"""
   .mi-page-header p {{ color: {INK_SECONDARY}; font-size: 0.93rem; margin: 0; }}
   .mi-caption {{ color: {INK_SECONDARY}; font-size: 0.86rem; margin: -0.3rem 0 0.8rem 0; }}
 
-  /* --- KPI cards and charts: subtle border + soft shadow --- */
-  [data-testid="stMetric"] {{ background: {SURFACE}; box-shadow: {CARD_SHADOW}; border-radius: 10px; }}
+  /* --- KPI cards and charts: subtle border + soft shadow; a slightly stronger shadow on hover --- */
+  [data-testid="stMetric"] {{ background: {SURFACE}; box-shadow: {CARD_SHADOW}; border-radius: 10px;
+                              height: 100%; transition: box-shadow {TRANSITION}, border-color {TRANSITION}; }}
+  [data-testid="stMetric"]:hover {{ box-shadow: {CARD_SHADOW_HOVER}; border-color: {BORDER_HOVER}; }}
+  [data-testid="stMetricLabel"] [data-testid="stTooltipIcon"] {{ color: {INK_MUTED}; }}
+
+  /* Bordered cards (upload, demo, reports, about, recent analyses) */
+  [data-testid="stVerticalBlock"][class*="stVerticalBlockBorder"],
+  div[data-testid="stVerticalBlockBorderWrapper"] {{ border-radius: 12px;
+      transition: box-shadow {TRANSITION}, border-color {TRANSITION}; }}
+  div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: {CARD_SHADOW_HOVER}; }}
+
+  /* --- Buttons: smooth colour/shadow change on hover, no movement --- */
+  .stButton button, .stDownloadButton button, .stFormSubmitButton button, .stLinkButton a {{
+      border-radius: 8px; transition: background-color {TRANSITION}, border-color {TRANSITION},
+      box-shadow {TRANSITION}, color {TRANSITION}; }}
+  .stButton button:hover, .stDownloadButton button:hover, .stFormSubmitButton button:hover,
+  .stLinkButton a:hover {{ box-shadow: {CARD_SHADOW_HOVER}; }}
+
+  /* --- Keyboard focus: always visible (accessibility) --- */
+  button:focus-visible, a:focus-visible, [role="tab"]:focus-visible, summary:focus-visible,
+  input:focus-visible, textarea:focus-visible {{ outline: 2px solid {BRAND} !important;
+      outline-offset: 2px; }}
+  .st-key-mi_nav label:has(input:focus-visible) {{ outline: 2px solid {BRAND}; outline-offset: -2px;
+      border-radius: 8px; }}
   [data-testid="stMetricLabel"] p {{ color: {INK_SECONDARY}; font-size: 0.82rem; font-weight: 500; }}
   [data-testid="stMetricValue"] {{ font-size: 1.5rem; font-weight: 650; color: {INK}; }}
   [data-testid="stMetricDelta"] {{ font-weight: 600; }}
@@ -153,16 +180,27 @@ APP_CSS = f"""
              background: {PANEL}; color: {INK_SECONDARY}; margin-right: 6px; }}
   .mi-tag-weak {{ background: #fdf1d6; color: #8a5d00; }}
   .mi-finding {{ border: 1px solid {BORDER}; border-left: 3px solid {PRIMARY}; border-radius: 8px;
-                 padding: 0.55rem 0.9rem; margin: 0.45rem 0; background: {SURFACE}; }}
+                 padding: 0.55rem 0.9rem; margin: 0.45rem 0; background: {SURFACE};
+                 transition: box-shadow {TRANSITION}; }}
+  .mi-finding:hover {{ box-shadow: {CARD_SHADOW_HOVER}; }}
   .mi-finding .mi-title {{ font-weight: 600; color: {INK}; }}
-  .mi-empty {{ border: 1px dashed {AXIS}; border-radius: 10px; padding: 1.2rem; color: {INK_SECONDARY};
-               background: {SURFACE}; }}
+  /* Empty state: icon + one sentence (+ an action button placed right below) */
+  .mi-empty {{ display: flex; align-items: center; gap: 0.75rem; border: 1px dashed {AXIS};
+               border-radius: 10px; padding: 1rem 1.2rem; color: {INK_SECONDARY}; background: {SURFACE};
+               margin-bottom: 0.6rem; }}
+  .mi-empty-icon {{ font-family: "Material Symbols Rounded"; font-size: 1.6rem; line-height: 1;
+                    color: {BRAND}; background: {BRAND_SOFT}; border-radius: 50%; padding: 0.45rem;
+                    flex: none; font-weight: normal; font-style: normal; letter-spacing: normal;
+                    text-transform: none; white-space: nowrap; direction: ltr;
+                    -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; }}
 
   /* Upload page: 3-step guide, demo card, recent-analysis cards */
   .mi-steps {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem;
                margin: 0.2rem 0 1.3rem 0; }}
   .mi-step {{ border: 1px solid {BORDER}; border-radius: 10px; padding: 0.8rem 0.95rem;
-              background: {SURFACE}; box-shadow: {CARD_SHADOW}; }}
+              background: {SURFACE}; box-shadow: {CARD_SHADOW};
+              transition: box-shadow {TRANSITION}, border-color {TRANSITION}; }}
+  .mi-step:hover {{ box-shadow: {CARD_SHADOW_HOVER}; border-color: {BORDER_HOVER}; }}
   .mi-step-no {{ display: inline-flex; align-items: center; justify-content: center;
                  width: 1.55rem; height: 1.55rem; border-radius: 50%; background: {BRAND_SOFT};
                  color: {BRAND}; font-weight: 700; font-size: 0.8rem; margin-right: 0.45rem; }}
@@ -176,8 +214,9 @@ APP_CSS = f"""
 
   /* About page */
   .mi-about-list {{ margin: 0.3rem 0 0 0; padding-left: 1.1rem; color: {INK_SECONDARY}; }}
-  .mi-about-list li {{ margin: 0.25rem 0; }}
-  .mi-about-list b {{ color: {INK}; font-weight: 600; }}
+  .mi-about-list li {{ margin: 0.55rem 0; }}
+  .mi-about-list b {{ display: block; color: {INK}; font-weight: 600; }}
+  .mi-about-list span {{ display: block; font-size: 0.92rem; }}
   .mi-creator-name {{ font-size: 1.25rem; font-weight: 680; color: {INK}; }}
   .mi-creator-name a {{ color: {BRAND}; text-decoration: none; }}
   .mi-creator-row {{ margin: 0.35rem 0; color: {INK_SECONDARY}; font-size: 0.92rem; }}
@@ -207,7 +246,7 @@ APP_CSS = f"""
   .st-key-mi_nav [data-testid="stRadioOption"] > div > div:not([data-testid]) {{ display: none; }}
   .st-key-mi_nav [data-testid="stRadioOption"]:hover {{ background: {PANEL}; }}
   .st-key-mi_nav [role="radiogroup"] > div[data-selected="true"] [data-testid="stRadioOption"] {{
-      background: {BRAND_SOFT}; }}
+      background: {BRAND_SOFT}; box-shadow: inset 3px 0 0 {BRAND}; }}
   .st-key-mi_nav [role="radiogroup"] > div[data-selected="true"] p {{ color: {BRAND}; font-weight: 620; }}
   .st-key-mi_nav [role="radiogroup"] p {{ font-size: 0.92rem; color: {INK_SECONDARY}; }}
   .st-key-mi_nav [role="radiogroup"] p span[role="img"] {{ margin-right: 0.35rem; font-size: 1.1rem; }}
@@ -220,7 +259,7 @@ APP_CSS = f"""
 
   /* --- Phone-width screens --- */
   @media (max-width: 640px) {{
-    .block-container {{ padding-left: 1rem; padding-right: 1rem; padding-top: 1.2rem; }}
+    .block-container {{ padding-left: 1rem; padding-right: 1rem; padding-top: 3rem; }}  /* clear of the menu button */
     h1, .mi-page-title {{ font-size: 1.3rem; }}
     .mi-steps {{ grid-template-columns: 1fr; }}
     [data-testid="stMetricValue"] {{ font-size: 1.25rem; }}

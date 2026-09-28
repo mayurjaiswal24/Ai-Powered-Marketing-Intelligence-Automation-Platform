@@ -22,6 +22,7 @@ from database.connection import connect
 from reports.excel_report import export_workbook
 from reports.pdf_report import AI_NOT_GENERATED, export_pdf
 from tests.test_ai import FakeClient, good_answer
+from utils.formatting import title_case
 
 ROOT = Path(__file__).resolve().parent.parent
 CHANNEL = "Paid Search"
@@ -115,7 +116,7 @@ def test_cross_output_consistency(flow):
     ws = wb["Executive_KPIs"]
     values = {r[0].value: r[1].value for r in ws.iter_rows(min_row=12, max_col=2)}
     for key in ("roas", "cpl", "cac", "revenue"):
-        assert values[k[key].label] == pytest.approx(k[key].value, rel=1e-12)
+        assert values[title_case(k[key].label)] == pytest.approx(k[key].value, rel=1e-12)
     cws = wb["Channel_Analysis"]
     headers = [c.value for c in cws[3]]
     row = next(r for r in cws.iter_rows(min_row=4) if r[0].value == CHANNEL)
@@ -161,9 +162,9 @@ def test_app_recent_analyses_reopen(tmp_path, monkeypatch):
     at2 = AppTest.from_file(str(ROOT / "app.py"), default_timeout=240).run()
     at2.button(key="open_run_1").click().run()
     assert not at2.exception
-    assert any("Opened saved analysis run #1" in s.value for s in at2.success)
+    assert any("Opened Analysis #1 " in s.value for s in at2.success)
     for page in ("Executive Overview", "Channels", "Anomalies", "Data Quality", "Reports"):
         at2.sidebar.radio(key="page").set_value(page).run()
         assert not at2.exception and not at2.error, page
     at2.button(key="generate_excel").click().run()
-    assert any("Workbook ready" in s.value for s in at2.success)
+    assert any("workbook is ready" in s.value for s in at2.success)
