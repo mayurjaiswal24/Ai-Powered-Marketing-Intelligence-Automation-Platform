@@ -81,6 +81,21 @@ KPI_REGISTRY: dict[str, KPISpec] = {k.key: k for k in [
             "no margin is ever assumed.", True, ("spend",)),
     KPISpec("budget_utilisation", "Budget utilisation", "Spend / Budget x 100", "percent",
             "Share of the planned budget actually spent.", None, ("spend", "budget")),
+    # --- Profitability (U4). Per entity, from its OWN summed totals; see profit_metrics() ----
+    KPISpec("gross_margin_pct", "Gross margin", "Gross profit / Revenue x 100", "percent",
+            "Share of revenue left after the direct cost of what was sold.", True,
+            ("gross_profit", "revenue")),
+    KPISpec("break_even_roas", "Break-even ROAS", "1 / Gross margin", "ratio",
+            "The ROAS at which gross profit exactly pays for the spend.", False,
+            ("gross_profit", "revenue")),
+    KPISpec("contribution", "Contribution", "Gross profit - Spend", "money",
+            "Money left after the direct cost of sales and the marketing spend.", True,
+            ("gross_profit", "spend")),
+    KPISpec("profit_per_rupee", "Profit per ₹1", "Contribution / Spend", "money",
+            "Contribution earned for every rupee of spend (below zero = a loss).", True,
+            ("gross_profit", "spend")),
+    KPISpec("roas_headroom", "Headroom", "(ROAS / Break-even ROAS - 1) x 100", "percent",
+            "How far ROAS is above (or below) break-even.", True, ("gross_profit", "revenue", "spend")),
 ]}
 
 TOTAL_KPIS = ["spend", "impressions", "clicks", "leads", "qualified_leads", "conversions",
@@ -409,3 +424,92 @@ def period_comparison(df: pd.DataFrame, start, end, date_col: str = "date",
 
     note = "" if len(previous_df) else "No data in the previous period, so there is nothing to compare with."
     return PeriodComparison(start, end, prev_start, prev_end, current, previous, deltas, note)
+
+
+# ---------------------------------------------------------------------------------------------
+# Profitability (U4): gross margin, break-even ROAS, contribution, profit per ₹1, headroom
+# ---------------------------------------------------------------------------------------------
+
+PROFIT_KPIS = ["gross_margin_pct", "break_even_roas", "contribution", "profit_per_rupee", "roas_headroom"]
+PROFITABLE, NEAR, LOSS, NOT_AVAILABLE = "Profitable", "Near break-even", "Loss-making", "Not available"
+PROFIT_STATUSES = [PROFITABLE, NEAR, LOSS, NOT_AVAILABLE]
+# Summable row-level parts; every profitability KPI is recomputed from their sums (rule 2).
+PROFIT_PARTS = ["spend", "revenue", "gross_profit", "_gp_m", "_rev_m", "_contrib", "_spend_c",
+                "_rev_r", "_spend_r"]
+
+
+def has_profit_data(df: pd.DataFrame) -> bool:
+    """True when the data itself has gross profit (a gross profit or a margin column)."""
+    return _gross_profit_series(df) is not None
+
+
+def profit_parts(df: pd.DataFrame, assumed_margin_pct: float | None = None) -> pd.DataFrame | None:
+    """Row-level inputs for the profitability KPIs, or None without Revenue + Spend + a gross
+    profit source.
+
+    Gross profit comes from the data (gross profit column, else revenue x margin column). Only when
+    the data has neither is a user-entered `assumed_margin_pct` used: gross profit = revenue x
+    margin. A margin in the data always wins; no margin is ever assumed automatically.
+    Each KPI only uses rows where both of its inputs are known (rule 3): margin from rows with
+    gross profit AND revenue, contribution from rows with gross profit AND spend (exactly the rows
+    ROI uses), ROAS from rows with revenue AND spend (exactly the rows the ROAS KPI uses)."""
+    if not (_has(df, "revenue") and _has(df, "spend")):
+        return None
+    gp = _gross_profit_series(df)
+    if gp is None:
+        if assumed_margin_pct is None or pd.isna(assumed_margin_pct):
+            return None
+        gp = _num(df, "revenue") * (float(assumed_margin_pct) / 100)
+    rev, spend = _num(df, "revenue"), _num(df, "spend")
+    m, c, r = gp.notna() & rev.notna(), gp.notna() & spend.notna(), rev.notna() & spend.notna()
+    return pd.DataFrame({
+        "spend": spend, "revenue": rev, "gross_profit": gp,
+        "_gp_m": gp.where(m), "_rev_m": rev.where(m),
+        "_contrib": (gp - spend).where(c), "_spend_c": spend.where(c),
+        "_rev_r": rev.where(r), "_spend_r": spend.where(r)}, index=df.index)
+
+
+def _div(num: pd.Series, den: pd.Series, scale: float = 1.0) -> pd.Series:
+    """num / den x scale per row; a zero or missing denominator gives NaN (shown as N/A)."""
+    num, den = num.astype(float), den.astype(float)
+    return (num / den.where(den != 0) * scale).replace([np.inf, -np.inf], np.nan)
+
+
+def profit_metrics(sums: pd.DataFrame, band: float | None = None) -> pd.DataFrame:
+    """The profitability KPIs from SUMMED parts (one row per entity: campaign, channel, month or
+    the whole dataset). Formulas:
+      Gross margin %   = Gross profit / Revenue x 100
+      Break-even ROAS  = 1 / margin            (ROAS needed for gross profit to pay for the spend)
+      Contribution     = Gross profit - Spend  (money left after cost of sales and marketing)
+      Profit per ₹1    = Contribution / Spend
+      Headroom         = (ROAS / Break-even ROAS - 1) x 100
+    A margin of zero or below has no break-even ROAS (no ROAS can pay for the spend)."""
+    out = sums.copy()
+    margin = _div(out["_gp_m"], out["_rev_m"])
+    out["gross_margin_pct"] = margin * 100
+    out["break_even_roas"] = _div(pd.Series(1.0, index=out.index), margin.where(margin > 0))
+    out["roas"] = _div(out["_rev_r"], out["_spend_r"])
+    out["contribution"] = out["_contrib"]
+    out["profit_per_rupee"] = _div(out["_contrib"], out["_spend_c"])
+    out["roas_headroom"] = (_div(out["roas"], out["break_even_roas"]) - 1) * 100
+    out["status"] = profit_status(out["roas"], out["break_even_roas"], out["contribution"], band)
+    return out.drop(columns=[c for c in PROFIT_PARTS if c.startswith("_")])
+
+
+def profit_status(roas: pd.Series, break_even: pd.Series, contribution: pd.Series | None = None,
+                  band: float | None = None) -> pd.Series:
+    """Profitable: ROAS >= (1 + band) x break-even; Loss-making: ROAS < (1 - band) x break-even;
+    Near break-even: in between (both boundaries of the band count as 'near' on the low side and
+    'profitable' on the high side). Without a break-even ROAS (margin zero or below, or no
+    revenue) an entity that spent money and made no gross profit is Loss-making; anything else
+    missing is 'Not available'."""
+    if band is None:
+        from config.settings import PROFIT_NEAR_BAND as band
+    ratio = _div(roas, break_even).round(9)          # rounding: 1.10 must not become 1.0999999
+    status = pd.Series(NOT_AVAILABLE, index=roas.index, dtype=object)
+    status[ratio >= round(1 + band, 9)] = PROFITABLE
+    status[(ratio >= round(1 - band, 9)) & (ratio < round(1 + band, 9))] = NEAR
+    status[ratio < round(1 - band, 9)] = LOSS
+    if contribution is not None:
+        status[ratio.isna() & (contribution.astype(float) < 0)] = LOSS
+    return status

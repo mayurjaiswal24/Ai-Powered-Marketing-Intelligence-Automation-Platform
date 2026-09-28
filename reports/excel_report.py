@@ -445,13 +445,51 @@ def _methodology(book: _Book, result) -> None:
     ws.set_column(3, 3, 20)
 
 
+def _profitability(book: _Book, prof) -> None:
+    """U4: one sheet with the summary, then paid campaigns, paid channels, owned channels (not
+    ranked) and months. Figures based on an assumed margin are labelled as such at the top."""
+    if prof is None or not getattr(prof, "available", False):
+        return
+    from analytics.profitability import TABLE_COLUMNS, assumed_margin_label, summary_lines
+    ws = book.sheet("Profitability")
+    row = 0
+    if prof.assumed:
+        ws.write_string(row, 0, f"{assumed_margin_label(prof.assumed_margin_pct)}: every figure on this "
+                        "sheet is an estimate (the data has no gross profit or margin column).", book.fmt["section"])
+        row += 1
+    band = cfg.PROFIT_NEAR_BAND
+    ws.write_string(row, 0, f"{prof.basis_note} Status: ROAS vs the campaign's own break-even ROAS (1 / gross "
+                    f"margin); Profitable at {1 + band:.2f}× or more, Near break-even within ±{band * 100:.0f}%, "
+                    f"Loss-making below {1 - band:.2f}×. Owned channels are not rated.", book.fmt["subtitle"])
+    row += 1
+    for line in summary_lines(prof):
+        ws.write_string(row, 0, line, book.fmt["subtitle"])
+        row += 1
+    row += 1
+    monthly = prof.monthly.rename(columns={"period": "month"}) if not prof.monthly.empty else prof.monthly
+    blocks = [("Paid Campaigns", prof.campaigns, ["campaign", "channel"] + TABLE_COLUMNS),
+              ("Paid Channels", prof.channels, ["channel"] + TABLE_COLUMNS),
+              ("Owned Channels (Not Ranked: Mostly Fixed Costs)", prof.owned_channels,
+               ["channel"] + TABLE_COLUMNS[:-1]),
+              ("Owned-Channel Campaigns (Not Ranked)", prof.owned_campaigns,
+               ["campaign", "channel"] + TABLE_COLUMNS[:-1]),
+              ("Months", monthly, ["month"] + TABLE_COLUMNS)]
+    for title, table, cols in blocks:
+        if table is None or table.empty:
+            continue
+        ws.write_string(row, 0, title, book.fmt["section"])
+        row = book.table(ws, table, start_row=row + 1, columns=cols, freeze=False, filter_=False)
+
+
 # ---------------------------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------------------------
 
 def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
-                      quality_log: pd.DataFrame | None = None, ai: dict | None = None) -> list[str]:
-    """Write the workbook to a path or binary buffer. Returns the sheet names written."""
+                      quality_log: pd.DataFrame | None = None, ai: dict | None = None,
+                      profitability=None) -> list[str]:
+    """Write the workbook to a path or binary buffer. Returns the sheet names written.
+    `profitability` (optional) replaces the result's own, e.g. one based on an assumed margin."""
     generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     try:
         book = _Book(str(output) if isinstance(output, Path) else output)
@@ -462,6 +500,7 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
         _simple_sheet(book, "Campaign_Analysis", result.campaigns,
                       "One row per campaign. Ratios are recomputed from each campaign's totals.")
         _channels(book, result)
+        _profitability(book, profitability if profitability is not None else getattr(result, "profitability", None))
         _segments(book, result)
         _funnel(book, result)
         _trends(book, result)
@@ -479,13 +518,14 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
 
 
 def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: pd.DataFrame | None = None,
-                    exports_dir: str | Path | None = None, db_path=None, ai: dict | None = None) -> Path:
+                    exports_dir: str | Path | None = None, db_path=None, ai: dict | None = None,
+                    profitability=None) -> Path:
     """Save under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Workbook", run_id, "xlsx")
-    generate_workbook(result, path, clean_df, quality_log, ai)
+    generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability)
     if run_id:
         from database import repository
         from database.connection import DatabaseError

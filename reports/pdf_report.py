@@ -54,6 +54,7 @@ TAGS = {
     "AI interpretation": ("#fde9e0", "#a8431c"),
     "Hypothesis": ("#fdf1d6", "#8a5d00"),
     "Recommendation": ("#e0f1e0", "#006300"),
+    "User assumption": ("#fdf1d6", "#8a5d00"),     # U4: figures based on a user-entered margin
 }
 
 
@@ -176,6 +177,7 @@ class _Report:
     def __init__(self, result, ai: dict | None):
         self.r = result
         self.ai = ai
+        self.prof = getattr(result, "profitability", None)
         self.s = _styles()
         self.story: list = []
         self.section_no = 0
@@ -490,6 +492,49 @@ def _campaigns(rep: _Report) -> None:
                        metric, "trend"], max_rows=10)
 
 
+def _profitability(rep: _Report) -> None:
+    """Profitability (U4): summary, contribution by paid channel, top 5 loss-makers by rupees lost."""
+    prof = rep.prof
+    if prof is None or not getattr(prof, "available", False):
+        return
+    from analytics.profitability import assumed_margin_label, summary_lines
+    rep.h1("Profitability")
+    band = cfg.PROFIT_NEAR_BAND
+    if prof.assumed:
+        rep.notice(f"{assumed_margin_label(prof.assumed_margin_pct)}. The data has no gross profit or margin "
+                   "column, so every figure in this section is an estimate based on the margin entered in the "
+                   "app for this session, not measured profit.")
+    tag_text = tag("User assumption" if prof.assumed else "Verified metric")
+    rep.p(tag_text + " " + escape(f"{prof.basis_note} Each paid campaign's ROAS is compared with its own "
+                                   f"break-even ROAS (1 / its gross margin): Profitable at {1 + band:.2f}× or more, "
+                                   f"Near break-even within ±{band * 100:.0f}%, Loss-making below {1 - band:.2f}×. "
+                                   "Owned channels are not rated."), "small", raw=True)
+    rep.bullets(summary_lines(prof))
+    if prof.status_counts:
+        rep.p("Paid campaigns by status: " + ", ".join(f"{s} {n}" for s, n in prof.status_counts.items()) + ".")
+    ch = prof.channels
+    if not ch.empty:
+        note = "Paid Channels" + (f" · {assumed_margin_label(prof.assumed_margin_pct)}" if prof.assumed else "")
+        colors_by = {str(c): theme.GOOD if v >= 0 else theme.BAD
+                     for c, v in zip(ch["channel"], ch["contribution"]) if pd.notna(v)}
+        rep.chart(pdf_charts.hbar_png(ch, "channel", "contribution", "money",
+                                      cs.profit_channel_title(ch, "Contribution by Paid Channel"),
+                                      subtitle=cs.subtitle("contribution", None, *_span(rep), note=note),
+                                      color_by=colors_by),
+                  "Contribution = gross profit minus spend. Green = makes money, red = loses money.")
+    for row in prof.owned_channels.itertuples():
+        rep.p(f"{row.channel} (owned, not ranked): contribution "
+              f"{format_value(row.contribution, 'money', compact=True)} on "
+              f"{format_value(row.spend, 'money', compact=True)} spend.", "small")
+    worst = prof.loss_makers(5)
+    rep.h2("Top 5 loss-making campaigns by rupees lost")
+    if worst.empty:
+        rep.p("No paid campaign is loss-making.")
+    else:
+        rep.table(worst, ["campaign", "channel", "spend", "roas", "break_even_roas", "contribution",
+                          "roas_headroom"])
+
+
 def _funnel(rep: _Report) -> None:
     f = rep.r.funnel
     if f.empty:
@@ -760,15 +805,19 @@ def _appendix(rep: _Report) -> None:
 # Public API
 # ---------------------------------------------------------------------------------------------
 
-def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None) -> None:
-    """Write the executive report for `result` to a file path or a binary buffer."""
+def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None,
+                 profitability=None) -> None:
+    """Write the executive report for `result` to a file path or a binary buffer. `profitability`
+    (optional) replaces the result's own, e.g. one based on the user's assumed margin."""
     _register_fonts()
     generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     rep = _Report(result, ai)
+    if profitability is not None:
+        rep.prof = profitability
     try:
         _cover(rep, generated)
         for section in (_executive_summary, _kpi_overview, _overall_performance, _channels,
-                        _campaigns, _funnel, _segments, _trends, _key_findings,
+                        _campaigns, _profitability, _funnel, _segments, _trends, _key_findings,
                         _performance_concerns, _ai_section, _data_quality, _methodology,
                         _limitations, _appendix):
             section(rep)
@@ -787,13 +836,13 @@ def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None
 
 
 def export_pdf(result, exports_dir: str | Path | None = None, db_path=None,
-               ai: dict | None = None) -> Path:
+               ai: dict | None = None, profitability=None) -> Path:
     """Save the report under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Report", run_id, "pdf")
-    generate_pdf(result, path, ai=ai)
+    generate_pdf(result, path, ai=ai, profitability=profitability)
     if run_id:
         from database import repository
         from database.connection import DatabaseError

@@ -118,6 +118,12 @@ CHANNEL_COLORS = {
 }
 _FREE_ORDER = [CATEGORICAL[i] for i in (0, 1, 2, 3, 4, 6, 5, 7)]
 
+# Profitability status (U4): colour for charts and badges (the status word is always shown too).
+PROFIT_STATUS_COLORS = {"Profitable": GOOD, "Near break-even": WARNING, "Loss-making": BAD,
+                        "Not available": NEUTRAL}
+PROFIT_STATUS_BACKGROUND = {"Profitable": "#e3f4e8", "Near break-even": "#fff3d1",
+                            "Loss-making": "#fde2e1", "Not available": PANEL}
+
 
 def entity_colors(entities) -> dict[str, str]:
     """Colour per channel/platform: the fixed CHANNEL_COLORS first, then the unused palette

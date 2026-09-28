@@ -19,6 +19,7 @@ from analytics.findings import Finding, generate_findings
 from analytics.funnel import funnel_by_channel, funnel_table
 from analytics.incidents import INCIDENT_COLUMNS, build_incidents
 from analytics.kpis import KPIResult, compute_kpis
+from analytics.profitability import profitability_analysis
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import all_time_series, seasonality_index
 
@@ -48,6 +49,10 @@ class AnalysisResult:
     notes: list[str] = field(default_factory=list)
     # KPIs of paid media only (owned channels left out); {} when there are no channels.
     paid_kpis: dict[str, KPIResult] = field(default_factory=dict)
+    # U4 profitability (analytics/profitability.py), from the data's own gross profit only (never
+    # an assumed margin). None on analyses saved before U4. Not part of tables(), so the stored
+    # tables and the AI evidence pack are unchanged.
+    profitability: object = None
 
     def tables(self) -> dict[str, pd.DataFrame]:
         """Every result table by name (the names findings refer to)."""
@@ -115,6 +120,7 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
         findings=[], capabilities=capabilities, quality_summary=quality_summary,
         notes=list(getattr(capabilities, "notes", []) or []), paid_kpis=paid_kpis)
     result.incidents = build_incidents(anomalies, df)
+    result.profitability = profitability_analysis(df)
     result.findings = generate_findings(result.tables(), data_end=result.metadata.get("date_max"))
     return result
 

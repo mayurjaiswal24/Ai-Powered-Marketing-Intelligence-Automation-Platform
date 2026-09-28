@@ -224,3 +224,52 @@ def label_crosses_line(value, reference, axis_max: float, room: float) -> bool:
     if value is None or reference is None or pd.isna(value) or pd.isna(reference) or not axis_max:
         return False
     return 0 <= reference - value < room * axis_max
+
+
+# ---------------------------------------------------------------------------------------------
+# Profitability titles (U4): read the profitability tables, never calculate
+# ---------------------------------------------------------------------------------------------
+
+def profit_channel_title(channels: pd.DataFrame, neutral: str) -> str:
+    """'Video Loses ₹4.2 L After Gross Profit' (the biggest loss), else
+    'Paid Search Contributes the Most: ₹8.0 Cr'."""
+    if channels is None or len(channels) < 2 or "contribution" not in channels:
+        return neutral
+    data = channels[["channel", "contribution"]].dropna()
+    if len(data) < 2:
+        return neutral
+    worst, best = data.loc[data["contribution"].idxmin()], data.loc[data["contribution"].idxmax()]
+    if worst["contribution"] < 0:
+        return f"{worst['channel']} Loses {format_value(-worst['contribution'], 'money', compact=True)} After Gross Profit"
+    return f"{best['channel']} Contributes the Most: {format_value(best['contribution'], 'money', compact=True)}"
+
+
+def breakeven_title(campaigns: pd.DataFrame, neutral: str, band: float) -> str:
+    """'3 of 15 Campaigns Are Below Break-Even ROAS', or 'All 15 Campaigns Clear Break-Even; 2 Are
+    Within 10% of It'."""
+    if campaigns is None or campaigns.empty or "status" not in campaigns:
+        return neutral
+    rated = campaigns[campaigns["status"] != "Not available"]
+    if len(rated) < 2:
+        return neutral
+    below = int(((rated["roas"] < rated["break_even_roas"]) | (rated["status"] == "Loss-making")).sum())
+    near = int((rated["status"] == "Near break-even").sum())
+    if below:
+        return f"{below} of {len(rated)} Campaigns Are Below Break-Even ROAS"
+    if near:
+        return f"All {len(rated)} Campaigns Clear Break-Even; {near} Are Within {band * 100:.0f}% of It"
+    return f"All {len(rated)} Campaigns Are Comfortably Above Break-Even ROAS"
+
+
+def contribution_trend_title(monthly: pd.DataFrame, neutral: str) -> str:
+    """'Contribution Was Negative in 2 of 12 Months', else 'Contribution Stayed Positive in All
+    12 Months'."""
+    if monthly is None or len(monthly) < 2 or "contribution" not in monthly:
+        return neutral
+    values = monthly["contribution"].dropna()
+    if len(values) < 2:
+        return neutral
+    negative = int((values < 0).sum())
+    if negative:
+        return f"Contribution Was Negative in {negative} of {len(values)} Months"
+    return f"Contribution Stayed Positive in All {len(values)} Months"

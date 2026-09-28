@@ -16,7 +16,9 @@ from analytics.campaign import campaign_table, rank_campaigns
 from analytics.channel import channel_table, owned_channels, paid_channels
 from analytics.common import campaign_key
 from analytics.funnel import biggest_drop_off, funnel_by_channel, funnel_table
-from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, period_comparison
+from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, has_profit_data, period_comparison
+from analytics.profitability import TABLE_COLUMNS as PROFIT_COLUMNS
+from analytics.profitability import assumed_margin_label, profitability_analysis, summary_lines
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
@@ -41,6 +43,7 @@ NAV_SECTIONS = [
     ("Data", ["Upload & Profile", "Data Quality"]),
     ("Analysis", ["Executive Overview", "Performance Trends", "Channels", "Campaigns", "Funnel",
                   "Segments", "Anomalies"]),
+    ("Planning", ["Profitability"]),
     ("AI", ["AI Insights"]),
     ("Output", ["Reports"]),
     ("", ["About"]),
@@ -51,6 +54,7 @@ PAGE_ICONS = {
     "Upload & Profile": "upload_file", "Data Quality": "fact_check", "Executive Overview": "dashboard",
     "Performance Trends": "trending_up", "Channels": "hub", "Campaigns": "campaign",
     "Funnel": "filter_alt", "Segments": "pie_chart", "Anomalies": "notification_important",
+    "Profitability": "savings",
     "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
 }
 PAGE_DESCRIPTIONS = {
@@ -66,6 +70,8 @@ PAGE_DESCRIPTIONS = {
     "Segments": "Compare performance by customer segment, geography and product.",
     "Anomalies": "Unusual periods are found automatically, grouped into incidents and ranked by their "
                  "estimated ₹ impact.",
+    "Profitability": "See which campaigns and channels make money after the cost of what was sold, "
+                     "measured against each one's own break-even ROAS.",
     "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
                    "every statement cites the evidence it is based on.",
     "Reports": "Download an executive PDF report and an analytical Excel workbook for the full "
@@ -1336,6 +1342,143 @@ def _entity_daily(df, entity_type, entity, around):
 
 
 # ---------------------------------------------------------------------------------------------
+# Page: Profitability (Planning)
+# ---------------------------------------------------------------------------------------------
+
+ASSUMED_MARGIN_KEY = "assumed_margin_pct"
+PROFIT_SORTS = {"Contribution": "contribution", "Headroom": "roas_headroom", "ROAS": "roas",
+                "Gross Margin": "gross_margin_pct", "Spend": "spend"}
+
+
+def assumed_margin() -> float | None:
+    """The user's assumed gross margin (%) for this session, or None (blank by default). It is kept
+    in the session only: never saved, never learned and never used automatically."""
+    value = _state().get(ASSUMED_MARGIN_KEY)
+    return None if value is None else float(value)
+
+
+def session_profitability(df: pd.DataFrame, stored=None):
+    """Profitability for `df`: the data's own gross profit, else the session's assumed margin (if
+    entered). `stored` (the AnalysisResult's full-dataset result) is reused when it applies."""
+    if has_profit_data(df):
+        return stored if stored is not None else profitability_analysis(df)
+    return profitability_analysis(df, assumed_margin())
+
+
+def _status_table(rows: pd.DataFrame, columns: list[str], height: int | None = None) -> None:
+    """A formatted table whose Status column is a coloured badge (the word is always shown)."""
+    if rows is None or rows.empty:
+        ui.empty_state("No rows match the current filters.", icon="filter_alt_off")
+        return
+    shown = ui.format_table(rows, columns)
+    styled = shown.style.map(lambda v: f"background-color: {theme.PROFIT_STATUS_BACKGROUND.get(v, theme.PANEL)}; "
+                                       f"color: {theme.INK}; font-weight: 600", subset=["Status"])
+    st.dataframe(styled, hide_index=True, width="stretch", **({"height": height} if height else {}))
+
+
+def page_profitability(filters: Filters) -> None:
+    view = filtered_view(filters)
+    _header("Profitability", filters)
+    df = view["df"]
+    if df.empty:
+        _no_rows_state()
+        return
+    if not has_profit_data(df) and "revenue" in df and df["revenue"].notna().any():
+        st.number_input("Assumed Gross Margin (%)", min_value=config_settings.ASSUMED_MARGIN_MIN_PCT,
+                        max_value=config_settings.ASSUMED_MARGIN_MAX_PCT, value=None, step=1.0,
+                        key=ASSUMED_MARGIN_KEY, placeholder="For example 40",
+                        help="This data has no gross profit or margin column. Enter the share of revenue "
+                             "left after the direct cost of what was sold to see an estimate. It is used "
+                             "for this session only and is never saved.")
+    stored = None if filters is not None and filters.active else \
+        getattr(current_output().analysis, "profitability", None)
+    prof = session_profitability(df, stored)
+    if not prof.available:
+        if prof.needs_margin:
+            ui.empty_state(prof.reason, icon="percent")
+        else:
+            _data_missing_state(prof.reason)
+        return
+    if prof.assumed:
+        st.warning(f"{assumed_margin_label(prof.assumed_margin_pct)}. These figures are an estimate, "
+                   "not measured profit.")
+    band = config_settings.PROFIT_NEAR_BAND
+    t = prof.totals
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Contribution", format_value(t.get("contribution"), "money", compact=True), border=True,
+              help="Gross profit minus marketing spend, all channels (the same rows as ROI).")
+    c2.metric("Profit per ₹1 of Spend", format_value(t.get("profit_per_rupee"), "money"), border=True,
+              help="Contribution divided by spend. Below ₹0 means the spend lost money.")
+    c3.metric("Loss-Making Spend", format_value(prof.loss_spend, "money", compact=True), border=True,
+              help=f"Spend of paid campaigns whose ROAS is more than {band * 100:.0f}% below their own "
+                   "break-even ROAS.")
+    c4.metric("Loss-Making Share", format_value(prof.loss_spend_share_pct, "percent"), border=True,
+              help="Spend in loss-making campaigns as a share of all paid campaign spend.")
+    if prof.status_counts:
+        cols = st.columns(4)
+        for col, (status, count) in zip(cols, prof.status_counts.items()):
+            col.metric(f"{title_case(status)} Campaigns", format_count(count), border=True)
+    st.caption(f"{prof.basis_note} Status compares each paid campaign's ROAS with its own break-even ROAS "
+               f"(1 ÷ its gross margin): Profitable at {1 + band:.2f}× break-even or more, Near Break-Even "
+               f"within ±{band * 100:.0f}%, Loss-Making below {1 - band:.2f}×. Owned channels are not rated.")
+    st.markdown("\n".join(f"- {line}" for line in summary_lines(prof)[2:]))
+
+    start, end = cs.date_span(df)
+    note = assumed_margin_label(prof.assumed_margin_pct) if prof.assumed else None
+    left, right = st.columns(2, gap="large")
+    with left:
+        ch = prof.channels
+        fig = None
+        if not ch.empty:
+            colors = {str(c): theme.GOOD if v >= 0 else theme.BAD
+                      for c, v in zip(ch["channel"], ch["contribution"]) if pd.notna(v)}
+            fig = charts.bar_chart(ch, "channel", "contribution", "money",
+                                   cs.profit_channel_title(ch, "Contribution by Paid Channel"),
+                                   subtitle=cs.subtitle("contribution", None, start, end,
+                                                        note=" · ".join(p for p in ("Paid Channels", note) if p)),
+                                   color_by=colors, share_total=t.get("contribution"))
+        ui.show_chart(fig, "Contribution by channel needs a channel or platform column.")
+        for row in prof.owned_channels.itertuples():
+            st.caption(f"{row.channel} (owned, not ranked): contribution "
+                       f"{format_value(row.contribution, 'money', compact=True)} on "
+                       f"{format_value(row.spend, 'money', compact=True)} spend. Owned channels have mostly "
+                       "fixed costs, so they are not rated against break-even.")
+    with right:
+        monthly = prof.monthly
+        fig = charts.line_chart(monthly, "period", "contribution", "money",
+                                cs.contribution_trend_title(monthly, "Monthly Contribution"), x_label_fmt="text",
+                                subtitle=cs.subtitle("contribution", "month", start, end, note=note)) \
+            if not monthly.empty else None
+        ui.show_chart(fig, "A monthly trend needs a date column.")
+        if not monthly.empty and "days" in monthly and len(monthly) > 1 and \
+                (monthly["days"].iloc[[0, -1]] < 28).any():
+            st.caption("The first or last month may be partial (fewer days of data), so it can look lower.")
+
+    camps = prof.campaigns
+    if camps.empty:
+        _data_missing_state("Campaign profitability needs a campaign name or ID column.")
+        return
+    scatter_note = " · ".join(p for p in ("Paid Campaigns · Bubble Size = Spend", note) if p)
+    ui.show_chart(charts.breakeven_scatter(camps, cs.breakeven_title(camps, "Campaign ROAS vs Break-Even ROAS", band),
+                                           subtitle=cs.subtitle(None, None, start, end, note=scatter_note)),
+                  "No campaign has both ROAS and a break-even ROAS.")
+    st.caption("Campaigns above the dotted line earn more than their break-even ROAS; below it they lose "
+               "money after gross profit.")
+    st.markdown("## Campaign Profitability")
+    c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+    sort_label = c1.selectbox("Sort By", list(PROFIT_SORTS), key="profit_sort")
+    high_first = c2.toggle("Highest First", key="profit_high_first")
+    ordered = camps.sort_values([PROFIT_SORTS[sort_label], "campaign"], ascending=[not high_first, True],
+                                na_position="last")
+    _status_table(ordered, ["campaign", "channel"] + PROFIT_COLUMNS, height=460)
+    if not prof.owned_campaigns.empty:
+        st.markdown("## Owned Channels (Not Ranked)")
+        st.caption("Campaigns in owned channels (for example email to the company's own list) have mostly "
+                   "fixed costs, so they are not rated against break-even.")
+        ui.show_table(prof.owned_campaigns, ["campaign", "channel"] + PROFIT_COLUMNS[:-1])
+
+
+# ---------------------------------------------------------------------------------------------
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
 
@@ -1660,6 +1803,16 @@ def _ai_sections() -> dict | None:
     return cached.insights if cached is not None else None
 
 
+def _export_profitability(output):
+    """Profitability for the exports (full dataset): the data's own gross profit, else the session's
+    assumed margin, so the reports carry the same 'Based on your assumed margin' label as the page."""
+    try:
+        return session_profitability(output.clean.clean_df, getattr(output.analysis, "profitability", None))
+    except Exception:  # noqa: BLE001 - a profitability problem must not block the reports
+        logger.exception("Could not prepare profitability for the reports")
+        return None
+
+
 def page_reports() -> None:
     output = current_output()
     _header("Reports")
@@ -1671,7 +1824,7 @@ def page_reports() -> None:
         if st.button("Generate PDF", key="generate_pdf", type="primary", icon=":material/picture_as_pdf:"):
             try:
                 with st.spinner("Building the PDF report…"):
-                    path = export_pdf(output.analysis, ai=_ai_sections())
+                    path = export_pdf(output.analysis, ai=_ai_sections(), profitability=_export_profitability(output))
                 _state()["pdf_path"] = str(path)
             except ReportError as exc:
                 ui.friendly_error(exc)
@@ -1688,7 +1841,8 @@ def page_reports() -> None:
             try:
                 with st.spinner("Building the Excel workbook…"):
                     path = export_workbook(output.analysis, output.clean.clean_df,
-                                           output.clean.quality_log_df, ai=_ai_sections())
+                                           output.clean.quality_log_df, ai=_ai_sections(),
+                                           profitability=_export_profitability(output))
                 _state()["excel_path"] = str(path)
             except WorkbookError as exc:
                 ui.friendly_error(exc)

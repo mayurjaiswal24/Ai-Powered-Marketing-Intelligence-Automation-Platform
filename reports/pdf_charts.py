@@ -139,12 +139,15 @@ def hbar_png(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
         top = str(data[category].iloc[-1])            # the first row after sorting (drawn at the top)
         bar_colors = [theme.FOCUS if str(c) == top else theme.CONTEXT for c in data[category]]
     ax.barh(labels, data[value], color=bar_colors, height=0.55)
-    span = max(abs(float(data[value].max())), 1e-9)
+    # span covers negative values too (e.g. a channel's contribution can be a loss).
+    span = max(abs(float(data[value].max())), abs(float(data[value].min())), 1e-9)
     axis_max = max(span, float(reference) if reference is not None and not pd.isna(reference) else 0)
     for i, v in enumerate(data[value]):
         # A label the reference line would cross is printed just after the line instead.
         x = reference if label_crosses_line(v, reference, axis_max, LABEL_ROOM) else v
-        ax.text(x + span * 0.01, i, format_value(v, fmt, compact=True), va="center",
+        negative = v < 0                      # a negative bar's label goes on its left
+        ax.text(x - span * 0.01 if negative else x + span * 0.01, i, format_value(v, fmt, compact=True),
+                va="center", ha="right" if negative else "left",
                 color=theme.INK_SECONDARY, fontsize=8, zorder=4,
                 bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none", alpha=0.85))
     if reference is not None and not pd.isna(reference):
@@ -155,6 +158,9 @@ def hbar_png(df: pd.DataFrame, category: str, value: str, fmt: str, title: str,
                     fontsize=7, color=theme.INK_MUTED, va="bottom")
     _title(ax, title, subtitle=subtitle)
     ax.set_xlim(right=span * 1.18)
+    if float(data[value].min()) < 0:
+        ax.set_xlim(left=float(data[value].min()) - span * 0.3)
+        ax.axvline(0, color=theme.AXIS, linewidth=0.8)
     _value_axis(ax, fmt, axis="x")
     ax.tick_params(axis="y", length=0)
     return _to_png(fig)

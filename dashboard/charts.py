@@ -387,3 +387,53 @@ def anomaly_chart(weekly: pd.DataFrame, metric: str, fmt: str, start, end, expec
                            text=f"Expected ~{format_value(expected, fmt, compact=True)}",
                            font=dict(color=theme.INK_SECONDARY, size=11))
     return fig
+
+
+# ---------------------------------------------------------------------------------------------
+# Profitability (U4)
+# ---------------------------------------------------------------------------------------------
+
+def breakeven_scatter(df: pd.DataFrame, title: str, subtitle: str | None = None) -> go.Figure | None:
+    """Each campaign's ROAS (up) against its own break-even ROAS (across), bubble size = spend,
+    colour = profitability status (the status is also in the legend and tooltip). Campaigns above
+    the labelled diagonal break-even line make money after gross profit; below it they lose money."""
+    if not _has(df, "roas", "break_even_roas", "campaign"):
+        return None
+    data = df.dropna(subset=["roas", "break_even_roas"])
+    if data.empty:
+        return None
+    fig = _base(title, CHART_HEIGHT + 80, subtitle)
+    spend = data["spend"].astype(float).clip(lower=0) if "spend" in data else pd.Series(1.0, index=data.index)
+    biggest = float(spend.max()) or 1.0
+    sizes = 8 + 30 * np.sqrt(spend / biggest)                 # area grows with spend
+    for status, color in theme.PROFIT_STATUS_COLORS.items():
+        rows = data[data["status"] == status]
+        if rows.empty:
+            continue
+        hover = [f"<b>{r.campaign}</b><br>ROAS <b>{format_value(r.roas, 'ratio')}</b> vs break-even "
+                 f"{format_value(r.break_even_roas, 'ratio')}<br>Headroom {format_value(r.roas_headroom, 'percent')}"
+                 f"<br>Contribution {format_value(r.contribution, 'money', compact=True)}"
+                 f"<br>Spend {format_value(r.spend, 'money', compact=True)}<br>{status}"
+                 for r in rows.itertuples()]
+        fig.add_trace(go.Scatter(
+            x=rows["break_even_roas"], y=rows["roas"], mode="markers", name=status,
+            marker=dict(size=sizes[rows.index], color=_hex_to_rgba(color, 0.75), line=dict(color=color, width=1)),
+            customdata=hover, hovertemplate="%{customdata}<extra></extra>"))
+    # Break-even ROAS values sit close together, so the x axis is zoomed to their range (the ROAS
+    # axis starts at zero); the line ROAS = break-even ROAS runs across the whole x range.
+    x_low, x_high = float(data["break_even_roas"].min()), float(data["break_even_roas"].max())
+    pad = max((x_high - x_low) * 0.15, x_high * 0.05)
+    x_bottom, x_top = max(x_low - pad, 0.0), x_high + pad
+    y_top = max(float(data["roas"].max()), x_top) * 1.1
+    fig.add_shape(type="line", x0=x_bottom, y0=x_bottom, x1=x_top, y1=x_top, line=dict(color=theme.INK_MUTED, width=1, dash="dot"),
+                  layer="below")
+    fig.add_annotation(x=x_top, y=x_top, xanchor="right", yanchor="bottom", showarrow=False,
+                       text="Break-Even Line", font=dict(color=theme.INK_MUTED, size=11),
+                       bgcolor=_hex_to_rgba(theme.SURFACE, 0.85))
+    fig.update_xaxes(range=[x_bottom, x_top], title_text="Break-Even ROAS (x)", showgrid=True, gridcolor=theme.GRID)
+    fig.update_yaxes(range=[0, y_top], title_text="ROAS (x)", showgrid=True, gridcolor=theme.GRID)
+    fig.update_xaxes(tickformat=".2f", ticksuffix="x")
+    _format_axis(fig, [0, y_top], "ratio", axis="y")
+    _show_legend(fig)
+    fig.update_layout(hovermode="closest")
+    return fig

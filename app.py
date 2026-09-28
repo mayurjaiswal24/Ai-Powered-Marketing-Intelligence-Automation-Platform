@@ -30,6 +30,7 @@ PAGE_RENDERERS = {
     "Funnel": layout.page_funnel,
     "Segments": layout.page_segments,
     "Anomalies": layout.page_anomalies,
+    "Profitability": layout.page_profitability,
 }
 
 

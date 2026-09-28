@@ -147,6 +147,14 @@ CONCENTRATION_SHARE = 40.0         # % of spend in one channel worth pointing ou
 MIN_USABLE_DATE_SHARE = 0.5        # below this share of readable dates, trends are switched off
 HEADER_SEARCH_ROWS = 30            # how far down an upload we look for the real header row
 ANOMALY_WINDOWS = (1, 3)           # single weeks and sustained 3-week stretches
+
+# --- Profitability (U4, analytics/profitability.py) ----------------------------------------------
+# ROAS within +/-10% of the break-even ROAS is "Near break-even"; at least 1.10x break-even is
+# "Profitable"; below 0.90x is "Loss-making".
+PROFIT_NEAR_BAND = 0.10
+# Allowed range for the optional, session-only "Assumed gross margin (%)" (blank by default).
+ASSUMED_MARGIN_MIN_PCT = 1.0
+ASSUMED_MARGIN_MAX_PCT = 99.0
 ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE = 3   # entities needed to estimate "the typical change"
 
 # --- AI (Gemini) ---------------------------------------------------------------------------------
