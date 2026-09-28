@@ -58,7 +58,7 @@ TOP_MARGIN = 56                 # room for the title plus a small note above the
 TOP_MARGIN_WITH_LEGEND = 84     # title row + legend row
 VALUE_LABEL_MARGIN = 64         # right margin so values printed after the longest bar are not cut off
 LABEL_WRAP = 24                 # category labels longer than this wrap onto a second line
-TITLE_WRAP = 60
+TITLE_WRAP = 38                  # insight titles wrap so they fit a phone screen (390 px)
 
 
 def build_template() -> go.layout.Template:
@@ -91,6 +91,46 @@ def build_template() -> go.layout.Template:
 
 
 pio.templates[TEMPLATE_NAME] = build_template()
+
+
+# ---------------------------------------------------------------------------------------------
+# Chart standard (docs/CHART_STYLE_GUIDE.md): shared by the app (Plotly) and the PDF (matplotlib)
+# ---------------------------------------------------------------------------------------------
+
+FOCUS = PRIMARY                 # the one item a chart's title talks about
+CONTEXT = "#b5b4ac"             # everything else: grey, so the focus stands out
+SUBTITLE_SIZE = 12
+MAX_CATEGORIES = 8              # more than this -> top 7 + "Other"
+OTHER_LABEL = "Other"
+
+# Fixed colour per channel, the same on every page, in the PDF and whatever is filtered.
+# Keys are lower-case; common platform names share their channel's colour. The dark green and
+# red of the palette are kept for channels not listed here (they could be read as good/bad).
+CHANNEL_COLORS = {
+    "paid search": CATEGORICAL[0], "search": CATEGORICAL[0], "google ads": CATEGORICAL[0],
+    "microsoft ads": CATEGORICAL[0], "bing ads": CATEGORICAL[0],
+    "paid social": CATEGORICAL[1], "social": CATEGORICAL[1], "meta": CATEGORICAL[1],
+    "facebook": CATEGORICAL[1], "instagram": CATEGORICAL[1], "meta ads": CATEGORICAL[1],
+    "professional network": CATEGORICAL[2], "linkedin": CATEGORICAL[2], "linkedin ads": CATEGORICAL[2],
+    "affiliate": CATEGORICAL[3], "affiliate network": CATEGORICAL[3], "affiliates": CATEGORICAL[3],
+    "email": CATEGORICAL[4], "email (in-house)": CATEGORICAL[4], "e-mail": CATEGORICAL[4],
+    "video": CATEGORICAL[6], "youtube": CATEGORICAL[6], "youtube ads": CATEGORICAL[6],
+}
+_FREE_ORDER = [CATEGORICAL[i] for i in (0, 1, 2, 3, 4, 6, 5, 7)]
+
+
+def entity_colors(entities) -> dict[str, str]:
+    """Colour per channel/platform: the fixed CHANNEL_COLORS first, then the unused palette
+    colours in a fixed order for any other names (sorted, so the result never depends on the
+    order or filtering of the data). "Other" is always the context grey."""
+    names = sorted({str(e) for e in entities})
+    out = {n: CHANNEL_COLORS[n.lower()] for n in names if n.lower() in CHANNEL_COLORS}
+    free = [c for c in _FREE_ORDER if c not in out.values()]
+    for name in (n for n in names if n not in out and n != OTHER_LABEL):
+        out[name] = free.pop(0) if free else NEUTRAL
+    if OTHER_LABEL in names:
+        out[OTHER_LABEL] = CONTEXT
+    return out
 
 
 def color_map(entities) -> dict[str, str]:
@@ -143,6 +183,7 @@ APP_CSS = f"""
                     line-height: 1.25; margin: 0.1rem 0 0.2rem 0; }}
   .mi-scope {{ display: inline-block; margin-top: 0.5rem; padding: 2px 10px; border-radius: 12px;
                background: {PANEL}; color: {INK_SECONDARY}; font-size: 0.78rem; }}
+  .mi-chips .mi-scope {{ margin-right: 6px; }}
   .mi-page-header p {{ color: {INK_SECONDARY}; font-size: 0.93rem; margin: 0; }}
   .mi-caption {{ color: {INK_SECONDARY}; font-size: 0.86rem; margin: -0.3rem 0 0.8rem 0; }}
 

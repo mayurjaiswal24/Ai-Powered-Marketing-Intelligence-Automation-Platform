@@ -21,9 +21,10 @@ from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
 import config.settings as config_settings
+from dashboard import chart_standard as cs
 from dashboard import charts, components as ui, theme
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
-                               available_filters, describe, preset_range)
+                               available_filters, describe, describe_chips, preset_range)
 from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, learn_mappings, load_raw,
                                 prepare, reopen_run, run_pipeline, sample_path)
 from ingestion.loader import IngestionError
@@ -235,7 +236,7 @@ def _nav_section_starts() -> dict[int, str]:
 def _header(page: str, filters: Filters | None = None, title: str | None = None) -> None:
     """The standard page header; analysis pages also say which data is shown."""
     ui.page_header(title or page, PAGE_DESCRIPTIONS.get(page), eyebrow=PAGE_SECTION.get(page) or None,
-                   scope=_filter_caption(filters) if filters is not None else None)
+                   scope=describe_chips(filters) if filters is not None else None)
 
 
 def sidebar() -> tuple[str, Filters | None]:
@@ -782,7 +783,8 @@ def page_overview(filters: Filters) -> None:
     if view["df"].empty:
         _no_rows_state()
         return
-    ui.kpi_cards(view["kpis"], view["deltas"], OVERVIEW_KPIS)
+    trend = time_series(view["df"], "week")
+    ui.kpi_cards(view["kpis"], view["deltas"], OVERVIEW_KPIS, sparklines=_sparklines(trend, OVERVIEW_KPIS))
     if view["deltas"] is None:
         st.caption("Change arrows compare with the previous period of the same length. Choose "
                    "'Last 30 days' or 'Last 90 days' in the sidebar to see them.")
@@ -790,11 +792,14 @@ def page_overview(filters: Filters) -> None:
         st.caption(note)
 
     left, right = st.columns(2, gap="large")
-    trend = time_series(view["df"], "week")
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in trend), None)
+    start, end = cs.date_span(view["df"])
+    caps = output.analysis.capabilities
     with left:
-        fig = charts.line_chart(trend, "period", outcome, KPI_REGISTRY[outcome].fmt,
-                                f"Weekly {title_case(KPI_REGISTRY[outcome].label)}") if outcome else None
+        fig = charts.line_chart(
+            trend, "period", outcome, KPI_REGISTRY[outcome].fmt,
+            cs.trend_title(view["df"], outcome, f"Weekly {title_case(KPI_REGISTRY[outcome].label)}", capabilities=caps),
+            subtitle=cs.subtitle(outcome, "week", start, end)) if outcome else None
         ui.show_chart(fig, "No trend is available because the data has no usable date column.")
     with right:
         ch = view["channels"]
@@ -803,7 +808,12 @@ def page_overview(filters: Filters) -> None:
             series["Share of Revenue"] = "revenue_share_pct"
         elif "leads_share_pct" in ch:
             series["Share of Leads"] = "leads_share_pct"
-        fig = charts.share_comparison_chart(ch, "channel", series, "Where the Money Goes and What It Returns") \
+        result_col = list(series.values())[-1]
+        title = cs.share_title(ch, "channel", result_col, list(series)[-1].removeprefix("Share of "),
+                               "Where the Money Goes and What It Returns")
+        fig = charts.share_comparison_chart(ch, "channel", series, title,
+                                            subtitle=cs.subtitle(None, None, start, end,
+                                                                 note="Share of total (%)")) \
             if not ch.empty else None
         ui.show_chart(fig, "Channel analysis is not available for this data.")
 
@@ -813,6 +823,19 @@ def page_overview(filters: Filters) -> None:
         ui.findings_list(output.analysis.findings, limit=5)
     else:
         ui.empty_state("No findings could be produced from this data.", icon="lightbulb")
+
+
+SPARKLINE_WEEKS = 12
+
+
+def _sparklines(trend: pd.DataFrame, keys: list[str]) -> dict[str, list]:
+    """Last 12 full weeks of each KPI from the weekly trend table (partial weeks at the edges of
+    the data are left out, so a short last week never looks like a collapse)."""
+    if trend is None or trend.empty:
+        return {}
+    full = trend[trend["days"] >= 7] if (trend["days"] >= 7).sum() >= 2 else trend
+    recent = full.tail(SPARKLINE_WEEKS)
+    return {k: [float(v) for v in recent[k].dropna()] for k in keys if k in recent}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -826,8 +849,12 @@ def page_trends(filters: Filters) -> None:
         _no_rows_state("Trends need a date column and at least one row that matches the current "
                        "filters.")
         return
-    grain_label = st.segmented_control("Time Grain", ["Daily", "Weekly", "Monthly"], default="Weekly",
-                                       key="trend_grain") or "Weekly"
+    c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
+    with c1:
+        grain_label = st.segmented_control("Time Grain", ["Daily", "Weekly", "Monthly"], default="Weekly",
+                                           key="trend_grain") or "Weekly"
+    show_incidents = c2.toggle("Show Incidents", value=True, key="trend_incidents",
+                               help="Mark the anomaly incidents on the trend lines (daily and weekly views).")
     grain = {"Daily": "day", "Weekly": "week", "Monthly": "month"}[grain_label]
     trend = time_series(view["df"], grain)
     if trend.empty:
@@ -837,22 +864,41 @@ def page_trends(filters: Filters) -> None:
     efficiency_options = [k for k in ("roas", "cpl", "cac", "ctr", "lead_to_conversion_rate", "cpc")
                           if k in trend and trend[k].notna().any()]
     unit = {"Daily": "Day", "Weekly": "Week", "Monthly": "Month"}[grain_label]
-    items = [(m, title_case(KPI_REGISTRY[m].label)) for m in ("revenue", "spend", "conversions", "leads")
-             if m in trend and trend[m].notna().any()][:3]
-    cols = st.columns(2, gap="large")
-    for i, (metric, label) in enumerate(items):
-        with cols[i % 2]:
-            ui.show_chart(charts.line_chart(trend, "period", metric, KPI_REGISTRY[metric].fmt,
-                                            f"{label} by {unit}",
-                                            x_label_fmt=xfmt), f"No {label.lower()} data is available.")
-    with cols[len(items) % 2]:
+    result_options = [m for m in ("revenue", "spend", "conversions", "leads")
+                      if m in trend and trend[m].notna().any()]
+    output = current_output()
+    caps = output.analysis.capabilities
+    incidents = _incidents_in_view(output.analysis.incidents, filters) if show_incidents and grain != "month" \
+        else None
+    start, end = cs.date_span(view["df"])
+
+    def trend_chart(metric: str, reference=None):
+        label = title_case(KPI_REGISTRY[metric].label)
+        fig = charts.line_chart(trend, "period", metric, KPI_REGISTRY[metric].fmt,
+                                cs.trend_title(view["df"], metric, f"{label} by {unit}", capabilities=caps),
+                                x_label_fmt=xfmt, subtitle=cs.subtitle(metric, grain, start, end),
+                                reference=reference, reference_label="Overall")
+        return charts.add_incident_markers(fig, incidents) if incidents is not None else fig
+
+    # One chart per question with a metric selector (instead of near-duplicate charts).
+    left, right = st.columns(2, gap="large")
+    with left:
+        if result_options:
+            metric = st.selectbox("Result Metric", result_options, key="trend_result",
+                                  format_func=lambda k: title_case(KPI_REGISTRY[k].label))
+            ui.show_chart(trend_chart(metric), "No data is available for this metric.")
+    with right:
         if efficiency_options:
             eff = st.selectbox("Efficiency Metric", efficiency_options, key="trend_eff",
                                format_func=lambda k: title_case(KPI_REGISTRY[k].label))
-            ui.show_chart(charts.line_chart(trend, "period", eff, KPI_REGISTRY[eff].fmt,
-                                            f"{title_case(KPI_REGISTRY[eff].label)} over Time",
-                                            x_label_fmt=xfmt),
+            overall = view["kpis"].get(eff)
+            ui.show_chart(trend_chart(eff, overall.value if overall is not None else None),
                           "No efficiency data is available.")
+    if show_incidents and grain == "month":
+        st.caption("Incident markers are shown on the daily and weekly views.")
+    elif incidents is not None and not incidents.empty:
+        st.caption("Triangles and shaded bands mark the highest-ranked anomaly incidents; hover over a "
+                   "triangle for the incident and its estimated ₹ impact.")
     if (trend["days"] < {"day": 1, "week": 7, "month": 28}[grain]).any():
         st.caption("The first or last period may be partial (fewer days of data), so it can look "
                    "lower than the others.")
@@ -871,6 +917,10 @@ def page_channels(filters: Filters) -> None:
         return
     paid, owned = paid_channels(ch), owned_channels(ch)
     df = view["df"]
+    output = current_output()
+    colors = theme.entity_colors(output.analysis.channels["channel"]) if "channel" in output.analysis.channels \
+        else None
+    start, end = cs.date_span(df)
     key = "channel" if "channel" in df else "platform"
     paid_kpis = compute_kpis(df[df[key].map(channel_type) == "paid"]) if not paid.empty else {}
     metrics = [k for k in ("roas", "cpl", "cac", "ctr", "cpc", "lead_to_conversion_rate",
@@ -882,13 +932,29 @@ def page_channels(filters: Filters) -> None:
                                   format_func=lambda k: title_case(KPI_REGISTRY[k].label))
             ref = paid_kpis.get(metric)
             better_high = KPI_REGISTRY[metric].higher_is_better
-            ui.show_chart(charts.bar_chart(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                           f"{title_case(KPI_REGISTRY[metric].label)} by Paid Channel",
-                                           ascending=better_high is False,
-                                           reference=ref.value if ref and metric not in
-                                           ("revenue", "spend", "leads", "conversions") else None,
-                                           reference_label="Paid Average"),
-                          "No data is available for this metric.")
+            label = title_case(KPI_REGISTRY[metric].label)
+            additive = metric in ("revenue", "spend", "leads", "conversions")
+            reference = ref.value if ref and not additive else None
+            drill = st.session_state.get("channel_drill")
+            if drill:
+                _channel_campaigns(view["campaigns"], drill, metric, start, end)
+            else:
+                fig = charts.bar_chart(
+                    paid, "channel", metric, KPI_REGISTRY[metric].fmt,
+                    cs.ranking_title(paid, "channel", metric, f"{label} by Paid Channel", reference=reference,
+                                     reference_label="Paid Average"),
+                    ascending=better_high is False, reference=reference, reference_label="Paid Average",
+                    subtitle=cs.subtitle(metric, None, start, end, note="Paid Channels"), color_by=colors,
+                    share_total=ref.value if ref and additive else None)
+                event = ui.show_chart(fig, "No data is available for this metric.",
+                                      key=f"channel_bar_{st.session_state.get('channel_nonce', 0)}",
+                                      selectable=True)
+                picked = _picked_label(event)
+                if picked:
+                    st.session_state["channel_drill"] = picked
+                    st.rerun()
+                if fig is not None:
+                    st.caption("Click a bar to see that channel's campaigns.")
         with right:
             index_cols = [c for c in paid.columns if c.endswith("_index") and paid[c].notna().any()]
             if index_cols:
@@ -896,10 +962,12 @@ def page_channels(filters: Filters) -> None:
                                    key="channel_index",
                                    format_func=lambda c: title_case(KPI_REGISTRY[c.removesuffix("_index")].label))
                 base = idx.removesuffix("_index")
+                neutral = f"{title_case(KPI_REGISTRY[base].label)} Index vs Paid-Media Average"
                 ui.show_chart(charts.index_chart(paid, "channel", idx,
-                                                 f"{title_case(KPI_REGISTRY[base].label)} Index vs "
-                                                 "Paid-Media Average",
-                                                 lower_is_better=KPI_REGISTRY[base].higher_is_better is False),
+                                                 cs.index_title(paid, "channel", idx, base, neutral),
+                                                 lower_is_better=KPI_REGISTRY[base].higher_is_better is False,
+                                                 subtitle=cs.subtitle(None, None, start, end,
+                                                                      note="Index (Paid-Media Average = 100)")),
                               "No index is available.")
     cols = ["channel", "spend", "spend_share_pct", "impressions", "clicks", "ctr", "cpc", "leads", "cpl",
             "conversions", "lead_to_conversion_rate", "cac", "revenue", "revenue_share_pct", "roas", "roi"]
@@ -911,6 +979,41 @@ def page_channels(filters: Filters) -> None:
                    "mostly fixed costs, so their ROAS is not comparable with paid media. They are left "
                    "out of the rankings and efficiency indices above.")
         ui.show_table(owned, cols)
+
+
+def _picked_label(event) -> str | None:
+    """The category of the clicked bar in a Plotly selection event (bar_chart puts the raw label
+    in customdata[1])."""
+    try:
+        points = event["selection"]["points"] if event else []
+    except (KeyError, TypeError):
+        return None
+    if not points:
+        return None
+    data = points[0].get("customdata")
+    if isinstance(data, (list, tuple)) and len(data) > 1:
+        return str(data[1])
+    label = points[0].get("y")
+    return str(label).replace("<br>", " ") if label is not None else None
+
+
+def _channel_back() -> None:
+    st.session_state["channel_drill"] = None
+    st.session_state["channel_nonce"] = st.session_state.get("channel_nonce", 0) + 1   # clears the click
+
+
+def _channel_campaigns(campaigns: pd.DataFrame, channel: str, metric: str, start, end) -> None:
+    """Drill-down: the campaigns of one channel, ranked on the selected metric."""
+    st.button("Back to All Channels", key="channel_back", on_click=_channel_back, icon=":material/arrow_back:")
+    st.caption(f"Campaigns in {channel}, ranked by {title_case(KPI_REGISTRY[metric].label)}.")
+    rows = campaigns[campaigns["channel"].astype(str) == channel] if "channel" in campaigns else campaigns.iloc[0:0]
+    label = title_case(KPI_REGISTRY[metric].label)
+    better_high = KPI_REGISTRY[metric].higher_is_better
+    fig = charts.bar_chart(rows, "campaign", metric, KPI_REGISTRY[metric].fmt,
+                           cs.ranking_title(rows, "campaign", metric, f"Campaigns in {channel} by {label}"),
+                           top_n=10, ascending=better_high is False,
+                           subtitle=cs.subtitle(metric, None, start, end, note=f"Campaigns in {channel}"))
+    ui.show_chart(fig, f"No campaign data is available for {channel} on this metric.")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -941,10 +1044,21 @@ def page_campaigns(filters: Filters) -> None:
     better_high = KPI_REGISTRY[metric].higher_is_better
     ascending = (better_high is False) != worst_first if better_high is not None else worst_first
     ranked = rank_campaigns(table, metric, ascending=ascending, min_spend_share=min_share)
+    label = title_case(KPI_REGISTRY[metric].label)
+    additive = metric in ("revenue", "spend", "leads", "conversions")
+    overall = view["kpis"].get(metric)
+    overall = overall.value if overall is not None else None
+    start, end = cs.date_span(view["df"])
+    neutral = f"Top 10 Campaigns by {label}" + (" (Weakest First)" if worst_first else "")
     ui.show_chart(charts.bar_chart(ranked.head(10), "campaign", metric, KPI_REGISTRY[metric].fmt,
-                                   f"Top 10 Campaigns by {title_case(KPI_REGISTRY[metric].label)}"
-                                   + (" (Weakest First)" if worst_first else ""),
-                                   ascending=ascending), "No campaigns match the current settings.")
+                                   cs.ranking_title(ranked, "campaign", metric, neutral,
+                                                    reference=None if additive else overall,
+                                                    reference_label="Overall", weakest=worst_first),
+                                   ascending=ascending, reference=None if additive else overall,
+                                   reference_label="Overall", share_total=overall if additive else None,
+                                   subtitle=cs.subtitle(metric, None, start, end,
+                                                        note=f"Top {min(10, len(ranked))} of {len(ranked)} Campaigns")),
+                  "No campaigns match the current settings.")
     cols = ["rank", "campaign", "channel", "spend", "leads", "cpl", "conversions", "cac", "revenue",
             "roas", "trend", "trend_change_pct", "anomalies", "first_date", "last_date"]
     ui.show_table(ranked.assign(trend=ranked["trend"].str.capitalize()) if "trend" in ranked else ranked,
@@ -970,7 +1084,9 @@ def page_funnel(filters: Filters) -> None:
     data = data.assign(label=data["label"].map(title_case))
     left, right = st.columns([3, 2], gap="large")
     with left:
-        ui.show_chart(charts.funnel_chart(data, f"Funnel: {scope}"),
+        ui.show_chart(charts.funnel_chart(data, cs.funnel_title(data, f"Funnel: {scope}"),
+                                          subtitle=cs.subtitle(None, None, *cs.date_span(view["df"]),
+                                                               note=scope.capitalize())),
                       "There are not enough funnel stages to draw a chart.")
     with right:
         st.markdown("### Stage by Stage")
@@ -1019,10 +1135,21 @@ def page_segments(filters: Filters) -> None:
                                    "lead_to_conversion_rate", "spend") if k in table and table[k].notna().any()]
             metric = st.selectbox("Metric", metrics, key=f"seg_metric_{kind}",
                                   format_func=lambda k: title_case(KPI_REGISTRY[k].label))
-            ui.show_chart(charts.bar_chart(table, "segment", metric, KPI_REGISTRY[metric].fmt,
-                                           title_case(f"{KPI_REGISTRY[metric].label} by "
-                                                      f"{FIELD_BY_NAME[dim].label.lower()}"),
-                                           ascending=KPI_REGISTRY[metric].higher_is_better is False),
+            additive = metric in ("revenue", "spend", "leads", "conversions")
+            total = view["kpis"].get(metric)
+            neutral = title_case(f"{KPI_REGISTRY[metric].label} by {FIELD_BY_NAME[dim].label.lower()}")
+            shown, note = table, None
+            if len(table) > theme.MAX_CATEGORIES:
+                if additive:            # totals add up: top 7 + "Other"
+                    shown = cs.group_other(table, "segment", [metric], sort_by=metric)
+                else:                   # ratios never add up: show the top 8 and say so
+                    note = f"Top {theme.MAX_CATEGORIES} of {len(table)}"
+            ui.show_chart(charts.bar_chart(shown, "segment", metric, KPI_REGISTRY[metric].fmt,
+                                           cs.ranking_title(table, "segment", metric, neutral),
+                                           ascending=KPI_REGISTRY[metric].higher_is_better is False,
+                                           top_n=theme.MAX_CATEGORIES if note else None,
+                                           share_total=total.value if additive and total is not None else None,
+                                           subtitle=cs.subtitle(metric, None, *cs.date_span(df), note=note)),
                           "No data is available for this breakdown.")
             ui.show_table(table, ["segment", "spend", "leads", "conversions", "revenue",
                                   "revenue_share_pct", "cac", "aov", "roas", "growth_pct", "growth_trend"])
@@ -1147,12 +1274,14 @@ def page_anomalies(filters: Filters) -> None:
         daily = _entity_daily(output.clean.clean_df, main["entity_type"], main["entity"], start)
         if daily is not None:
             fig = charts.anomaly_chart(daily, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
-                                       f"{title_case(KPI_REGISTRY[metric].label)} per Day: {main['entity']}")
+                                       f"{title_case(KPI_REGISTRY[metric].label)} per Day: {main['entity']}",
+                                       subtitle=cs.subtitle(metric, "day"))
     else:
         weekly = _entity_weekly(output.clean.clean_df, main["entity_type"], main["entity"])
         if weekly is not None:
             fig = charts.anomaly_chart(weekly, metric, KPI_REGISTRY[metric].fmt, start, end, expected,
-                                       f"{title_case(KPI_REGISTRY[metric].label)} per Week: {main['entity']}")
+                                       f"{title_case(KPI_REGISTRY[metric].label)} per Week: {main['entity']}",
+                                       subtitle=cs.subtitle(metric, "week"))
     ui.show_chart(fig, "No chart is available for this incident.")
 
     with st.expander(f"All Individual Flags ({len(flags)})"):

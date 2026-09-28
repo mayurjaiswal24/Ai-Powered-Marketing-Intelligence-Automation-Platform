@@ -17,9 +17,10 @@ from utils.formatting import format_change, title_case, title_case_label
 # ---------------------------------------------------------------------------------------------
 
 def page_header(title: str, caption: str | None = None, eyebrow: str | None = None,
-                scope: str | None = None) -> None:
+                scope: str | list[str] | None = None) -> None:
     """The same header on every page: section label, title, one-line description and (on
-    analysis pages) which data is shown. The look comes from theme.APP_CSS."""
+    analysis pages) which data is shown, as one chip per active filter. The look comes from
+    theme.APP_CSS."""
     parts = ["<div class='mi-page-header'>"]
     if eyebrow:
         parts.append(f"<div class='mi-eyebrow'>{html.escape(eyebrow)}</div>")
@@ -27,7 +28,9 @@ def page_header(title: str, caption: str | None = None, eyebrow: str | None = No
     if caption:
         parts.append(f"<p>{html.escape(caption)}</p>")
     if scope:
-        parts.append(f"<div class='mi-scope'>{html.escape(scope)}</div>")
+        chips = [scope] if isinstance(scope, str) else scope
+        parts.append("<div class='mi-chips'>" + "".join(
+            f"<span class='mi-scope'>{html.escape(chip)}</span>" for chip in chips) + "</div>")
     parts.append("</div>")
     st.markdown("".join(parts), unsafe_allow_html=True)
 
@@ -122,12 +125,25 @@ def empty_state(message: str, icon: str = "info", action=None) -> None:
         st.button(label, key=key, on_click=callback, type="primary")
 
 
-def show_chart(fig, empty_message: str) -> None:
-    """Draw a chart, or a clear empty state when the data for it does not exist."""
+# Chart toolbar (docs/CHART_STYLE_GUIDE.md): Download as PNG and Reset zoom only.
+CHART_CONFIG = {
+    "displaylogo": False,
+    "modeBarButtons": [["toImage", "resetScale2d"]],
+    "toImageButtonOptions": {"format": "png", "filename": "chart", "scale": 2},
+}
+
+
+def show_chart(fig, empty_message: str, key: str | None = None, selectable: bool = False):
+    """Draw a chart, or a clear empty state when the data for it does not exist. With
+    `selectable`, clicking a bar reruns the page and the click event is returned."""
     if fig is None:
         empty_state(empty_message)
-    else:
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        return None
+    if selectable:
+        return st.plotly_chart(fig, width="stretch", config=CHART_CONFIG, key=key, on_select="rerun",
+                               selection_mode="points")
+    st.plotly_chart(fig, width="stretch", config=CHART_CONFIG, key=key)
+    return None
 
 
 def findings_list(findings, limit: int | None = None) -> None:
@@ -151,9 +167,11 @@ def friendly_error(exc: Exception) -> None:
 # KPI cards
 # ---------------------------------------------------------------------------------------------
 
-def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4) -> None:
-    """Metric cards for the available KPIs among `keys`, with change vs the previous period.
-    Cost KPIs (CPL, CAC) show a fall as good (green) and a rise as bad (red)."""
+def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4,
+              sparklines: dict[str, list] | None = None) -> None:
+    """Metric cards for the available KPIs among `keys`, with change vs the previous period and
+    (when given) a sparkline of the last 12 weeks. Cost KPIs (CPL, CAC) show a fall as good
+    (green) and a rise as bad (red)."""
     shown = [k for k in keys if k in kpis and kpis[k].available]
     for i in range(0, len(shown), per_row):
         cols = st.columns(per_row)
@@ -167,9 +185,11 @@ def kpi_cards(kpis: dict, deltas: dict | None, keys: list[str], per_row: int = 4
                 delta_color = "off" if better is None else ("normal" if better else "inverse")
             spec = KPI_REGISTRY[key]
             help_text = f"{spec.description}  \nFormula: {spec.formula_text}." + (f"  \n{k.note}" if k.note else "")
+            spark = (sparklines or {}).get(key)
+            chart = dict(chart_data=spark, chart_type="line") if spark is not None and len(spark) > 1 else {}
             with col:
                 st.metric(title_case(k.label), k.formatted_compact, delta=delta, delta_color=delta_color,
-                          help=help_text, border=True)
+                          help=help_text, border=True, **chart)
 
 
 # ---------------------------------------------------------------------------------------------

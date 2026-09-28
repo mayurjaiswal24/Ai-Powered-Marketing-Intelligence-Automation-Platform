@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from utils.formatting import format_date
+from utils.formatting import format_date, format_date_range
 
 # (column, label) in display order. A filter is offered only if the column has values.
 DIMENSION_FILTERS = [
@@ -81,3 +81,17 @@ def describe(filters: Filters) -> str:
             shown = ", ".join(values[:3]) + (f" +{len(values) - 3} more" if len(values) > 3 else "")
             parts.append(f"{labels.get(col, col)}: {shown}")
     return "Filtered view: " + "; ".join(parts) if parts else "Showing all data"
+
+
+def describe_chips(filters: Filters) -> list[str]:
+    """The active filters as short chips for the page header ("1 Jul 2026 – 30 Sep 2026",
+    "Channel: Paid Search, Video"); one "Showing all data" chip when nothing is filtered."""
+    chips = []
+    if filters.date_filtered:
+        chips.append(format_date_range(filters.start, filters.end))
+    labels = dict(DIMENSION_FILTERS)
+    for col, values in filters.dimensions.items():
+        if values:
+            shown = ", ".join(values[:3]) + (f" +{len(values) - 3} more" if len(values) > 3 else "")
+            chips.append(f"{labels.get(col, col)}: {shown}")
+    return chips or ["Showing all data"]

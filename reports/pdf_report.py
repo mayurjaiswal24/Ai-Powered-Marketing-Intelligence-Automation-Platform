@@ -29,6 +29,7 @@ from reportlab.platypus import (CondPageBreak, Image, KeepTogether, PageBreak, P
 from analytics.kpis import KPI_REGISTRY, RATIO_KPIS
 from config import settings as cfg
 from config.settings import PROJECT_ROOT, settings
+from dashboard import chart_standard as cs
 from dashboard import theme
 from dashboard.tables import format_table
 from reports import export_filename, pdf_charts
@@ -398,6 +399,11 @@ def _plain_table(rep: _Report, df: pd.DataFrame, widths: list[float]) -> None:
     rep.story += [t, Spacer(1, 8)]
 
 
+def _span(rep: _Report) -> tuple:
+    """First and last date of the data (from the daily trend table), for chart subtitles."""
+    return cs.date_span(rep.r.trends.get("day"), "period")
+
+
 def _overall_performance(rep: _Report) -> None:
     monthly = rep.r.trends.get("month")
     if monthly is None or monthly.empty:
@@ -408,7 +414,8 @@ def _overall_performance(rep: _Report) -> None:
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in monthly), None)
     for metric in [m for m in (outcome, "spend") if m]:
         rep.chart(pdf_charts.line_png(monthly, "period", metric, KPI_REGISTRY[metric].fmt,
-                                      f"{title_case(KPI_REGISTRY[metric].label)} by Month", date_axis=False))
+                                      f"{title_case(KPI_REGISTRY[metric].label)} by Month", date_axis=False,
+                                      subtitle=cs.subtitle(metric, "month", *_span(rep))))
     cols = ["period", "days", "spend", "leads", "cpl", "conversions", "revenue", "roas"]
     rep.table(monthly.rename(columns={"period": "month"}), ["month"] + cols[1:])
 
@@ -428,12 +435,24 @@ def _channels(rep: _Report) -> None:
         series["Share of Revenue"] = "revenue_share_pct"
     elif "leads_share_pct" in ch:
         series["Share of Leads"] = "leads_share_pct"
-    rep.chart(pdf_charts.share_png(ch, "channel", series, "Where the Money Goes and What It Returns"))
+    result_col = list(series.values())[-1]
+    rep.chart(pdf_charts.share_png(ch, "channel", series,
+                                   cs.share_title(ch, "channel", result_col,
+                                                  list(series)[-1].removeprefix("Share of "),
+                                                  "Where the Money Goes and What It Returns"),
+                                   subtitle=cs.subtitle(None, None, *_span(rep), note="Share of total (%)")))
     metric = "roas" if "roas" in paid and paid["roas"].notna().any() else "cpl"
     if metric in paid and len(paid):
+        paid_avg = rep.r.paid_kpis.get(metric)
+        paid_avg = paid_avg.value if paid_avg is not None else None
         rep.chart(pdf_charts.hbar_png(paid, "channel", metric, KPI_REGISTRY[metric].fmt,
-                                      f"{title_case(KPI_REGISTRY[metric].label)} by Paid Channel",
-                                      ascending=KPI_REGISTRY[metric].higher_is_better is False),
+                                      cs.ranking_title(paid, "channel", metric,
+                                                       f"{title_case(KPI_REGISTRY[metric].label)} by Paid Channel",
+                                                       reference=paid_avg, reference_label="Paid Average"),
+                                      ascending=KPI_REGISTRY[metric].higher_is_better is False,
+                                      reference=paid_avg, reference_label="Paid Average",
+                                      subtitle=cs.subtitle(metric, None, *_span(rep), note="Paid Channels"),
+                                      color_by=theme.entity_colors(ch["channel"])),
                   f"Paid channels only. Overall {KPI_REGISTRY[metric].label} (all channels): "
                   f"{rep.r.kpis[metric].formatted}.")
     cols = ["channel", "spend", "spend_share_pct", "leads", "cpl", "conversions", "cac", "revenue",
@@ -462,8 +481,10 @@ def _campaigns(rep: _Report) -> None:
           "of data with the 4 weeks before.", "small", raw=True)
     ranked = c.sort_values(outcome, ascending=False) if outcome else c
     metric = "roas" if "roas" in c and c["roas"].notna().any() else "cpl"
-    rep.chart(pdf_charts.hbar_png(ranked, "campaign", outcome, "count", title_case(f"Campaigns by {outcome}"),
-                                  top_n=10))
+    rep.chart(pdf_charts.hbar_png(ranked, "campaign", outcome, "count",
+                                  cs.ranking_title(ranked, "campaign", outcome, title_case(f"Campaigns by {outcome}")),
+                                  top_n=10, subtitle=cs.subtitle(outcome, None, *_span(rep),
+                                                                 note=f"Top {min(10, len(ranked))} of {len(ranked)} Campaigns")))
     rep.table(ranked, ["campaign", "channel", "spend", "leads", "cpl", "conversions", "cac", "revenue",
                        metric, "trend"], max_rows=10)
 
@@ -473,9 +494,12 @@ def _funnel(rep: _Report) -> None:
     if f.empty:
         return
     rep.h1("Funnel analysis")
-    rep.p(tag("Verified metric") + " Only the stages present in the data are shown. The chart uses "
-          "a logarithmic scale so the smaller lower stages stay visible.", "small", raw=True)
-    rep.chart(pdf_charts.funnel_png(f.assign(label=f["label"].map(title_case)), "Marketing Funnel"))
+    rep.p(tag("Verified metric") + " Only the stages present in the data are shown. Each bar is the "
+          "share of people who move on from the previous stage; the biggest drop after the click stage "
+          "is shown in red.", "small", raw=True)
+    labelled = f.assign(label=f["label"].map(title_case))
+    rep.chart(pdf_charts.funnel_png(labelled, cs.funnel_title(labelled, "Marketing Funnel"),
+                                    subtitle=cs.subtitle(None, None, *_span(rep), note="All Channels")))
     rep.table(f.assign(label=f["label"].map(title_case)), ["label", "value", "rate_from_previous", "drop_off_pct"])
 
 
@@ -502,12 +526,12 @@ def _trends(rep: _Report) -> None:
     rep.p(tag("Verified metric") + " Weekly view with efficiency over time.", "small", raw=True)
     eff = "roas" if "roas" in weekly and weekly["roas"].notna().any() else "cpl"
     outcome = next((m for m in ("revenue", "conversions", "leads") if m in weekly), None)
-    if outcome:
-        rep.chart(pdf_charts.line_png(weekly, "period", outcome, KPI_REGISTRY[outcome].fmt,
-                                      f"Weekly {title_case(KPI_REGISTRY[outcome].label)}"))
-    if eff in weekly:
-        rep.chart(pdf_charts.line_png(weekly, "period", eff, KPI_REGISTRY[eff].fmt,
-                                      f"Weekly {title_case(KPI_REGISTRY[eff].label)}"))
+    daily = rep.r.trends.get("day")
+    for metric in [m for m in (outcome, eff) if m and m in weekly]:
+        label = title_case(KPI_REGISTRY[metric].label)
+        rep.chart(pdf_charts.line_png(weekly, "period", metric, KPI_REGISTRY[metric].fmt,
+                                      cs.trend_title(daily, metric, f"Weekly {label}", date_col="period"),
+                                      subtitle=cs.subtitle(metric, "week", *_span(rep))))
     if rep.r.seasonality is not None:
         rep.h2("Seasonality index (100 = an average month)")
         season = rep.r.seasonality.copy()
