@@ -89,3 +89,15 @@ def test_other_samples_and_uploads_run_the_full_pipeline(demo_on, tmp_path, monk
     assert "output" not in at.session_state or at.session_state["output"] is None
     at.button(key="run_analysis").click().run()
     assert at.session_state["output"].run_id is not None and not at.exception
+
+
+# Upgrade v2.0 guard (U1-U8): the AI evidence pack for the Kalpa sample must not change, so cached
+# insights and the demo seed stay valid. U9 changes the evidence pack on purpose and updates this value.
+KALPA_EVIDENCE_FINGERPRINT = "037d98c537d928898aab1649036ed4d5024f2d4a9648763a5a818a64b41ef7f8"
+
+
+def test_kalpa_evidence_pack_fingerprint_unchanged(tmp_path):
+    from ai.context_builder import build_evidence
+    raw, report = load_raw(SAMPLE_DIR / "marketing_clean.csv")
+    analysis = run_pipeline(prepare(raw, report), db_path=tmp_path / "f.db").analysis
+    assert build_evidence(analysis, model="test-model").fingerprint == KALPA_EVIDENCE_FINGERPRINT
