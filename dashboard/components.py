@@ -7,6 +7,7 @@ import html
 import pandas as pd
 import streamlit as st
 
+import config.settings as config_settings
 from analytics.kpis import KPI_REGISTRY
 from dashboard.tables import column_format, column_label, format_table  # noqa: F401
 from utils.formatting import format_change
@@ -15,10 +16,59 @@ from utils.formatting import format_change
 # Text blocks
 # ---------------------------------------------------------------------------------------------
 
-def page_header(title: str, caption: str | None = None) -> None:
-    st.markdown(f"# {html.escape(title)}")
+def page_header(title: str, caption: str | None = None, eyebrow: str | None = None,
+                scope: str | None = None) -> None:
+    """The same header on every page: section label, title, one-line description and (on
+    analysis pages) which data is shown. The look comes from theme.APP_CSS."""
+    parts = ["<div class='mi-page-header'>"]
+    if eyebrow:
+        parts.append(f"<div class='mi-eyebrow'>{html.escape(eyebrow)}</div>")
+    parts.append(f"<div class='mi-page-title'>{html.escape(title)}</div>")
     if caption:
-        st.markdown(f"<div class='mi-caption'>{html.escape(caption)}</div>", unsafe_allow_html=True)
+        parts.append(f"<p>{html.escape(caption)}</p>")
+    if scope:
+        parts.append(f"<div class='mi-scope'>{html.escape(scope)}</div>")
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
+def brand_header() -> None:
+    """Sidebar top: a small bar-chart logo mark and the product name."""
+    st.markdown(
+        "<div class='mi-brand'><div class='mi-logo'><span style='height:9px'></span>"
+        "<span style='height:14px'></span><span style='height:19px'></span></div>"
+        f"<div><div class='mi-brand-name'>{html.escape(config_settings.APP_NAME)}</div>"
+        "<div class='mi-brand-sub'>Marketing analytics &amp; AI insights</div></div></div>",
+        unsafe_allow_html=True)
+
+
+def signature() -> None:
+    """Sidebar footer on every page: creator (LinkedIn, new tab) and version."""
+    st.markdown(
+        "<div class='mi-signature'>Created by "
+        f"<a href='{html.escape(config_settings.CREATOR_LINKEDIN)}' target='_blank' "
+        f"rel='noopener noreferrer'>{html.escape(config_settings.CREATOR_NAME)}</a>"
+        f"<br>v{html.escape(config_settings.APP_VERSION)}</div>",
+        unsafe_allow_html=True)
+
+
+def section_label(text: str) -> None:
+    st.markdown(f"<div class='mi-sidebar-label'>{html.escape(text)}</div>", unsafe_allow_html=True)
+
+
+def steps_guide(steps: list[tuple[str, str]]) -> None:
+    """Numbered how-it-works cards (one row on a laptop, stacked on a phone)."""
+    cards = "".join(
+        f"<div class='mi-step'><span class='mi-step-no'>{i}</span><span class='mi-step-title'>"
+        f"{html.escape(title)}</span><p>{html.escape(text)}</p></div>"
+        for i, (title, text) in enumerate(steps, start=1))
+    st.markdown(f"<div class='mi-steps'>{cards}</div>", unsafe_allow_html=True)
+
+
+def card_title(title: str, subtitle: str | None = None) -> None:
+    st.markdown(f"<div class='mi-card-title'>{html.escape(title)}</div>"
+                + (f"<div class='mi-card-sub'>{html.escape(subtitle)}</div>" if subtitle else ""),
+                unsafe_allow_html=True)
 
 
 def empty_state(message: str) -> None:

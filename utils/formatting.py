@@ -134,3 +134,23 @@ def format_date(value) -> str:
     if isinstance(value, dt.datetime):
         value = value.date()
     return f"{value.day} {value.strftime('%b %Y')}"
+
+
+# India Standard Time is a fixed UTC+5:30 (no daylight saving), so no time-zone database is needed.
+IST = dt.timezone(dt.timedelta(hours=5, minutes=30), "IST")
+
+
+def format_datetime_ist(value) -> str:
+    """A moment in India time, e.g. '27 Sep 2026, 5:34 PM'. Accepts an ISO text or a datetime;
+    a time without a zone is treated as UTC (how the app stores it). Missing -> N/A."""
+    if value is None or value == "":
+        return NA
+    try:
+        moment = dt.datetime.fromisoformat(str(value)) if not isinstance(value, dt.datetime) else value
+    except ValueError:
+        return NA
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    local = moment.astimezone(IST)
+    hour = local.hour % 12 or 12
+    return f"{format_date(local)}, {hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"

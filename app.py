@@ -6,11 +6,15 @@ Run with:  streamlit run app.py   (inside the activated virtual environment)
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import streamlit as st
 
-st.set_page_config(page_title="Marketing Intelligence Platform", layout="wide",
-                   initial_sidebar_state="expanded")
+# Browser tab: product name and the "MJ" monogram (assets/brand/mj_icon.png).
+_ICON = Path(__file__).resolve().parent / "assets" / "brand" / "mj_icon.png"
+st.set_page_config(page_title="Marketing Intelligence Platform",
+                   page_icon=str(_ICON) if _ICON.exists() else None,
+                   layout="wide", initial_sidebar_state="auto")
 
 from dashboard import components as ui  # noqa: E402  (after set_page_config)
 from dashboard import layout  # noqa: E402
@@ -36,8 +40,10 @@ def main() -> None:
     try:
         if page == "Upload & Profile":
             layout.page_upload()
+        elif page == "About":
+            layout.page_about()
         elif layout.current_output() is None:
-            ui.page_header(page)
+            ui.page_header(page, layout.PAGE_DESCRIPTIONS.get(page))
             layout.not_ready()
         elif page in PAGE_RENDERERS:
             PAGE_RENDERERS[page](filters)

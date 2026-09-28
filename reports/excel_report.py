@@ -21,7 +21,7 @@ from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import column_format, column_label
 from reports import export_filename
-from utils.formatting import format_count, format_date, pct_decimals
+from utils.formatting import format_count, format_date, format_datetime_ist, pct_decimals
 
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
                else PROJECT_ROOT / settings.exports_dir)
@@ -189,6 +189,7 @@ def _executive_kpis(book: _Book, result, generated: str) -> None:
     ws.write_string(0, 0, WORKBOOK_TITLE, book.fmt["title"])
     ws.write_string(1, 0, "Supporting evidence for the Marketing Intelligence dashboard and "
                     "executive PDF. All figures cover the full dataset.", book.fmt["subtitle"])
+    ws.write_string(2, 0, cfg.REPORT_SIGNATURE, book.fmt["subtitle"])
     info = [("Dataset", str(meta.get("dataset_name") or "N/A")),
             ("Period covered", f"{format_date(meta.get('date_min'))} to {format_date(meta.get('date_max'))}"),
             ("Rows analysed", format_count(meta.get("rows"))),
@@ -438,7 +439,7 @@ def _methodology(book: _Book, result) -> None:
 def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
                       quality_log: pd.DataFrame | None = None, ai: dict | None = None) -> list[str]:
     """Write the workbook to a path or binary buffer. Returns the sheet names written."""
-    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC").lstrip("0")
+    generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     try:
         book = _Book(str(output) if isinstance(output, Path) else output)
         _executive_kpis(book, result, generated)

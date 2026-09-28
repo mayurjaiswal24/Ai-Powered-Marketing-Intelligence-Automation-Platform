@@ -54,14 +54,14 @@ class BudgetStatus:
     def reason(self) -> str:
         """Why no call is allowed (empty when calls remain)."""
         if self.calls_today >= self.day_limit:
-            return (f"The daily AI limit ({self.day_limit} calls, AI_MAX_CALLS_PER_DAY) has been "
-                    "reached. Saved insights still work; new calls are possible tomorrow (UTC).")
+            return (f"The daily AI limit ({self.day_limit} calls) has been reached. Saved insights "
+                    "still work; new calls are possible after 5:30 AM India time.")
         if self.session_limit is not None and self.calls_this_session >= self.session_limit:
-            return (f"This demo allows {self.session_limit} AI calls per session "
-                    "(AI_MAX_CALLS_PER_SESSION). Saved insights still work.")
+            return (f"This demo allows {self.session_limit} AI calls per session. "
+                    "Saved insights still work.")
         if self.calls_this_run >= self.run_limit:
-            return (f"The AI limit for this analysis run ({self.run_limit} calls, "
-                    "AI_MAX_CALLS_PER_RUN) has been reached. Saved insights still work.")
+            return (f"The AI limit for this analysis run ({self.run_limit} calls) has been reached. "
+                    "Saved insights still work.")
         return ""
 
 

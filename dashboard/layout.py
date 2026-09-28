@@ -3,6 +3,7 @@ the same analytics functions re-run on the filtered rows."""
 
 from __future__ import annotations
 
+import html
 import io
 import uuid
 from pathlib import Path
@@ -28,10 +29,42 @@ from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
-from utils.formatting import format_count, format_date, format_value
+from utils.formatting import format_count, format_date, format_datetime_ist, format_value
 
-PAGES = ["Upload & Profile", "Executive Overview", "Performance Trends", "Channels", "Campaigns",
-         "Funnel", "Segments", "Anomalies", "AI Insights", "Data Quality", "Reports"]
+# Sidebar menu: sections in order, each with its pages. A blank section name = divider only.
+NAV_SECTIONS = [
+    ("Data", ["Upload & Profile", "Data Quality"]),
+    ("Analysis", ["Executive Overview", "Performance Trends", "Channels", "Campaigns", "Funnel",
+                  "Segments", "Anomalies"]),
+    ("AI", ["AI Insights"]),
+    ("Output", ["Reports"]),
+    ("", ["About"]),
+]
+PAGES = [page for _, pages in NAV_SECTIONS for page in pages]
+PAGE_SECTION = {page: section for section, pages in NAV_SECTIONS for page in pages}
+PAGE_ICONS = {
+    "Upload & Profile": "upload_file", "Data Quality": "fact_check", "Executive Overview": "dashboard",
+    "Performance Trends": "trending_up", "Channels": "hub", "Campaigns": "campaign",
+    "Funnel": "filter_alt", "Segments": "pie_chart", "Anomalies": "notification_important",
+    "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
+}
+PAGE_DESCRIPTIONS = {
+    "Upload & Profile": "Turn any marketing export into verified KPIs, insights and ready-to-share "
+                        "reports in minutes.",
+    "Data Quality": "What was fixed, flagged or excluded while cleaning, and what it means for the numbers.",
+    "Executive Overview": "The headline numbers, where the money goes and the most important findings.",
+    "Performance Trends": "How results and efficiency move over time.",
+    "Channels": "Compare paid channels on cost and return; owned channels are shown separately.",
+    "Campaigns": "Rank campaigns, spot the strongest and weakest, and see which are trending.",
+    "Funnel": "How many people move from one stage to the next, and where most are lost.",
+    "Segments": "Performance by customer segment, geography and product.",
+    "Anomalies": "Unusual periods found automatically, ranked by estimated rupee impact.",
+    "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
+                   "every statement cites the evidence it is based on.",
+    "Reports": "Executive PDF and analytical Excel workbook for the full dataset (dashboard filters "
+               "do not apply to exports).",
+    "About": "What this platform does and who built it.",
+}
 OVERVIEW_KPIS = ["revenue", "spend", "leads", "conversions", "roas", "cpl", "cac",
                  "lead_to_conversion_rate"]
 NOT_READY = "Load a dataset and run the analysis first (see Upload & Profile in the sidebar)."
@@ -123,44 +156,73 @@ def current_output():
 # Sidebar: navigation + filters
 # ---------------------------------------------------------------------------------------------
 
+def _nav_label(page: str) -> str:
+    return f":material/{PAGE_ICONS[page]}: {page}"
+
+
+def _nav_section_starts() -> dict[int, str]:
+    """1-based menu position of the first page in each section -> section label."""
+    starts, position = {}, 1
+    for section, pages in NAV_SECTIONS:
+        starts[position] = section
+        position += len(pages)
+    return starts
+
+
+def _header(page: str, filters: Filters | None = None, title: str | None = None) -> None:
+    """The standard page header; analysis pages also say which data is shown."""
+    ui.page_header(title or page, PAGE_DESCRIPTIONS.get(page), eyebrow=PAGE_SECTION.get(page) or None,
+                   scope=_filter_caption(filters) if filters is not None else None)
+
+
 def sidebar() -> tuple[str, Filters | None]:
     with st.sidebar:
-        st.markdown("### Marketing Intelligence Platform")
-        page = st.radio("Section", PAGES, key="page", label_visibility="collapsed")
-        output = current_output()
-        if output is None:
-            return page, None
-        df = output.clean.clean_df
-        st.divider()
-        st.markdown("**Filters**")
-        filters = Filters()
-        if "date" in df and df["date"].notna().any():
-            data_start, data_end = df["date"].min(), df["date"].max()
-            filters.data_start, filters.data_end = data_start, data_end
-            preset = st.radio("Date range", DATE_PRESETS, key="date_preset", horizontal=False)
-            if preset == "Custom range":
-                picked = st.date_input("From - to", value=(data_start.date(), data_end.date()),
-                                       min_value=data_start.date(), max_value=data_end.date(),
-                                       key="date_custom")
-                if isinstance(picked, (tuple, list)) and len(picked) == 2:
-                    filters.start, filters.end = pd.Timestamp(picked[0]), pd.Timestamp(picked[1])
-                else:
-                    filters.start, filters.end = data_start, data_end
-            else:
-                filters.start, filters.end = preset_range(preset, data_start, data_end)
-        for col, label in available_filters(df):
-            options = sorted(df[col].dropna().astype(str).unique())
-            filters.dimensions[col] = st.multiselect(label, options, key=f"filter_{col}",
-                                                     placeholder="All")
-        if filters.active and st.button("Clear filters", key="clear_filters"):
-            for col, _ in available_filters(df):
-                st.session_state[f"filter_{col}"] = []
-            st.session_state["date_preset"] = DATE_PRESETS[0]
-            st.rerun()
-        meta = output.analysis.metadata
-        st.caption(f"Dataset: {meta.get('dataset_name')}"
-                   + (f" | Run #{output.run_id}" if output.run_id else ""))
+        ui.brand_header()
+        st.markdown(theme.nav_css(_nav_section_starts()), unsafe_allow_html=True)
+        with st.container(key="mi_nav"):
+            page = st.radio("Menu", PAGES, key="page", label_visibility="collapsed",
+                            format_func=_nav_label, width="stretch")
+        filters = _sidebar_filters()
+        ui.signature()
         return page, filters
+
+
+def _sidebar_filters() -> Filters | None:
+    """Date and dimension filters for the analysis pages (only once an analysis exists)."""
+    output = current_output()
+    if output is None:
+        return None
+    df = output.clean.clean_df
+    st.divider()
+    ui.section_label("Filters")
+    filters = Filters()
+    if "date" in df and df["date"].notna().any():
+        data_start, data_end = df["date"].min(), df["date"].max()
+        filters.data_start, filters.data_end = data_start, data_end
+        preset = st.radio("Date range", DATE_PRESETS, key="date_preset", horizontal=False)
+        if preset == "Custom range":
+            picked = st.date_input("From - to", value=(data_start.date(), data_end.date()),
+                                   min_value=data_start.date(), max_value=data_end.date(),
+                                   key="date_custom")
+            if isinstance(picked, (tuple, list)) and len(picked) == 2:
+                filters.start, filters.end = pd.Timestamp(picked[0]), pd.Timestamp(picked[1])
+            else:
+                filters.start, filters.end = data_start, data_end
+        else:
+            filters.start, filters.end = preset_range(preset, data_start, data_end)
+    for col, label in available_filters(df):
+        options = sorted(df[col].dropna().astype(str).unique())
+        filters.dimensions[col] = st.multiselect(label, options, key=f"filter_{col}",
+                                                 placeholder="All")
+    if filters.active and st.button("Clear filters", key="clear_filters"):
+        for col, _ in available_filters(df):
+            st.session_state[f"filter_{col}"] = []
+        st.session_state["date_preset"] = DATE_PRESETS[0]
+        st.rerun()
+    meta = output.analysis.metadata
+    st.caption(f"Dataset: {meta.get('dataset_name')}"
+               + (f" · Analysis #{output.run_id}" if output.run_id else ""))
+    return filters
 
 
 # ---------------------------------------------------------------------------------------------
@@ -203,15 +265,23 @@ def _filter_caption(filters: Filters | None) -> str:
 # ---------------------------------------------------------------------------------------------
 
 def page_upload() -> None:
-    ui.page_header("Upload & Profile", "Upload a marketing export (CSV or Excel) or load a sample. "
-                   "The file is profiled, cleaned and analysed automatically.")
+    _header("Upload & Profile")
     if _public():
         st.info("Demo app: your data is kept only for this session and deleted automatically.")
+    ui.steps_guide([
+        ("Upload", "Add a CSV or Excel export from any ad platform, CRM or campaign tracker."),
+        ("Check mapping", "The app recognises your columns and cleans the data. Confirm anything "
+                          "it is unsure about."),
+        ("Analyse", "Run the analysis to get verified KPIs, channel and campaign insights, "
+                    "incidents and reports."),
+    ])
     left, right = st.columns([3, 2], gap="large")
-    with left:
+    with left, st.container(border=True):
         limit_mb = config_settings.settings.upload_limit_mb      # 10 MB in public mode
+        ui.card_title("Upload your data", f"CSV or Excel, up to {limit_mb} MB. One row per day and "
+                      "campaign works best.")
         uploaded = st.file_uploader("Marketing data file", type=["csv", "xlsx"], key="uploader",
-                                    max_upload_size=limit_mb,
+                                    max_upload_size=limit_mb, label_visibility="collapsed",
                                     help="One row per day and campaign works best. Maximum size: "
                                          f"{limit_mb} MB.")
         if uploaded is not None and _state().get("uploaded_id") != uploaded.file_id:
@@ -221,10 +291,13 @@ def page_upload() -> None:
                 _reset_for_new_file(raw_df, report, uploaded.name)
             except IngestionError as exc:
                 ui.friendly_error(exc)
-    with right:
-        label = st.selectbox("Or use a sample dataset", list(SAMPLE_DATASETS),
+    with right, st.container(border=True):
+        ui.card_title("Try the Demo", "No file at hand? Explore the platform with realistic sample "
+                      "data from an education brand.")
+        label = st.selectbox("Sample dataset", list(SAMPLE_DATASETS),
                              index=list(SAMPLE_DATASETS).index(DEFAULT_SAMPLE), key="sample_choice")
-        if st.button("Load sample dataset", key="load_sample", type="secondary"):
+        if st.button("Load sample dataset", key="load_sample", type="primary",
+                     icon=":material/play_arrow:"):
             try:
                 raw_df, report = load_raw(sample_path(label))
                 _reset_for_new_file(raw_df, report, label)
@@ -337,19 +410,26 @@ def _recent_analyses() -> None:
         st.caption("Analyses you run are saved here so you can reopen them later without recalculating.")
         return
     st.caption("Reopening shows the saved results instantly (no recalculation and no AI call). "
-               f"Only the newest {config_settings.settings.keep_last_runs} analyses are kept "
-               "(KEEP_LAST_RUNS).")
+               f"Only your {config_settings.settings.keep_last_runs} most recent analyses are kept.")
     state = _state()
-    for row in recent.itertuples():
-        c1, c2, c3, c4 = st.columns([5, 3, 1, 1])
-        c1.markdown(f"**Run #{row.run_id}** - {row.file_name}")
-        c2.caption(f"{format_count(row.row_count)} rows | {_format_timestamp(row.created_at)}"
-                   + (f" | {row.reports} report(s)" if row.reports else ""))
-        if c4.button("Delete", key=f"delete_run_{row.run_id}"):
+    grid = st.columns(2, gap="medium")
+    for i, row in enumerate(recent.itertuples()):
+        card = grid[i % 2].container(border=True)
+        reports = f" · {row.reports} report{'s' if row.reports != 1 else ''}" if row.reports else ""
+        card.markdown(
+            f"<div class='mi-run-name' title='{html.escape(str(row.file_name))}'>"
+            f"{html.escape(str(row.file_name))}</div><div class='mi-run-meta'>Analysis #{row.run_id} · "
+            f"{format_count(row.row_count)} rows · {_format_timestamp(row.created_at)}{reports}</div>",
+            unsafe_allow_html=True)
+        c3, c4, _ = card.columns([1, 1, 2])
+        if c4.button("Delete", key=f"delete_run_{row.run_id}", icon=":material/delete:",
+                     width="stretch"):
             state["confirm_delete"] = int(row.run_id)
         if state.get("confirm_delete") == int(row.run_id) and _owns_run(int(row.run_id)):
-            _confirm_delete(int(row.run_id), row.file_name)
-        if c3.button("Open", key=f"open_run_{row.run_id}") and _owns_run(int(row.run_id)):
+            with card:
+                _confirm_delete(int(row.run_id), row.file_name)
+        if c3.button("Open", key=f"open_run_{row.run_id}", icon=":material/folder_open:",
+                     width="stretch") and _owns_run(int(row.run_id)):
             try:
                 output = reopen_run(int(row.run_id))
             except DatabaseError as exc:
@@ -411,7 +491,7 @@ def _confirm_delete(run_id: int, file_name: str) -> None:
     """Second click needed: deleting removes the saved results, reports and cached AI insights."""
     st.warning(f"Delete analysis run #{run_id} ({file_name})? Its saved results, PDF/Excel "
                "reports and cached AI insights will be removed. This cannot be undone.")
-    yes, no, _ = st.columns([2, 1, 5])
+    yes, no = st.columns(2)
     if yes.button("Yes, delete", key=f"confirm_delete_{run_id}", type="primary"):
         from database.connection import DatabaseError
         from database.housekeeping import delete_analysis
@@ -619,7 +699,7 @@ def _ai_mapping_banner(prep) -> None:
 def page_overview(filters: Filters) -> None:
     output = current_output()
     view = filtered_view(filters)
-    ui.page_header("Executive Overview", _filter_caption(filters))
+    _header("Executive Overview", filters)
     if view["df"].empty:
         ui.empty_state("No rows match the current filters.")
         return
@@ -662,7 +742,7 @@ def page_overview(filters: Filters) -> None:
 
 def page_trends(filters: Filters) -> None:
     view = filtered_view(filters)
-    ui.page_header("Performance Trends", _filter_caption(filters))
+    _header("Performance Trends", filters)
     if "date" not in view["df"] or view["df"].empty:
         ui.empty_state("Trends need a date column and at least one row in the current filters.")
         return
@@ -702,7 +782,7 @@ def page_trends(filters: Filters) -> None:
 
 def page_channels(filters: Filters) -> None:
     view = filtered_view(filters)
-    ui.page_header("Channels", _filter_caption(filters))
+    _header("Channels", filters)
     ch = view["channels"]
     if ch.empty:
         ui.empty_state("Channel analysis needs a channel or platform column.")
@@ -756,7 +836,7 @@ def page_channels(filters: Filters) -> None:
 def page_campaigns(filters: Filters) -> None:
     output = current_output()
     view = filtered_view(filters)
-    ui.page_header("Campaigns", _filter_caption(filters))
+    _header("Campaigns", filters)
     table = view["campaigns"]
     if table.empty:
         ui.empty_state("Campaign analysis needs a campaign name or ID column.")
@@ -795,7 +875,7 @@ def page_campaigns(filters: Filters) -> None:
 
 def page_funnel(filters: Filters) -> None:
     view = filtered_view(filters)
-    ui.page_header("Funnel", _filter_caption(filters))
+    _header("Funnel", filters)
     funnel, by_channel = view["funnel"], view["funnel_by_channel"]
     if funnel.empty:
         ui.empty_state("A funnel needs at least two stages, for example Clicks and Leads.")
@@ -831,7 +911,7 @@ _KIND_CAPABILITY = {"segment": "segment_analysis", "geography": "geography_analy
 def page_segments(filters: Filters) -> None:
     output = current_output()
     view = filtered_view(filters)
-    ui.page_header("Segments, Geography and Products", _filter_caption(filters))
+    _header("Segments", filters, title="Segments, Geography and Products")
     df = view["df"]
     caps = output.analysis.capabilities.capabilities if output.analysis.capabilities else {}
     kinds: dict[str, list[str]] = {}
@@ -902,7 +982,7 @@ def _impact_text(value, direction, label) -> str:
 
 def page_anomalies(filters: Filters) -> None:
     output = current_output()
-    ui.page_header("Anomalies", _filter_caption(filters))
+    _header("Anomalies", filters)
     caps = output.analysis.capabilities
     if caps is not None and not caps.enabled("anomaly_detection"):
         ui.empty_state(caps.capabilities["anomaly_detection"].reason)
@@ -1039,8 +1119,7 @@ def page_ai() -> None:
 
     output = current_output()
     settings = config_settings.settings
-    ui.page_header("AI Insights", "Google Gemini interprets the verified findings. It never calculates "
-                   "the numbers; every statement must cite the evidence it is based on.")
+    _header("AI Insights")
     state = _state()
     # Without calls (AI off or not configured) saved insights are still shown, e.g. the demo seed.
     read_only = not (settings.ai_enabled and settings.has_gemini_key and settings.gemini_model)
@@ -1049,11 +1128,11 @@ def page_ai() -> None:
                  if settings.ai_cache_enabled else None)
         if saved is None:
             if not settings.ai_enabled:
-                st.info("AI is turned off (AI_ENABLED=false in the .env file). The dashboard, findings, "
-                        "anomalies and reports are complete without AI.")
+                st.info("AI is turned off in this app. The dashboard, findings, anomalies and reports "
+                        "are complete without AI.")
             else:
-                st.warning("AI is switched on but not configured: add GEMINI_API_KEY and GEMINI_MODEL "
-                           "to the .env file, then restart the app.")
+                st.warning("AI is switched on but not fully set up: the Gemini key or model name is "
+                           "missing from the app settings. Add both, then restart the app.")
             return
         state["ai_run"] = saved
 
@@ -1070,11 +1149,11 @@ def page_ai() -> None:
         if cached is not None:
             state["ai_run"] = cached
     budget = budget_status(settings, output.run_id, state.get("ai_session_calls", 0))
-    session_text = (f" | this session: {budget.calls_this_session} of {budget.session_limit}"
+    session_text = (f" · this session: {budget.calls_this_session} of {budget.session_limit}"
                     if budget.session_limit is not None else "")
-    st.caption(f"AI calls today (UTC): {budget.calls_today} of {budget.day_limit} | this analysis run: "
-               f"{budget.calls_this_run} of {budget.run_limit}{session_text} | caching "
-               f"{'on' if settings.ai_cache_enabled else 'off'}.")
+    st.caption(f"AI calls used today: {budget.calls_today} of {budget.day_limit} · this analysis: "
+               f"{budget.calls_this_run} of {budget.run_limit}{session_text} · saved results are "
+               f"{'reused automatically' if settings.ai_cache_enabled else 'not reused'}.")
 
     def request(force: bool) -> None:
         try:
@@ -1095,7 +1174,7 @@ def page_ai() -> None:
     run = state.get("ai_run")
     if read_only:
         st.success(f"Loaded saved insights from {_format_timestamp(run.cached_at)}. No API call used.")
-        st.caption("New AI calls are off in this app (AI_ENABLED / GEMINI settings).")
+        st.caption("New AI calls are switched off in this app, so the saved insights are shown.")
     elif run is None or not run.ok:
         if budget.remaining <= 0:
             st.warning(budget.reason)
@@ -1148,7 +1227,7 @@ def page_ai() -> None:
     usage = ("saved result, no call used" if run.from_cache else
              f"{run.calls_made} call(s), about {format_count(run.input_tokens)} input and "
              f"{format_count(run.output_tokens)} output tokens")
-    st.caption(f"Model {run.model} | prompt {run.prompt_version} | {usage}.")
+    st.caption(f"Written by {run.model} · {usage}.")
     for key, title, label in SECTIONS:
         raw = run.insights.get(key)
         items = raw if isinstance(raw, list) else ([raw] if raw else [])
@@ -1166,7 +1245,7 @@ def page_ai() -> None:
 def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
     import html
     ids = ", ".join(item.get("evidence_ids", []))
-    weak = ("<span class='mi-tag' style='background:#fdf1d6;color:#8a5d00'>Weak</span>"
+    weak = ("<span class='mi-tag mi-tag-weak'>Weak</span>"
             if item.get("weak") else "")
     st.markdown(f"<div class='mi-finding'><span class='mi-tag'>{html.escape(label)}</span>{weak}"
                 f"{html.escape(item.get('text', ''))}</div>", unsafe_allow_html=True)
@@ -1192,8 +1271,7 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
 
 def page_quality() -> None:
     output = current_output()
-    ui.page_header("Data Quality", "What was fixed, flagged or excluded while cleaning, and what it "
-                   "means for the numbers.")
+    _header("Data Quality")
     if "raw_df" in _state():
         st.button("Edit mapping and re-run", key="edit_rerun_quality", on_click=_open_mapping_editor,
                   help="Opens Upload & Profile with your current choices filled in.")
@@ -1247,7 +1325,7 @@ def _ai_usage_panel() -> None:
     settings = config_settings.settings
     st.markdown("## AI usage")
     if not settings.ai_enabled:
-        st.caption("AI is turned off (AI_ENABLED=false); no AI calls are made.")
+        st.caption("AI is turned off in this app, so no AI calls are made.")
         return
     try:
         usage = repository.ai_usage_since(today_start_utc())
@@ -1264,16 +1342,17 @@ def _ai_usage_panel() -> None:
               help="Cache hits: no API call and no budget used.")
     c4.metric("Calls left now", format_count(budget.remaining), border=True,
               help="The lower of the daily limit and the per-run limit.")
-    st.caption(f"Tokens today: about {format_count(usage['input_tokens'])} input and "
-               f"{format_count(usage['output_tokens'])} output. Limits come from AI_MAX_CALLS_PER_DAY "
-               "and AI_MAX_CALLS_PER_RUN; free-tier quotas are set by Google and can change.")
+    st.caption(f"Text processed today: about {format_count(usage['input_tokens'])} tokens sent and "
+               f"{format_count(usage['output_tokens'])} received. The daily and per-analysis limits "
+               "are set in the app settings; Google's free-tier quotas can change. The AI day "
+               "restarts at 5:30 AM India time.")
 
 
 def _format_timestamp(iso: str | None) -> str:
+    """India time, e.g. '27 Sep 2026, 5:34 PM'."""
     if not iso:
         return "an earlier session"
-    ts = pd.Timestamp(iso)
-    return f"{format_date(ts)}, {ts.strftime('%H:%M')} UTC"
+    return format_datetime_ist(iso)
 
 
 def _ai_sections() -> dict | None:
@@ -1294,43 +1373,44 @@ def _ai_sections() -> dict | None:
 
 def page_reports() -> None:
     output = current_output()
-    ui.page_header("Reports", "Executive PDF and analytical Excel workbook for the full dataset "
-                   "(dashboard filters do not apply to exports).")
-    st.markdown("## Executive PDF report")
-    st.caption("A consulting-style report with KPIs, channel, campaign, funnel and segment analysis, "
-               "findings, performance concerns, data quality, methodology and limitations.")
-    if st.button("Generate PDF", key="generate_pdf", type="primary"):
-        try:
-            with st.spinner("Building the PDF report..."):
-                path = export_pdf(output.analysis, ai=_ai_sections())
-            _state()["pdf_path"] = str(path)
-        except ReportError as exc:
-            ui.friendly_error(exc)
-    pdf_path = _state().get("pdf_path")
-    if pdf_path and Path(pdf_path).exists():
-        st.success(f"Report ready: {Path(pdf_path).name}")
-        st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
-                           mime="application/pdf", key="download_pdf")
-    st.markdown("## Analytical Excel workbook")
-    st.caption("Supporting evidence: KPIs, clean data, campaign, channel, segment, funnel and trend "
-               "tables, anomalies, the data-quality log and methodology, as real numbers you can "
-               "sort and filter.")
-    if st.button("Generate Excel", key="generate_excel", type="primary"):
-        try:
-            with st.spinner("Building the Excel workbook..."):
-                path = export_workbook(output.analysis, output.clean.clean_df,
-                                       output.clean.quality_log_df, ai=_ai_sections())
-            _state()["excel_path"] = str(path)
-        except WorkbookError as exc:
-            ui.friendly_error(exc)
-    excel_path = _state().get("excel_path")
-    if excel_path and Path(excel_path).exists():
-        st.success(f"Workbook ready: {Path(excel_path).name}")
-        st.download_button("Download Excel", Path(excel_path).read_bytes(),
-                           file_name=Path(excel_path).name, key="download_excel",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    _header("Reports")
+    pdf_col, excel_col = st.columns(2, gap="medium")
+    with pdf_col, st.container(border=True):
+        ui.card_title("Executive PDF report", "A consulting-style report with KPIs, channel, campaign, "
+                      "funnel and segment analysis, findings, performance concerns, data quality, "
+                      "methodology and limitations.")
+        if st.button("Generate PDF", key="generate_pdf", type="primary", icon=":material/picture_as_pdf:"):
+            try:
+                with st.spinner("Building the PDF report..."):
+                    path = export_pdf(output.analysis, ai=_ai_sections())
+                _state()["pdf_path"] = str(path)
+            except ReportError as exc:
+                ui.friendly_error(exc)
+        pdf_path = _state().get("pdf_path")
+        if pdf_path and Path(pdf_path).exists():
+            st.success(f"Report ready: {Path(pdf_path).name}")
+            st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
+                               mime="application/pdf", key="download_pdf", icon=":material/download:")
+    with excel_col, st.container(border=True):
+        ui.card_title("Analytical Excel workbook", "Supporting evidence: KPIs, clean data, campaign, "
+                      "channel, segment, funnel and trend tables, anomalies, the data-quality log and "
+                      "methodology, as real numbers you can sort and filter.")
+        if st.button("Generate Excel", key="generate_excel", type="primary", icon=":material/table_view:"):
+            try:
+                with st.spinner("Building the Excel workbook..."):
+                    path = export_workbook(output.analysis, output.clean.clean_df,
+                                           output.clean.quality_log_df, ai=_ai_sections())
+                _state()["excel_path"] = str(path)
+            except WorkbookError as exc:
+                ui.friendly_error(exc)
+        excel_path = _state().get("excel_path")
+        if excel_path and Path(excel_path).exists():
+            st.success(f"Workbook ready: {Path(excel_path).name}")
+            st.download_button("Download Excel", Path(excel_path).read_bytes(),
+                               file_name=Path(excel_path).name, key="download_excel", icon=":material/download:",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     if output.run_id:
-        st.caption(f"This analysis is saved as run #{output.run_id}; generated reports are recorded "
+        st.caption(f"This is saved as analysis #{output.run_id}; generated reports are recorded "
                    "against it.")
 
 

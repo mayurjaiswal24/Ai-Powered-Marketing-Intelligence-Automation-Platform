@@ -28,7 +28,7 @@ class AIError(Exception):
 
 
 MESSAGES = {
-    "disabled": "AI insights are turned off (AI_ENABLED=false). Everything else works without AI.",
+    "disabled": "AI insights are turned off in this app. Everything else works without AI.",
     "missing_key": "No Gemini API key is set. Add GEMINI_API_KEY to the .env file (or Streamlit "
                    "secrets) and restart the app.",
     "missing_model": "No Gemini model is set. Add GEMINI_MODEL to the .env file (a model available "

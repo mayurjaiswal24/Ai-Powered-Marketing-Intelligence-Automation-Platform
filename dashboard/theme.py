@@ -14,7 +14,9 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import plotly.io as pio
 
-FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
+# One font across the app and its charts: Inter (loaded in .streamlit/config.toml), with system
+# fallbacks if it cannot be downloaded.
+FONT_FAMILY = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
 
 # Surfaces and ink
 PAGE = "#f9f9f7"
@@ -39,6 +41,12 @@ GOOD_TEXT = "#006300"
 BAD = "#d03b3b"
 WARNING = "#fab219"
 NEUTRAL = "#898781"
+
+# Interface accents (active menu item, logo mark, step numbers): a deep blue of the primary hue.
+BRAND = "#1c5cab"
+BRAND_SOFT = "#e8f0fb"
+BORDER = "#e4e3dd"
+CARD_SHADOW = "0 1px 2px rgba(16, 24, 40, 0.05)"
 
 TEMPLATE_NAME = "marketing"
 # Row highlight in the mapping table for columns mapped by Gemini, by check result.
@@ -88,24 +96,133 @@ def color_map(entities) -> dict[str, str]:
     return {e: CATEGORICAL[i] if i < len(CATEGORICAL) else NEUTRAL for i, e in enumerate(ordered)}
 
 
-# Custom CSS for a calm, corporate look (Streamlit's own theme is set in .streamlit/config.toml).
+# ---------------------------------------------------------------------------------------------
+# Interface CSS: the ONE place where the app's look is defined (pages only use these classes).
+# ---------------------------------------------------------------------------------------------
+
+def nav_css(section_starts: dict[int, str]) -> str:
+    """Section labels ("DATA", "ANALYSIS", ...) above the first menu item of each group.
+    `section_starts` maps a 1-based menu position to its label (empty label = divider only)."""
+    rules = []
+    for position, label in section_starts.items():
+        item = f".st-key-mi_nav [role='radiogroup'] > div:nth-child({position})"
+        rules.append(f"{item} {{ margin-top: {'1.7rem' if label else '0.9rem'}; }}")
+        if label:
+            rules.append(f"{item}::before {{ content: '{label.upper()}'; }}")
+        else:
+            rules.append(f"{item}::before {{ content: ''; top: -0.45rem; right: 0.6rem; "
+                         f"border-top: 1px solid {BORDER}; }}")
+    return "<style>" + "\n".join(rules) + "</style>"
+
+
 APP_CSS = f"""
 <style>
-  .block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1280px; }}
-  h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
-  h1 {{ font-size: 1.65rem; font-weight: 650; }}
-  h2 {{ font-size: 1.25rem; font-weight: 620; margin-top: 0.6rem; }}
-  h3 {{ font-size: 1.05rem; font-weight: 600; }}
-  [data-testid="stMetric"] {{ background: {SURFACE}; }}
-  [data-testid="stMetricLabel"] p {{ color: {INK_SECONDARY}; font-size: 0.85rem; }}
-  [data-testid="stMetricValue"] {{ font-size: 1.55rem; font-weight: 620; color: {INK}; }}
+  /* --- Streamlit chrome: no developer menu, Deploy button, footer or coloured top bar --- */
+  #MainMenu, footer, [data-testid="stAppDeployButton"], [data-testid="stDecoration"],
+  [data-testid="stMainMenu"] {{ display: none !important; }}
+  header[data-testid="stHeader"] {{ background: transparent; }}
+
+  /* --- Page frame and typography --- */
+  .block-container {{ padding-top: 2rem; padding-bottom: 3rem; max-width: 1280px; }}
+  h1, h2, h3 {{ color: {INK}; letter-spacing: -0.015em; }}
+  h1 {{ font-size: 1.6rem; font-weight: 650; }}
+  h2, [data-testid="stMarkdownContainer"] h2 {{ font-size: 1.2rem !important; font-weight: 640;
+      margin-top: 1.1rem; padding: 0.6rem 0 0.3rem 0; }}
+  h3, [data-testid="stMarkdownContainer"] h3 {{ font-size: 1.03rem !important; font-weight: 620;
+      padding: 0.4rem 0 0.2rem 0; }}
+
+  /* Page header: title + one-line description + a hairline, identical on every page */
+  .mi-page-header {{ border-bottom: 1px solid {BORDER}; padding-bottom: 0.7rem; margin-bottom: 1.2rem; }}
+  .mi-page-header .mi-eyebrow {{ color: {BRAND}; font-size: 0.72rem; font-weight: 650;
+                                  letter-spacing: 0.08em; text-transform: uppercase; }}
+  .mi-page-title {{ font-size: 1.6rem; font-weight: 680; color: {INK}; letter-spacing: -0.02em;
+                    line-height: 1.25; margin: 0.1rem 0 0.2rem 0; }}
+  .mi-scope {{ display: inline-block; margin-top: 0.5rem; padding: 2px 10px; border-radius: 12px;
+               background: {PANEL}; color: {INK_SECONDARY}; font-size: 0.78rem; }}
+  .mi-page-header p {{ color: {INK_SECONDARY}; font-size: 0.93rem; margin: 0; }}
   .mi-caption {{ color: {INK_SECONDARY}; font-size: 0.86rem; margin: -0.3rem 0 0.8rem 0; }}
+
+  /* --- KPI cards and charts: subtle border + soft shadow --- */
+  [data-testid="stMetric"] {{ background: {SURFACE}; box-shadow: {CARD_SHADOW}; border-radius: 10px; }}
+  [data-testid="stMetricLabel"] p {{ color: {INK_SECONDARY}; font-size: 0.82rem; font-weight: 500; }}
+  [data-testid="stMetricValue"] {{ font-size: 1.5rem; font-weight: 650; color: {INK}; }}
+  [data-testid="stMetricDelta"] {{ font-weight: 600; }}
+
+  /* --- Small building blocks --- */
   .mi-tag {{ display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem;
              background: {PANEL}; color: {INK_SECONDARY}; margin-right: 6px; }}
-  .mi-finding {{ border-left: 3px solid {PRIMARY}; padding: 0.35rem 0.8rem; margin: 0.35rem 0;
-                 background: {SURFACE}; }}
+  .mi-tag-weak {{ background: #fdf1d6; color: #8a5d00; }}
+  .mi-finding {{ border: 1px solid {BORDER}; border-left: 3px solid {PRIMARY}; border-radius: 8px;
+                 padding: 0.55rem 0.9rem; margin: 0.45rem 0; background: {SURFACE}; }}
   .mi-finding .mi-title {{ font-weight: 600; color: {INK}; }}
-  .mi-empty {{ border: 1px dashed {AXIS}; border-radius: 8px; padding: 1.2rem; color: {INK_SECONDARY};
+  .mi-empty {{ border: 1px dashed {AXIS}; border-radius: 10px; padding: 1.2rem; color: {INK_SECONDARY};
                background: {SURFACE}; }}
+
+  /* Upload page: 3-step guide, demo card, recent-analysis cards */
+  .mi-steps {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem;
+               margin: 0.2rem 0 1.3rem 0; }}
+  .mi-step {{ border: 1px solid {BORDER}; border-radius: 10px; padding: 0.8rem 0.95rem;
+              background: {SURFACE}; box-shadow: {CARD_SHADOW}; }}
+  .mi-step-no {{ display: inline-flex; align-items: center; justify-content: center;
+                 width: 1.55rem; height: 1.55rem; border-radius: 50%; background: {BRAND_SOFT};
+                 color: {BRAND}; font-weight: 700; font-size: 0.8rem; margin-right: 0.45rem; }}
+  .mi-step-title {{ font-weight: 620; color: {INK}; }}
+  .mi-step p {{ color: {INK_SECONDARY}; font-size: 0.85rem; margin: 0.35rem 0 0 0; }}
+  .mi-card-title {{ font-weight: 640; color: {INK}; font-size: 1rem; margin-bottom: 0.1rem; }}
+  .mi-card-sub {{ color: {INK_SECONDARY}; font-size: 0.85rem; margin-bottom: 0.2rem; }}
+  .mi-run-name {{ font-weight: 620; color: {INK}; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; }}
+  .mi-run-meta {{ color: {INK_MUTED}; font-size: 0.8rem; }}
+
+  /* About page */
+  .mi-about-list {{ margin: 0.3rem 0 0 0; padding-left: 1.1rem; color: {INK_SECONDARY}; }}
+  .mi-about-list li {{ margin: 0.25rem 0; }}
+  .mi-about-list b {{ color: {INK}; font-weight: 600; }}
+  .mi-creator-name {{ font-size: 1.25rem; font-weight: 680; color: {INK}; }}
+  .mi-creator-row {{ margin: 0.35rem 0; color: {INK_SECONDARY}; font-size: 0.92rem; }}
+  .mi-creator-row b {{ color: {INK}; font-weight: 600; }}
+  .mi-open-to {{ display: inline-block; margin: 0.5rem 0 0.4rem 0; padding: 0.3rem 0.7rem;
+                 border-radius: 8px; background: {BRAND_SOFT}; color: {BRAND}; font-size: 0.86rem;
+                 font-weight: 560; }}
+
+  /* --- Sidebar: brand header, grouped menu, signature --- */
+  [data-testid="stSidebar"] {{ border-right: 1px solid {BORDER}; }}
+  .mi-brand {{ display: flex; align-items: center; gap: 0.6rem; margin: -0.4rem 0 0.2rem 0; }}
+  .mi-logo {{ width: 34px; height: 34px; border-radius: 9px; background: {BRAND}; flex: none;
+              display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; }}
+  .mi-logo span {{ width: 5px; background: #ffffff; border-radius: 2px; }}
+  .mi-brand-name {{ font-weight: 680; color: {INK}; font-size: 0.98rem; line-height: 1.15; }}
+  .mi-brand-sub {{ color: {INK_MUTED}; font-size: 0.74rem; }}
+  .st-key-mi_nav [role="radiogroup"] {{ gap: 0.1rem; }}
+  /* Menu = the page radio (key "page") restyled: no circles, full-width rows, active highlight */
+  .st-key-mi_nav .stRadio, .st-key-mi_nav [role="radiogroup"] {{ width: 100% !important; }}
+  .st-key-mi_nav [role="radiogroup"] {{ display: flex; flex-direction: column; align-items: stretch; }}
+  .st-key-mi_nav [role="radiogroup"] > div {{ position: relative; width: 100%; margin: 0; }}
+  .st-key-mi_nav [role="radiogroup"] > div::before {{ position: absolute; left: 0.6rem; top: -1.25rem;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: {INK_MUTED}; }}
+  .st-key-mi_nav [data-testid="stRadioOption"] {{ display: flex; width: 100%; box-sizing: border-box;
+      padding: 0.38rem 0.6rem;
+      border-radius: 8px; transition: background 0.12s; cursor: pointer; }}
+  .st-key-mi_nav [data-testid="stRadioOption"] > div > div:not([data-testid]) {{ display: none; }}
+  .st-key-mi_nav [data-testid="stRadioOption"]:hover {{ background: {PANEL}; }}
+  .st-key-mi_nav [role="radiogroup"] > div[data-selected="true"] [data-testid="stRadioOption"] {{
+      background: {BRAND_SOFT}; }}
+  .st-key-mi_nav [role="radiogroup"] > div[data-selected="true"] p {{ color: {BRAND}; font-weight: 620; }}
+  .st-key-mi_nav [role="radiogroup"] p {{ font-size: 0.92rem; color: {INK_SECONDARY}; }}
+  .st-key-mi_nav [role="radiogroup"] p span[role="img"] {{ margin-right: 0.35rem; font-size: 1.1rem; }}
+  .mi-sidebar-label {{ font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: {INK_MUTED};
+                       text-transform: uppercase; margin: 0.2rem 0 -0.2rem 0; }}
+  .mi-signature {{ border-top: 1px solid {BORDER}; margin-top: 1.4rem; padding-top: 0.8rem;
+                   font-size: 0.8rem; color: {INK_MUTED}; }}
+  .mi-signature a {{ color: {BRAND}; font-weight: 600; text-decoration: none; }}
+  .mi-signature a:hover {{ text-decoration: underline; }}
+
+  /* --- Phone-width screens --- */
+  @media (max-width: 640px) {{
+    .block-container {{ padding-left: 1rem; padding-right: 1rem; padding-top: 1.2rem; }}
+    h1, .mi-page-title {{ font-size: 1.3rem; }}
+    .mi-steps {{ grid-template-columns: 1fr; }}
+    [data-testid="stMetricValue"] {{ font-size: 1.25rem; }}
+  }}
 </style>
 """

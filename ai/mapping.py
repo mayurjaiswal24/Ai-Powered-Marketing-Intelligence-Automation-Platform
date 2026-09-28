@@ -233,8 +233,8 @@ class MappingAssistant:
         except DatabaseError:
             today = 0
         if today >= s.ai_max_mapping_calls_per_day:
-            return (f"The daily AI mapping limit ({s.ai_max_mapping_calls_per_day} calls, "
-                    "AI_MAX_MAPPING_CALLS_PER_DAY) has been reached, so the columns below need your choice.")
+            return (f"The daily AI mapping limit ({s.ai_max_mapping_calls_per_day} calls) has been "
+                    "reached, so the columns below need your choice.")
         if s.public_mode and self.session_calls + self.calls_made >= s.ai_max_mapping_calls_per_session:
             return ("The AI mapping limit for this session has been reached, so the columns below "
                     "need your choice.")

@@ -4,11 +4,20 @@ primaryColor = "#2a78d6"
 backgroundColor = "#f9f9f7"
 secondaryBackgroundColor = "#f0efec"
 textColor = "#0b0b0b"
-font = "sans serif"
+# One professional font across the app (Inter from Google Fonts, falling back to the system sans-serif).
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+baseRadius = "0.5rem"
+borderColor = "#e4e3dd"
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0efec"
 
 [client]
 # Never show Python tracebacks to users; the app shows plain-English messages instead.
 showErrorDetails = false
+# Viewers see no developer menu, Deploy button or footer (the app CSS hides any leftovers).
 toolbarMode = "minimal"
 
 [browser]

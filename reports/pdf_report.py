@@ -32,7 +32,7 @@ from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import format_table
 from reports import export_filename, pdf_charts
-from utils.formatting import format_count, format_date, format_value
+from utils.formatting import format_count, format_date, format_datetime_ist, format_value
 
 FONT_DIR = PROJECT_ROOT / "assets" / "fonts"
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
@@ -160,7 +160,8 @@ def _decorate(meta: dict, generated: str):
         canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 11 * mm, str(meta.get("dataset_name") or ""))
         canvas.setFont("DejaVu", 7.5)
         canvas.setFillColor(colors.HexColor(theme.INK_MUTED))
-        canvas.drawString(MARGIN, 10 * mm, f"Generated {generated} | Confidential - internal use")
+        canvas.drawString(MARGIN, 10 * mm, cfg.REPORT_SIGNATURE)
+        canvas.drawString(MARGIN, 6.5 * mm, f"Generated {generated} | Confidential - internal use")
         canvas.restoreState()
     return on_page
 
@@ -285,7 +286,9 @@ def _cover(rep: _Report, generated: str) -> None:
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor(theme.GRID)),
                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     rep.story.append(t)
-    rep.story.append(Spacer(1, 16 * mm))
+    rep.story.append(Spacer(1, 5 * mm))
+    rep.story.append(Paragraph(escape(cfg.REPORT_SIGNATURE), s["small"]))
+    rep.story.append(Spacer(1, 12 * mm))
     rep.story.append(Paragraph("How to read this report", s["h2"]))
     rep.story.append(Paragraph(
         "Every statement carries a label: " + " ".join(tag(t) for t in
@@ -727,7 +730,7 @@ def _appendix(rep: _Report) -> None:
 def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None) -> None:
     """Write the executive report for `result` to a file path or a binary buffer."""
     _register_fonts()
-    generated = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC").lstrip("0")
+    generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     rep = _Report(result, ai)
     try:
         _cover(rep, generated)
