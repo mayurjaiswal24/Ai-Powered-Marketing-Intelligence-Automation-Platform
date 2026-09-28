@@ -145,7 +145,9 @@ def _assert_retail(prep):
         assert s[col] == "not_used", col
     assert s["Profit"] == "uncertain" and "gross_profit" not in m.active
     for col in ("Discount", "Ad_Format", "Campaign_Status", "Device"):   # no nonsense suggestions
-        assert s[col] == "unmapped", col
+        # U2: known-but-not-analysed columns are "Recognised ... (not used)", never a field.
+        assert s[col] == "not_used" and m.by_column(col).source == "recognised", col
+        assert m.by_column(col).field is None and not m.by_column(col).candidates, col
     assert m.needs_confirmation == [] and prep.validation.can_analyse
     c = checks(prep)
     for col in ("CTR_%", "CPC", "CPL", "Conversion_Rate_%", "ROAS"):

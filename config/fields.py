@@ -154,6 +154,7 @@ AMBIGUOUS_HEADERS: dict[str, tuple[str, ...]] = {
     "total": ("spend", "revenue"),
     "actions": ("leads", "conversions", "engagements"),
     "goal completions": ("leads", "conversions"),
+    "key events": ("leads", "conversions"),        # GA4's new name for conversions: any event
     "signups": ("leads", "conversions"),
     "sign ups": ("leads", "conversions"),
     "registrations": ("leads", "conversions"),

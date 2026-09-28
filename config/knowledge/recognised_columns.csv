@@ -1,0 +1,250 @@
+header,name,source
+reporting ends,Reporting end date,Meta
+ends,End date,Meta
+end date,End date,generic
+stop date,End date,generic
+starts,Start date of the ad set,Meta
+day of week,Day of week,generic
+hour of day,Hour of day,generic
+hour,Hour of day,generic
+ad set name,Ad set name,Meta
+ad set,Ad set name,Meta
+ad set id,Ad set ID,Meta
+ad name,Ad name,Meta
+ad id,Ad ID,Meta
+ad group,Ad group,Google Ads
+ad group name,Ad group,Google Ads
+ad group id,Ad group ID,Google Ads
+ad format,Ad format,generic
+ad creative,Ad creative,generic
+creative,Creative,generic
+creative name,Creative,generic
+ad headline,Ad headline,generic
+headline,Ad headline,generic
+placement,Placement,Meta
+delivery,Delivery status,Meta
+campaign status,Campaign status,generic
+campaign state,Campaign status,Google Ads
+status,Status,generic
+ad status,Ad status,generic
+attribution setting,Attribution setting,Meta
+bid strategy,Bid strategy,generic
+bid strategy type,Bid strategy,Google Ads
+bid,Bid,generic
+max cpc,Maximum bid,Google Ads
+ad set budget type,Budget type,Meta
+budget type,Budget type,generic
+result indicator,Result type,Meta
+result type,Result type,Meta
+currency,Currency,generic
+currency code,Currency,Google Ads
+account,Account name,generic
+account name,Account name,generic
+account id,Account ID,generic
+portfolio name,Portfolio name,Amazon Ads
+keyword,Keyword,Google Ads
+search keyword,Keyword,Google Ads
+search term,Search term,Google Ads
+customer search term,Search term,Amazon Ads
+match type,Match type,generic
+targeting,Targeting,Amazon Ads
+landing page,Landing page,generic
+landing page url,Landing page,generic
+final url,Landing page,Google Ads
+page path,Page path,GA4
+page title,Page title,GA4
+url,Web address,generic
+device,Device,generic
+device category,Device,GA4
+device type,Device,generic
+operating system,Operating system,GA4
+browser,Browser,GA4
+language,Language,generic
+frequency,Frequency,Meta
+quality score,Quality score,Google Ads
+quality ranking,Quality ranking,Meta
+ad relevance,Ad relevance,generic
+search impr share,Impression share,Google Ads
+view through conversions,View-through conversions,Google Ads
+view through conv,View-through conversions,Google Ads
+cross device conv,Cross-device conversions,Google Ads
+phone calls,Phone calls,Google Ads
+calls,Phone calls,generic
+invalid clicks,Invalid clicks,Google Ads
+unique clicks,Unique clicks,generic
+unique link clicks,Unique link clicks,Meta
+other clicks,Other clicks,LinkedIn
+viral clicks,Viral clicks,LinkedIn
+viral impressions,Viral impressions,LinkedIn
+unique outbound clicks,Unique outbound clicks,Meta
+landing page views,Landing page views,Meta
+content views,Content views,Meta
+adds to cart,Add-to-cart events,Meta
+add to cart,Add-to-cart events,generic
+add to carts,Add-to-cart events,GA4
+cart additions,Add-to-cart events,generic
+checkouts initiated,Checkouts started,Meta
+initiate checkout,Checkouts started,generic
+checkouts,Checkouts started,GA4
+lead form opens,Lead form opens,LinkedIn
+reactions,Reactions,LinkedIn
+post reactions,Reactions,Meta
+likes,Likes,generic
+paid likes,Likes,TikTok
+page likes,Page likes,Meta
+comments,Comments,generic
+post comments,Comments,Meta
+shares,Shares,generic
+post shares,Shares,Meta
+saves,Saves,generic
+post saves,Saves,Meta
+follows,Follows,generic
+followers,Followers,generic
+new followers,Followers,generic
+profile visits,Profile visits,TikTok
+subscribers,Subscribers,YouTube
+subscribers gained,Subscribers,YouTube
+watch time,Watch time,YouTube
+earned views,Earned views,YouTube
+unique viewers,Unique viewers,YouTube
+video plays at 25,Video plays at 25%,Meta
+installs,App installs,generic
+app installs,App installs,generic
+mobile app installs,App installs,Meta
+sessions,Sessions,GA4
+engaged sessions,Engaged sessions,GA4
+number of sessions,Sessions,HubSpot
+users,Users,GA4
+total users,Users,GA4
+active users,Active users,GA4
+new users,New users,GA4
+event count,Event count,GA4
+event name,Event name,GA4
+user engagement,User engagement,GA4
+page views,Page views,GA4
+pageviews,Page views,generic
+number of pageviews,Page views,HubSpot
+screen page views,Page views,GA4
+first user source,First user source,GA4
+landing page query string,Landing page,GA4
+referrer source,Referrer source,Shopify
+discounts,Discounts,Shopify
+discount,Discounts,generic
+discount amount,Discounts,generic
+coupon code,Coupon code,WooCommerce
+coupons used,Coupon code,WooCommerce
+returns,Returns,Shopify
+refunds,Refunds,generic
+refund amount,Refunds,generic
+shipping,Shipping charges,Shopify
+shipping charges,Shipping charges,generic
+taxes,Taxes,Shopify
+tax,Taxes,generic
+units,Units,Amazon Ads
+units sold,Units,generic
+14 day total units,Units,Amazon Ads
+quantity,Units,generic
+net quantity,Units,Shopify
+quantity ordered,Units,Shopify
+items sold,Units,WooCommerce
+items purchased,Units,GA4
+order id,Order ID,Shopify
+order number,Order ID,WooCommerce
+order name,Order ID,Shopify
+order status,Order status,WooCommerce
+payment method,Payment method,WooCommerce
+product vendor,Product vendor,Shopify
+brand,Brand,generic
+lifecycle stage,Lifecycle stage,HubSpot
+lead status,Lead status,HubSpot
+lead owner,Owner,Zoho
+contact owner,Owner,HubSpot
+deal owner,Owner,HubSpot
+owner,Owner,Salesforce
+opportunity owner,Owner,Salesforce
+deal name,Deal name,HubSpot
+opportunity name,Deal name,Salesforce
+deal stage,Deal stage,HubSpot
+stage,Deal stage,Salesforce
+pipeline,Pipeline,HubSpot
+probability,Deal probability,Salesforce
+expected revenue,Expected revenue (weighted pipeline),Salesforce
+expected revenue in campaign,Expected revenue (weighted pipeline),Salesforce
+value opportunities in campaign,Pipeline value,Salesforce
+annual revenue,Company annual revenue,Salesforce
+is won,Won flag,Salesforce
+is closed,Closed flag,Salesforce
+rating,Lead rating,Salesforce
+industry,Industry,generic
+company,Company name,generic
+company name,Company name,generic
+associated company,Company name,HubSpot
+no of employees,Company size,Zoho
+number of employees,Company size,generic
+expected response,Expected response,Zoho
+num sent in campaign,Emails sent,Salesforce
+num sent,Emails sent,Zoho
+original source drill down 1,Source detail,HubSpot
+original source drill down 2,Source detail,HubSpot
+marketing emails opened,Emails opened,HubSpot
+marketing emails clicked,Email clicks,HubSpot
+became a lead date,Became a lead date,HubSpot
+became a customer date,Became a customer date,HubSpot
+last activity date,Last activity date,HubSpot
+modified date,Last modified date,generic
+last modified date,Last modified date,generic
+emails sent,Emails sent,Mailchimp
+sends,Emails sent,LinkedIn
+recipients,Recipients,Klaviyo
+delivered,Emails delivered,Klaviyo
+successful deliveries,Emails delivered,Mailchimp
+opens,Email opens,Mailchimp
+unique opens,Email opens,Mailchimp
+total opens,Email opens,Mailchimp
+bounces,Bounces,generic
+bounced,Bounces,Klaviyo
+hard bounces,Bounces,Mailchimp
+soft bounces,Bounces,Mailchimp
+unsubscribes,Unsubscribes,Mailchimp
+unsubscribed,Unsubscribes,Klaviyo
+spam complaints,Spam complaints,Klaviyo
+abuse complaints,Spam complaints,Mailchimp
+forwards,Forwards,Mailchimp
+subject,Email subject,Mailchimp
+subject line,Email subject,Mailchimp
+flow name,Email flow,Klaviyo
+list,Email list,Klaviyo
+email,Email address (personal data),generic
+email address,Email address (personal data),generic
+customer email,Email address (personal data),generic
+phone,Phone number (personal data),generic
+phone number,Phone number (personal data),generic
+mobile number,Phone number (personal data),generic
+customer name,Customer name (personal data),generic
+first name,Customer name (personal data),generic
+last name,Customer name (personal data),generic
+contact name,Customer name (personal data),generic
+full name,Customer name (personal data),generic
+notes,Notes,generic
+comment,Notes,generic
+remarks,Notes,generic
+description,Description,generic
+cost micros,Cost in micros (divide by 1000000 before use),Google Ads
+lifetime value,Customer lifetime value (estimate),generic
+ltv,Customer lifetime value (estimate),generic
+clv,Customer lifetime value (estimate),generic
+units ordered,Units,Amazon Ads
+video,Video title,YouTube
+video title,Video title,YouTube
+lead score,Lead score,HubSpot
+hubspot score,Lead score,HubSpot
+spend cap,Spending limit,Meta
+spending limit,Spending limit,Meta
+date of birth,Date of birth (personal data),generic
+birth date,Date of birth (personal data),generic
+date modified,Last modified date,generic
+last updated,Last modified date,generic
+rejected leads,Rejected leads,generic
+junk leads,Rejected leads,generic
+duplicate leads,Rejected leads,generic
+lost revenue,Lost revenue,generic

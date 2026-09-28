@@ -23,6 +23,13 @@ Safety rules for any marketing file (config/fields.py):
   - net revenue is preferred over gross; Orders stand in for Conversions when there are none.
 Every mapping carries a short plain-English reason.
 
+Knowledge base (U2, config/knowledge/): extra header names per source (Google Ads, Meta, GA4,
+Shopify, HubSpot, ...), short forms (amt, rev, txn), known-but-not-analysed columns ("Recognised:
+Sessions (not used in this analysis)", never sent to Gemini), a context rule for Meta "Results"
+(the Objective column decides leads vs. conversions), value patterns (a column of "Meta",
+"Google Ads" values is Platform; a column of dates is suggested as Date) and mappings learned from
+the user's earlier choices. Built-in synonyms above always keep priority.
+
 Alternative considered: ask Gemini to map columns. Rejected (locked decision): mappings drive
 every number in the product, so they must be repeatable and explainable.
 """
@@ -37,7 +44,8 @@ from rapidfuzz import fuzz
 
 from config.fields import (AMBIGUOUS_HEADERS, DERIVED_METRIC_HEADERS, DERIVED_WORDS, FIELD_BY_NAME,
                            FIELDS, MARKETING_COSTS, NOT_SPEND_COSTS, PROFIT_HEADERS, RATIO_FIELDS)
-from config.settings import MAPPING_HIGH_CONFIDENCE, MAPPING_MIN_CANDIDATE
+from config import knowledge
+from config.settings import MAPPING_HIGH_CONFIDENCE, MAPPING_MIN_CANDIDATE, VALUE_PATTERN_MIN_SHARE
 
 ACTIVE_STATUSES = ("confirmed", "high_confidence")
 _STATUS_RANK = {"confirmed": 0, "high_confidence": 1}
@@ -127,6 +135,71 @@ _MARKETING_COSTS = {normalize_header(h) for h in MARKETING_COSTS}
 _PROFIT = {normalize_header(h) for h in PROFIT_HEADERS}
 _COUNT_OR_MONEY = {f.name for f in FIELDS if f.ftype in ("number", "money")}
 
+# --- Knowledge base (config/knowledge/, U2) ---------------------------------------------------
+# Extra header names rank AFTER every built-in synonym above (setdefault keeps the built-in
+# meaning, and the rank offset keeps built-in names preferred when two columns compete).
+_KB_RANK_OFFSET = 100
+for _i, (_fname, _syn, _src) in enumerate(knowledge.field_synonyms()):
+    _SYNONYMS.setdefault(normalize_header(_syn), (_fname, _KB_RANK_OFFSET + _i))
+_DERIVED |= {normalize_header(h) for h in knowledge.derived_metrics()}
+# Known columns the analysis does not use (sessions, saves, ...): never sent to Gemini.
+_RECOGNISED = {normalize_header(h): name for h, name in knowledge.recognised_columns().items()}
+_SHORT_FORMS = knowledge.short_forms()
+# Filler words around a header in hand-made sheets and pivot tables ("Sum of Spend", "Leads count").
+_FILLER_PREFIXES = ("sum of ", "count of ", "number of ", "total of ", "of ", "daily ", "sum ")
+_FILLER_SUFFIXES = (" count", " total", " in")
+
+
+def _value_key(value) -> str:
+    """'FB Ads' -> 'fb ads'; 'OUTCOME_LEADS' -> 'outcome leads'."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value).lower())).strip()
+
+
+_VOCABULARY = {kind: {_value_key(v): c for v, c in values.items()}
+               for kind, values in knowledge.value_vocabulary().items()}
+# Value pattern: which field a column holds when its values are known vocabulary.
+_VALUE_FIELDS = {"platform": "platform", "channel": "channel", "city": "city", "region": "region",
+                 "new_returning": "new_returning", "customer_type": "customer_type"}
+# Meta's "Results" header: the Objective (or Result type) column decides what it counts.
+_RESULTS_HEADERS = {"results", "result"}
+_OBJECTIVE_HEADERS = {"result indicator", "result type"}
+
+
+def _is_known(key: str) -> bool:
+    return (key in _SYNONYMS or key in _AMBIGUOUS or key in _NOT_SPEND or key in _MARKETING_COSTS
+            or key in _PROFIT or key in _RECOGNISED or _is_derived_name(key))
+
+
+def is_learnable(key: str) -> bool:
+    """May a mapping for this header be learned? Only for names the built-in knowledge does not
+    already settle: never for synonyms, ambiguous names ("Results"), profit/cost safety rules,
+    derived metrics or recognised columns (those stay per-file decisions or fixed rules)."""
+    return bool(key) and not _is_known(key)
+
+
+def _knowledge_key(column: str, normalized: str) -> str:
+    """The header form to look up. Normally the normalized header itself; only when that is
+    unknown, try camelCase splitting ("CampaignName"), short forms ("Amt spnd" -> "amount
+    spend") and filler words ("Sum of Spend", "Spend in INR"). Known headers never change."""
+    if not normalized or _is_known(normalized):
+        return normalized
+    split = normalize_header(re.sub(r"(?<=[a-z])(?=[A-Z])", " ", str(column)))
+    variants = []
+    for base in dict.fromkeys([normalized, split]):
+        expanded = " ".join(_SHORT_FORMS.get(w, w) for w in base.split())
+        for text in dict.fromkeys([base, expanded]):
+            variants.append(text)
+            for prefix in _FILLER_PREFIXES:
+                if text.startswith(prefix):
+                    variants.append(text[len(prefix):])
+            for suffix in _FILLER_SUFFIXES:
+                if text.endswith(suffix):
+                    variants.append(text[: -len(suffix)])
+    for variant in variants:
+        if variant and _is_known(variant):
+            return variant
+    return normalized
+
 
 def _suggestable(field_name: str, column_type: str | None) -> bool:
     """May this field be offered as a suggestion? A number field may be suggested for a text
@@ -170,7 +243,8 @@ def _fuzzy_scores(normalized: str) -> dict[str, float]:
 def map_fields(source, column_types: dict[str, str] | None = None,
                overrides: dict[str, str | None] | None = None,
                ai: dict[str, tuple[str | None, str]] | None = None,
-               ai_rejected: dict[str, str] | None = None) -> MappingResult:
+               ai_rejected: dict[str, str] | None = None,
+               learned: dict[str, tuple[str, str]] | None = None) -> MappingResult:
     """Map columns to canonical fields.
 
     `source` is a DatasetProfile (preferred: data types and value shapes are then checked), a
@@ -179,6 +253,12 @@ def map_fields(source, column_types: dict[str, str] | None = None,
     `ai` = Gemini's decisions for the columns the rules left open {column: (field or None,
     reason)}; applied only to those columns (user > AI > rules). `ai_rejected` = {column: field}
     AI mappings the file's own calculations proved wrong: not applied, the user must choose.
+    `learned` = {header key: (field, "user confirmed" / "AI verified")} remembered from earlier
+    files (database learned_mappings); used after built-in synonyms and context rules only.
+
+    Recognition order per column: exact synonym (built-in, then knowledge base) -> context rule
+    (Meta "Results") -> recognised-but-not-analysed -> learned -> value pattern -> fuzzy ->
+    Gemini (only what is still open, see ai/mapping.py).
     """
     columns, column_types, ratio_like = _columns_and_types(source, column_types)
     overrides = dict(overrides or {})
@@ -189,7 +269,10 @@ def map_fields(source, column_types: dict[str, str] | None = None,
             raise ValueError(f"Unknown field in overrides: {fname!r}")
 
     # 1. A first opinion for every column, independently.
-    proposals = [_propose(col, column_types.get(col), ratio_like.get(col, False), overrides)
+    values = _top_values(source)
+    context = {"results": _results_meaning(columns, values)}
+    proposals = [_propose(col, column_types.get(col), ratio_like.get(col, False), overrides,
+                          values.get(col), context, learned or {})
                  for col in columns]
 
     # 2. One field per column and one column per field. User choices first, then confirmed,
@@ -291,13 +374,84 @@ def _columns_and_types(source, column_types):
     return [str(c) for c in source], dict(column_types or {}), {}
 
 
+def _top_values(source) -> dict[str, dict[str, int]]:
+    """The most common values per column (profile or DataFrame); none for a list of names."""
+    from ingestion.profiler import DatasetProfile
+    if isinstance(source, DatasetProfile):
+        return {name: col.top_values for name, col in source.columns.items()}
+    if isinstance(source, pd.DataFrame):
+        out = {}
+        for col in source.columns:
+            s = source[col].dropna().astype(str).str.strip()
+            out[str(col)] = {str(k): int(v) for k, v in s[s != ""].value_counts().head(5).items()}
+        return out
+    return {}
+
+
+def _objective_meaning(value) -> str | None:
+    """'leads' / 'conversions' / 'other' for one Objective or Result-type value, else None.
+    Lead words win ('onsite_conversion.lead_grouped' is a lead); a plain 'Conversions' must be
+    the whole value (e.g. 'offsite_conversion.fb_pixel_view_content' is not a purchase)."""
+    vocab = _VOCABULARY.get("objective", {})
+    key = _value_key(value)
+    padded = f" {key} "
+    if any(f" {w} " in padded for w, c in vocab.items() if c == "leads"):
+        return "leads"
+    if any(f" {w} " in padded for w, c in vocab.items()
+           if c == "conversions" and w not in ("conversion", "conversions")):
+        return "conversions"
+    return vocab.get(key)
+
+
+def _results_meaning(columns, values) -> tuple[str, str] | None:
+    """Context rule for Meta's 'Results': (field, objective column) when every Objective /
+    Result-type value in the file points to the same thing (leads or purchases); else None."""
+    meanings, basis = set(), None
+    for col in columns:
+        key = _knowledge_key(col, normalize_header(col))
+        if (_SYNONYMS.get(key, ("",))[0] == "objective" or key in _OBJECTIVE_HEADERS) and values.get(col):
+            meanings |= {_objective_meaning(v) for v in values[col]}
+            basis = basis or col
+    if len(meanings) == 1 and next(iter(meanings)) in ("leads", "conversions"):
+        return next(iter(meanings)), basis
+    return None
+
+
+def _vocabulary_field(values: dict[str, int] | None) -> tuple[str, float] | None:
+    """Value pattern: (kind, share) when the column's common values are known vocabulary
+    (channels, platforms, cities, regions, devices, customer types)."""
+    if not values:
+        return None
+    counts: dict[str, int] = {}
+    for v, n in values.items():
+        counts[_value_key(v)] = counts.get(_value_key(v), 0) + n
+    total = sum(counts.values())
+    if total == 0:
+        return None
+
+    def share(*kinds):
+        known = {k for k in counts if any(k in _VOCABULARY.get(kind, {}) for kind in kinds)}
+        return (sum(counts[k] for k in known) / total) if len(known) >= 2 else 0.0
+
+    best = None
+    for kind in ("platform", "channel", "city", "region", "device", "new_returning", "customer_type"):
+        s = share(kind)
+        if s >= VALUE_PATTERN_MIN_SHARE and (best is None or s > best[1]):
+            best = (kind, s)
+    if best is None and share("platform", "channel") >= VALUE_PATTERN_MIN_SHARE:
+        best = ("channel", share("platform", "channel"))    # a mix of channels and platforms
+    return best
+
+
 def _is_derived_name(normalized: str) -> bool:
     words = set(normalized.split())
     return normalized in _DERIVED or bool(words & DERIVED_WORDS)
 
 
-def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: dict) -> ColumnMapping:
-    normalized = normalize_header(column)
+def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: dict,
+             values: dict[str, int] | None = None, context: dict | None = None,
+             learned: dict | None = None) -> ColumnMapping:
+    normalized = _knowledge_key(column, normalize_header(column))   # unchanged for known headers
 
     if column in overrides:
         fname = overrides[column]
@@ -335,6 +489,15 @@ def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: 
                              reason="this profit may already subtract marketing cost; using it as "
                                     "gross profit would count spend twice in ROI")
 
+    results = (context or {}).get("results")
+    if normalized in _RESULTS_HEADERS and results and _type_fits(results[0], column_type):
+        # Context rule: Meta's "Results" counts whatever the campaigns optimise for.
+        fname, basis = results
+        return ColumnMapping(column, normalized, fname, "high_confidence", 100, "context",
+                             reason=f"Meta 'Results' counts {FIELD_BY_NAME[fname].label.lower()} "
+                                    f"here: the '{basis}' column shows every campaign optimises "
+                                    "for them")
+
     if normalized in _AMBIGUOUS:
         options = [f for f in _AMBIGUOUS[normalized] if _type_fits(f, column_type)]
         return ColumnMapping(column, normalized, None, "uncertain", 0, "ambiguous",
@@ -350,6 +513,21 @@ def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: 
             mapping.note = f"values do not look like {FIELD_BY_NAME[fname].ftype} data"
         return mapping
 
+    if normalized in _RECOGNISED:
+        text = f"Recognised: {_RECOGNISED[normalized]} (not used in this analysis)"
+        return ColumnMapping(column, normalized, None, "not_used", 100, "recognised",
+                             note=text, reason=text)
+
+    known = (learned or {}).get(normalized)
+    if known and known[0] in FIELD_BY_NAME and _type_fits(known[0], column_type):
+        fname, how = known
+        by_user = how == "user confirmed"
+        return ColumnMapping(column, normalized, fname, "confirmed" if by_user else "high_confidence",
+                             100, "learned",
+                             reason="learned: you chose this for the same column name before" if by_user
+                             else "learned: an AI suggestion for this column name that a file's own "
+                                  "calculations verified")
+
     # Values that look like percentages/ratios are derived metrics, whatever the name says.
     if ratio_like:
         return ColumnMapping(column, normalized, None, "derived", 100, "derived-values",
@@ -357,10 +535,29 @@ def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: 
                              reason="values look like percentages or ratios - recalculated by the "
                                     "app, not used")
 
+    pattern = _vocabulary_field(values) if column_type in (None, "text", "mixed") else None
+    if pattern is not None:
+        kind, share = pattern
+        if kind == "device":
+            text = "Recognised: Device (not used in this analysis)"
+            return ColumnMapping(column, normalized, None, "not_used", 100, "recognised",
+                                 note=text, reason=text)
+        fname = _VALUE_FIELDS[kind]
+        return ColumnMapping(column, normalized, fname, "high_confidence", round(share * 100),
+                             "values", reason=f"its values are known {FIELD_BY_NAME[fname].label.lower()} "
+                                              f"names ({share:.0%} of the most common values)")
+
     scores = _fuzzy_scores(normalized) if normalized else {}
     ranked = sorted(((f, s) for f, s in scores.items()
                      if s >= MAPPING_MIN_CANDIDATE and _suggestable(f, column_type)),
                     key=lambda fs: -fs[1])[:3]
+    if column_type == "date" and not (ranked and ranked[0][0] == "date"):
+        # Value pattern for dates: suggested only (Date is business-critical, never guessed).
+        ranked = [("date", 0.0)] + ranked[:2]
+        return ColumnMapping(column, normalized, None, "uncertain", 0, "values",
+                             candidates=ranked, note="values look like dates",
+                             reason="the values look like dates; confirm whether this is the "
+                                    "reporting date")
     if not ranked:
         return ColumnMapping(column, normalized, None, "unmapped", 0, "",
                              note="no known field matches this name",

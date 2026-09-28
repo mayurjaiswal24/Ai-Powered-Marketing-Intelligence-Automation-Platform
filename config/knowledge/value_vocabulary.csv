@@ -1,0 +1,217 @@
+kind,value,canonical
+platform,fb,Meta
+platform,facebook,Meta
+platform,facebook ads,Meta
+platform,fb ads,Meta
+platform,meta,Meta
+platform,meta ads,Meta
+platform,meta platforms,Meta
+platform,ig,Instagram
+platform,insta,Instagram
+platform,instagram,Instagram
+platform,instagram ads,Instagram
+platform,google,Google Ads
+platform,google ads,Google Ads
+platform,adwords,Google Ads
+platform,google adwords,Google Ads
+platform,google cpc,Google Ads
+platform,google search,Google Ads
+platform,gads,Google Ads
+platform,yt,YouTube
+platform,youtube,YouTube
+platform,youtube ads,YouTube
+platform,li,LinkedIn
+platform,linkedin,LinkedIn
+platform,linkedin ads,LinkedIn
+platform,linked in,LinkedIn
+platform,bing,Microsoft Ads
+platform,bing ads,Microsoft Ads
+platform,microsoft ads,Microsoft Ads
+platform,microsoft advertising,Microsoft Ads
+platform,tiktok,TikTok
+platform,tik tok,TikTok
+platform,tiktok ads,TikTok
+platform,amazon,Amazon Ads
+platform,amazon ads,Amazon Ads
+platform,amazon advertising,Amazon Ads
+platform,twitter,X (Twitter)
+platform,x ads,X (Twitter)
+platform,twitter ads,X (Twitter)
+platform,snapchat,Snapchat
+platform,snap,Snapchat
+platform,pinterest,Pinterest
+platform,quora,Quora
+platform,reddit,Reddit
+platform,taboola,Taboola
+platform,outbrain,Outbrain
+platform,criteo,Criteo
+platform,shopify,Shopify
+platform,mailchimp,Mailchimp
+platform,klaviyo,Klaviyo
+platform,hubspot,HubSpot
+channel,ppc,Paid Search
+channel,sem,Paid Search
+channel,search,Paid Search
+channel,paid search,Paid Search
+channel,cpc,Paid Search
+channel,social,Paid Social
+channel,paid social,Paid Social
+channel,paid socials,Paid Social
+channel,social ads,Paid Social
+channel,display,Display
+channel,display ads,Display
+channel,banner,Display
+channel,video,Video
+channel,ctv,Video
+channel,ott,Video
+channel,email,Email
+channel,e-mail,Email
+channel,e mail,Email
+channel,emailer,Email
+channel,newsletter,Email
+channel,sms,SMS
+channel,whatsapp,WhatsApp
+channel,seo,Organic Search
+channel,organic,Organic Search
+channel,organic search,Organic Search
+channel,organic social,Organic Social
+channel,referral,Referral
+channel,direct,Direct
+channel,affiliate,Affiliate
+channel,affiliates,Affiliate
+channel,influencer,Influencer
+channel,influencers,Influencer
+channel,programmatic,Programmatic
+channel,push notifications,Push Notifications
+channel,offline,Offline
+channel,events,Events
+channel,print,Print
+channel,radio,Radio
+channel,tv,TV
+channel,ooh,Outdoor
+channel,outdoor,Outdoor
+channel,professional network,Professional Network
+channel,paid,Paid
+channel,unassigned,Unassigned
+region,north,North
+region,south,South
+region,east,East
+region,west,West
+region,central,Central
+region,north east,North East
+region,northeast,North East
+region,north west,North West
+region,south east,South East
+region,south west,South West
+region,north india,North
+region,south india,South
+region,east india,East
+region,west india,West
+region,apac,APAC
+region,emea,EMEA
+region,latam,LATAM
+region,na,North America
+region,north america,North America
+region,europe,Europe
+region,middle east,Middle East
+city,mumbai,Mumbai
+city,delhi,Delhi
+city,new delhi,Delhi
+city,bengaluru,Bengaluru
+city,bangalore,Bengaluru
+city,pune,Pune
+city,hyderabad,Hyderabad
+city,chennai,Chennai
+city,kolkata,Kolkata
+city,ahmedabad,Ahmedabad
+city,jaipur,Jaipur
+city,lucknow,Lucknow
+city,surat,Surat
+city,indore,Indore
+city,bhopal,Bhopal
+city,nagpur,Nagpur
+city,chandigarh,Chandigarh
+city,kochi,Kochi
+city,coimbatore,Coimbatore
+city,noida,Noida
+city,gurugram,Gurugram
+city,gurgaon,Gurugram
+city,thane,Thane
+city,navi mumbai,Navi Mumbai
+city,patna,Patna
+city,vadodara,Vadodara
+city,visakhapatnam,Visakhapatnam
+city,ludhiana,Ludhiana
+city,agra,Agra
+city,nashik,Nashik
+city,ranchi,Ranchi
+city,bhubaneswar,Bhubaneswar
+city,guwahati,Guwahati
+city,dehradun,Dehradun
+city,mysuru,Mysuru
+city,mysore,Mysuru
+city,kanpur,Kanpur
+city,raipur,Raipur
+city,amritsar,Amritsar
+city,varanasi,Varanasi
+city,london,London
+city,new york,New York
+city,singapore,Singapore
+city,dubai,Dubai
+device,mobile,Mobile
+device,desktop,Desktop
+device,tablet,Tablet
+device,smartphone,Mobile
+device,mobile phones,Mobile
+device,computers,Desktop
+device,tablets,Tablet
+device,tv screens,TV
+device,connected tv,TV
+device,ios,iOS
+device,android,Android
+device,mobile web,Mobile
+new_returning,new,New
+new_returning,returning,Returning
+new_returning,repeat,Returning
+new_returning,new customer,New
+new_returning,returning customer,Returning
+new_returning,existing,Returning
+new_returning,first time,New
+new_returning,new visitor,New
+new_returning,returning visitor,Returning
+customer_type,b2b,B2B
+customer_type,b2c,B2C
+customer_type,enterprise,Enterprise
+customer_type,smb,SMB
+customer_type,sme,SMB
+customer_type,individual,Individual
+customer_type,corporate,Corporate
+customer_type,student,Student
+customer_type,working professional,Working professional
+objective,lead generation,leads
+objective,leads,leads
+objective,lead,leads
+objective,lead gen,leads
+objective,leadgen,leads
+objective,sales,conversions
+objective,purchase,conversions
+objective,purchases,conversions
+objective,conversions,conversions
+objective,conversion,conversions
+objective,catalog sales,conversions
+objective,product catalog sales,conversions
+objective,traffic,other
+objective,link click,other
+objective,link clicks,other
+objective,awareness,other
+objective,brand awareness,other
+objective,reach,other
+objective,engagement,other
+objective,post engagement,other
+objective,video views,other
+objective,video view,other
+objective,thruplay,other
+objective,app installs,other
+objective,app promotion,other
+objective,messages,other
+objective,landing page view,other

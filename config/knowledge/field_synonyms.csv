@@ -1,0 +1,297 @@
+field,synonym,source
+campaign_name,session campaign,GA4
+campaign_name,session campaign name,GA4
+campaign_name,first user campaign,GA4
+campaign_name,utm campaign,Shopify
+campaign_name,campaign names,generic
+campaign_name,ad campaign name,generic
+campaign_name,email campaign,Mailchimp
+campaign_name,email campaign name,Mailchimp
+campaign_name,campaign label,generic
+campaign_name,insertion order,generic
+campaign_id,campaign identifier,generic
+campaign_id,campaign ref,generic
+campaign_id,ad campaign id,generic
+campaign_type,campaign sub type,Google Ads
+campaign_type,ad product,Amazon Ads
+campaign_type,ad type,Amazon Ads
+campaign_type,campaign kind,generic
+objective,objective name,Meta
+objective,optimisation goal,Meta
+objective,optimization goal,Meta
+objective,campaign purpose,generic
+channel,session default channel group,GA4
+channel,session default channel grouping,GA4
+channel,default channel grouping,GA4
+channel,first user default channel group,GA4
+channel,session medium,GA4
+channel,utm medium,Shopify
+channel,traffic channel,generic
+channel,original source,HubSpot
+channel,session source medium,GA4
+channel,message channel,Klaviyo
+channel,channel type,generic
+channel,acquisition channel,generic
+channel,sales channel,Shopify
+channel,marketing channels,generic
+platform,session source,GA4
+platform,utm source,Shopify
+platform,traffic source,generic
+platform,source platform,generic
+platform,media platform,generic
+platform,advertising platform,generic
+platform,ad network name,generic
+date,create date,HubSpot
+date,created date,Salesforce
+date,created at,Shopify
+date,created on,generic
+date,creation date,generic
+date,close date,Salesforce
+date,closed date,HubSpot
+date,closing date,Zoho
+date,created time,Zoho
+date,send date,Mailchimp
+date,send time,Klaviyo
+date,sent date,generic
+date,date sent,generic
+date,order created at,Shopify
+date,processed at,Shopify
+date,stat time day,TikTok
+date,stat date,TikTok
+date,segments date,Google Ads
+date,report day,generic
+date,datetime,generic
+date,date time,generic
+date,timestamp,generic
+date,dates,generic
+date,calendar date,generic
+date,txn date,generic
+date,purchase date,generic
+date,lead date,generic
+week,week starting,generic
+week,week commencing,generic
+week,week beginning,generic
+week,week start date,generic
+week,week ending,generic
+week,week of year,generic
+week,weekly,generic
+week,week no,generic
+month,month year,generic
+month,month of,generic
+month,month start,generic
+month,billing month,generic
+month,months,generic
+month,monthly,generic
+quarter,quarters,generic
+year,calendar year,generic
+year,financial year,generic
+country,country name,GA4
+country,shipping country,Shopify
+country,billing country,WooCommerce
+country,customer country,generic
+country,user country,generic
+country,country code,generic
+state,billing state,WooCommerce
+state,shipping state,generic
+state,billing province,Shopify
+state,shipping province,Shopify
+state,shipping region,Shopify
+state,state name,generic
+city,shipping city,Shopify
+city,billing city,WooCommerce
+city,customer city,generic
+city,user city,generic
+city,city town,generic
+region,sales zone,generic
+region,geo region,generic
+region,sales territory,generic
+market,dma,Google Ads
+market,dma region,Google Ads
+market,target market,generic
+city_tier,tier city,generic
+customer_id,customer number,generic
+customer_id,contact id,HubSpot
+customer_id,buyer id,generic
+customer_id,shopper id,generic
+customer_id,client code,generic
+customer_segment,segment name,generic
+customer_segment,audience name,generic
+customer_segment,customer segment name,generic
+customer_segment,list name,Mailchimp
+customer_segment,cohort,generic
+customer_segment,customer cohort,generic
+age,age bracket,generic
+age,age groups,generic
+age,age bucket,generic
+age,age cohort,generic
+gender,customer gender,generic
+customer_type,customer category,generic
+customer_type,buyer type,generic
+customer_type,customer class,generic
+new_returning,new or repeat,generic
+new_returning,new vs repeat,generic
+new_returning,new returning customer,generic
+new_returning,new vs returning customer,generic
+new_returning,repeat customer,generic
+spend,spend amount,generic
+spend,ad spend amount,generic
+spend,costs,generic
+spend,total ad spend,generic
+spend,advertising expenditure,generic
+spend,ad expenditure,generic
+spend,media investment,generic
+spend,actual cost,Salesforce
+spend,actual cost in campaign,Salesforce
+spend,spend total,generic
+spend,paid media spend,generic
+spend,ppc spend,generic
+spend,campaign spend,generic
+spend,campaign cost,generic
+spend,spent amount,generic
+spend,money spent,generic
+spend,expenditure,generic
+spend,amount spend,generic
+spend,media spends,generic
+spend,ad spends,generic
+budget,lifetime budget,Meta
+budget,ad set budget,Meta
+budget,campaign budget amount,Google Ads
+budget,monthly budget,generic
+budget,budgeted cost,Zoho
+budget,budgeted cost in campaign,Salesforce
+budget,total budget,generic
+budget,planned spend,generic
+budget,budget allocated,generic
+budget,plan budget,generic
+impressions,imps,generic
+impressions,impression count,generic
+impressions,total impr,Google Ads
+impressions,paid impressions,generic
+impressions,served impressions,generic
+impressions,display impressions,generic
+impressions,impressions total,generic
+reach,reached,generic
+reach,reach unique,generic
+clicks,total link clicks,Meta
+clicks,link click,Meta
+clicks,ad clicks,generic
+clicks,paid clicks,generic
+clicks,url clicks,generic
+clicks,click count,generic
+clicks,clicks to website,generic
+clicks,outbound click,Meta
+clicks,clicks destination,TikTok
+engagements,post interactions,generic
+engagements,engagement count,generic
+engagements,paid engagements,generic
+views,total views,generic
+views,ad views,generic
+views,video views total,generic
+views,paid views,generic
+views,thruplay,Meta
+views,2 second continuous video plays,Meta
+views,trueview views,YouTube
+leads,leads generated,generic
+leads,lead generated,generic
+leads,number of leads,generic
+leads,new leads,generic
+leads,lead submissions,generic
+leads,leads count,generic
+leads,website leads,Meta
+leads,meta leads,Meta
+leads,instant form leads,Meta
+leads,one click leads,LinkedIn
+leads,lead form fills,generic
+leads,form leads,generic
+leads,enquiries received,generic
+leads,inquiry count,generic
+leads,contact form submissions,generic
+leads,leads in campaign,Salesforce
+leads,lead volume,generic
+leads,leads received,generic
+leads,number of form submissions,HubSpot
+leads,enquiry,generic
+leads,inquiry,generic
+qualified_leads,marketing qualified,generic
+qualified_leads,sales qualified,generic
+qualified_leads,qualified lead count,generic
+qualified_leads,sales accepted leads,generic
+opportunities,opportunities created,generic
+opportunities,new opportunities,generic
+opportunities,opportunities in campaign,Salesforce
+opportunities,deals created,HubSpot
+opportunities,number of opportunities,generic
+conversions,conversions total,generic
+conversions,website conversions,generic
+conversions,ecommerce purchases,GA4
+conversions,purchase,generic
+conversions,total purchases,generic
+conversions,complete payment,TikTok
+conversions,total complete payment,TikTok
+conversions,won opportunities,Salesforce
+conversions,won opportunities in campaign,Salesforce
+conversions,closed deals,HubSpot
+conversions,sales count,generic
+conversions,conversion count,generic
+conversions,all conversions,Google Ads
+conversions,offline conversions,generic
+conversions,conversions all,generic
+conversions,enrolment count,generic
+customers,new customer count,generic
+customers,unique customers,generic
+customers,first time customers,Shopify
+customers,first time buyers,generic
+customers,new buyers,generic
+orders,orders placed,generic
+orders,placed order,Klaviyo
+orders,placed orders,Klaviyo
+orders,number of transactions,generic
+orders,14 day total orders,Amazon Ads
+orders,7 day total orders,Amazon Ads
+orders,attributed orders,generic
+orders,ecommerce transactions,GA4
+revenue,total sales,Shopify
+revenue,gross sales,Shopify
+revenue,purchase revenue,GA4
+revenue,item revenue,GA4
+revenue,ecommerce revenue,GA4
+revenue,14 day total sales,Amazon Ads
+revenue,7 day total sales,Amazon Ads
+revenue,attributed sales,Amazon Ads
+revenue,total purchase value,TikTok
+revenue,purchase value,generic
+revenue,purchases value,Meta
+revenue,conversion value in local currency,LinkedIn
+revenue,conversions value,generic
+revenue,revenue generated,generic
+revenue,sales value,generic
+revenue,order revenue,generic
+revenue,order total,WooCommerce
+revenue,value won opportunities in campaign,Salesforce
+revenue,closed won amount,HubSpot
+revenue,won amount,generic
+revenue,booked revenue,generic
+revenue,placed order value,Klaviyo
+revenue,attributed revenue,Klaviyo
+revenue,revenue amount,generic
+revenue,total revenue amount,generic
+revenue,revenue booked,generic
+gross_profit,gross profit amount,generic
+product,product title,Shopify
+product,item title,generic
+product,advertised product,Amazon Ads
+product,course title,generic
+product,program name,generic
+product,programme name,generic
+product,service name,generic
+product,product variant,Shopify
+product_category,item category,GA4
+product_category,category name,generic
+product_category,product group,generic
+sku,variant sku,Shopify
+sku,advertised sku,Amazon Ads
+sku,advertised asin,Amazon Ads
+sku,asin,Amazon Ads
+sku,item code,generic
+sku,product sku,generic
+sku,sku code,generic

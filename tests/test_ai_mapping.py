@@ -119,10 +119,12 @@ def test_retail_layout_with_data_dictionary(tmp_path):
     request = fake.requests[0]
     assert "Customer device" in request["data_dictionary"]
     sent = {p["column"] for p in request["problem_columns"]}
-    assert {"Device", "Ad_Format", "Profit", "Discount"} <= sent
+    assert "Profit" in sent
     assert "Spend" not in sent and "CTR_%" not in sent             # rules handled those
+    # U2: recognised-but-not-analysed columns are never sent to Gemini.
+    assert not {"Device", "Ad_Format", "Discount", "Add_to_Cart"} & sent
     m = prep.mapping
-    assert m.by_column("Device").status == "not_used" and m.by_column("Device").source == "ai"
+    assert m.by_column("Device").status == "not_used" and m.by_column("Device").source == "recognised"
     # AI may not turn a plain Profit column into gross profit (it could double-count spend).
     assert m.by_column("Profit").status == "uncertain" and "gross_profit" not in m.active
     assert m.active["revenue"] == "Net_Revenue" and m.active["spend"] == "Spend"   # rules kept

@@ -62,6 +62,10 @@ REPORT_SIGNATURE = f"Prepared with {APP_NAME} · Created by {CREATOR_NAME}"
 MAPPING_HIGH_CONFIDENCE = 88
 # Candidates scoring below this are not even suggested.
 MAPPING_MIN_CANDIDATE = 75   # raised from 65: weaker matches produced nonsense (e.g. Discount -> Country)
+# Value pattern (U2): a column with an unknown name is recognised from its values (e.g. "Meta",
+# "Google Ads" -> Platform) only when at least this share of its most common values is known
+# vocabulary (config/knowledge/value_vocabulary.csv), with at least 2 different known values.
+VALUE_PATTERN_MIN_SHARE = 0.8
 # Two category labels this similar (0-100) are treated as spelling variants ("Linkdin" ~ "LinkedIn").
 LABEL_SIMILARITY = 90
 
@@ -218,6 +222,9 @@ class Settings:
     ai_max_calls_per_session: int = 2          # insight calls per browser session (public mode)
     ai_max_mapping_calls_per_day: int = 10     # Gemini field-mapping calls per UTC day
     ai_max_mapping_calls_per_session: int = 2  # field-mapping calls per browser session (public)
+    # Learned mappings (U2): remember column names the user confirmed or AI got verified, so the
+    # next file with the same column name maps without asking. Never in public mode.
+    learning_enabled: bool = True
     # Folder for generated PDF/Excel files (relative paths are inside the project folder).
     exports_dir: str = "exports"
     # Uploads above this size are refused with a friendly message.
@@ -233,6 +240,11 @@ class Settings:
     def upload_limit_mb(self) -> int:
         """The upload size limit that applies now (smaller in public mode)."""
         return min(self.max_upload_mb, self.max_upload_mb_public) if self.public_mode else self.max_upload_mb
+
+    @property
+    def learning_active(self) -> bool:
+        """Learned mappings are used and saved only locally: no learning from public uploads."""
+        return self.learning_enabled and not self.public_mode
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
@@ -259,6 +271,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
                                                 defaults.ai_max_mapping_calls_per_day),
         ai_max_mapping_calls_per_session=_parse_int(env.get("AI_MAX_MAPPING_CALLS_PER_SESSION"),
                                                     defaults.ai_max_mapping_calls_per_session),
+        learning_enabled=_parse_bool(env.get("LEARNING_ENABLED"), defaults.learning_enabled),
         max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
         large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
     )

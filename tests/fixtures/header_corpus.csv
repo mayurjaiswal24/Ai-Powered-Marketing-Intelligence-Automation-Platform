@@ -1,0 +1,447 @@
+header,source,expected
+Day,Google Ads,date
+Campaign,Google Ads,campaign_name
+Campaign ID,Google Ads,campaign_id
+Campaign type,Google Ads,campaign_type
+Campaign state,Google Ads,recognised
+Ad group,Google Ads,recognised
+Keyword,Google Ads,recognised
+Search term,Google Ads,recognised
+Match type,Google Ads,recognised
+Network (with search partners),Google Ads,platform
+Device,Google Ads,recognised
+Currency code,Google Ads,recognised
+Cost,Google Ads,spend
+Impr.,Google Ads,impressions
+Clicks,Google Ads,clicks
+CTR,Google Ads,derived
+Avg. CPC,Google Ads,derived
+Conversions,Google Ads,conversions
+Conv. value,Google Ads,revenue
+Cost / conv.,Google Ads,derived
+Conv. rate,Google Ads,derived
+Conv. value / cost,Google Ads,derived
+All conv.,Google Ads,conversions
+All conv. value,Google Ads,revenue
+View-through conv.,Google Ads,recognised
+Interactions,Google Ads,engagements
+Interaction rate,Google Ads,derived
+Search impr. share,Google Ads,derived
+Search lost IS (rank),Google Ads,derived
+Quality Score,Google Ads,recognised
+Budget,Google Ads,budget
+Phone calls,Google Ads,recognised
+Invalid clicks,Google Ads,recognised
+Final URL,Google Ads,recognised
+Bid strategy type,Google Ads,recognised
+Segments.date,Google Ads,date
+cost_micros,Google Ads,recognised
+Advertising channel type,Google Ads,channel
+Country/Territory,Google Ads,country
+DMA region,Google Ads,market
+Reporting starts,Meta,date
+Reporting ends,Meta,recognised
+Campaign name,Meta,campaign_name
+Ad set name,Meta,recognised
+Ad name,Meta,recognised
+Objective,Meta,objective
+Amount spent (INR),Meta,spend
+Impressions,Meta,impressions
+Reach,Meta,reach
+Frequency,Meta,derived
+Results,Meta,ask
+Result indicator,Meta,recognised
+Cost per result,Meta,derived
+Link clicks,Meta,clicks
+Clicks (all),Meta,clicks
+CPC (cost per link click) (INR),Meta,derived
+CTR (link click-through rate),Meta,derived
+"CPM (cost per 1,000 impressions) (INR)",Meta,derived
+Leads,Meta,leads
+On-Facebook leads,Meta,leads
+Website leads,Meta,leads
+Purchases,Meta,conversions
+Purchases conversion value,Meta,revenue
+Purchase ROAS (return on ad spend),Meta,derived
+Website purchase ROAS,Meta,derived
+ThruPlays,Meta,views
+Post engagement,Meta,engagements
+Landing page views,Meta,recognised
+Adds to cart,Meta,recognised
+Checkouts initiated,Meta,recognised
+Post reactions,Meta,recognised
+Post comments,Meta,recognised
+Post shares,Meta,recognised
+Post saves,Meta,recognised
+Page likes,Meta,recognised
+Unique link clicks,Meta,recognised
+Delivery,Meta,recognised
+Attribution setting,Meta,recognised
+Ad set budget,Meta,budget
+Ad set budget type,Meta,recognised
+Placement,Meta,recognised
+Age,Meta,age
+Gender,Meta,gender
+Platform,Meta,platform
+Video plays at 25%,Meta,derived
+Instant form leads,Meta,leads
+Mobile app installs,Meta,recognised
+Campaign Group Name,LinkedIn,campaign_name
+Campaign Name,LinkedIn,campaign_name
+Campaign ID,LinkedIn,campaign_id
+Start Date (in UTC),LinkedIn,date
+Total Spent,LinkedIn,spend
+Currency,LinkedIn,recognised
+Impressions,LinkedIn,impressions
+Clicks,LinkedIn,clicks
+Average CTR,LinkedIn,derived
+Average CPM,LinkedIn,derived
+Average CPC,LinkedIn,derived
+Reactions,LinkedIn,recognised
+Comments,LinkedIn,recognised
+Shares,LinkedIn,recognised
+Follows,LinkedIn,recognised
+Other Clicks,LinkedIn,recognised
+Total Engagements,LinkedIn,engagements
+Engagement Rate,LinkedIn,derived
+Viral Impressions,LinkedIn,recognised
+Viral Clicks,LinkedIn,recognised
+Landing Page Clicks,LinkedIn,clicks
+Conversions,LinkedIn,conversions
+Conversion Value in Local Currency,LinkedIn,revenue
+Leads,LinkedIn,leads
+One-Click Leads,LinkedIn,leads
+Lead Form Opens,LinkedIn,recognised
+Lead Form Completion Rate,LinkedIn,derived
+Cost per Lead,LinkedIn,derived
+Video Views,LinkedIn,views
+Sends,LinkedIn,recognised
+Campaign Objective,LinkedIn,objective
+Campaign Type,LinkedIn,campaign_type
+Video,YouTube,recognised
+Views,YouTube,views
+TrueView views,YouTube,views
+Earned views,YouTube,recognised
+View rate,YouTube,derived
+CPV,YouTube,derived
+Avg. CPV,YouTube,derived
+Watch time (hours),YouTube,recognised
+Average view duration,YouTube,derived
+Subscribers,YouTube,recognised
+Subscribers gained,YouTube,recognised
+Unique viewers,YouTube,recognised
+Impressions click-through rate (%),YouTube,derived
+Likes,YouTube,recognised
+Stat time day,TikTok,date
+Campaign name,TikTok,campaign_name
+Cost,TikTok,spend
+Impressions,TikTok,impressions
+Clicks (destination),TikTok,clicks
+CTR (destination),TikTok,derived
+CPC (destination),TikTok,derived
+Conversions,TikTok,conversions
+Cost per conversion,TikTok,derived
+Result,TikTok,ask
+Complete payment,TikTok,conversions
+Complete payment ROAS,TikTok,derived
+Total purchase value,TikTok,revenue
+Video views,TikTok,views
+Paid likes,TikTok,recognised
+Profile visits,TikTok,recognised
+Follows,TikTok,recognised
+Reach,TikTok,reach
+Campaign Name,Amazon Ads,campaign_name
+Campaign Id,Amazon Ads,campaign_id
+Portfolio name,Amazon Ads,recognised
+Ad type,Amazon Ads,campaign_type
+Spend,Amazon Ads,spend
+Impressions,Amazon Ads,impressions
+Clicks,Amazon Ads,clicks
+Click-Thru Rate (CTR),Amazon Ads,derived
+Cost Per Click (CPC),Amazon Ads,derived
+14 Day Total Sales (₹),Amazon Ads,revenue
+14 Day Total Orders (#),Amazon Ads,orders
+14 Day Total Units (#),Amazon Ads,recognised
+Total Advertising Cost of Sales (ACOS),Amazon Ads,derived
+Total Return on Advertising Spend (ROAS),Amazon Ads,derived
+7 Day Total Sales,Amazon Ads,revenue
+Advertised SKU,Amazon Ads,sku
+Advertised ASIN,Amazon Ads,sku
+Targeting,Amazon Ads,recognised
+Match Type,Amazon Ads,recognised
+Customer Search Term,Amazon Ads,recognised
+Units ordered,Amazon Ads,recognised
+Account name,Microsoft Ads,recognised
+Campaign name,Microsoft Ads,campaign_name
+Ad group,Microsoft Ads,recognised
+Spend,Microsoft Ads,spend
+Impr.,Microsoft Ads,impressions
+Clicks,Microsoft Ads,clicks
+Conv.,Microsoft Ads,conversions
+Revenue,Microsoft Ads,revenue
+Return on ad spend,Microsoft Ads,derived
+Avg. position,Microsoft Ads,derived
+Impression share,Microsoft Ads,derived
+Date,GA4,date
+Session default channel group,GA4,channel
+Session source / medium,GA4,channel
+Session source,GA4,platform
+Session medium,GA4,channel
+Session campaign,GA4,campaign_name
+First user default channel group,GA4,channel
+First user source,GA4,recognised
+Sessions,GA4,recognised
+Engaged sessions,GA4,recognised
+Engagement rate,GA4,derived
+Average engagement time,GA4,derived
+Bounce rate,GA4,derived
+Total users,GA4,recognised
+Active users,GA4,recognised
+New users,GA4,recognised
+Views,GA4,views
+Event count,GA4,recognised
+Event name,GA4,recognised
+Key events,GA4,ask
+Conversions,GA4,conversions
+Total revenue,GA4,revenue
+Purchase revenue,GA4,revenue
+Ecommerce purchases,GA4,conversions
+Transactions,GA4,orders
+Items purchased,GA4,recognised
+Add to carts,GA4,recognised
+Checkouts,GA4,recognised
+Page path,GA4,recognised
+Page title,GA4,recognised
+Device category,GA4,recognised
+Country,GA4,country
+City,GA4,city
+Region,GA4,region
+Item category,GA4,product_category
+Screen page views,GA4,recognised
+Day,Shopify,date
+Month,Shopify,month
+Orders,Shopify,orders
+Gross sales,Shopify,revenue
+Discounts,Shopify,recognised
+Returns,Shopify,recognised
+Net sales,Shopify,revenue
+Shipping,Shopify,recognised
+Taxes,Shopify,recognised
+Total sales,Shopify,revenue
+Average order value,Shopify,derived
+Customers,Shopify,customers
+Customer type,Shopify,customer_type
+Product title,Shopify,product
+Product type,Shopify,product_category
+Product vendor,Shopify,recognised
+Variant SKU,Shopify,sku
+Net quantity,Shopify,recognised
+Order name,Shopify,recognised
+UTM source,Shopify,platform
+UTM medium,Shopify,channel
+UTM campaign,Shopify,campaign_name
+Referrer source,Shopify,recognised
+Cost of goods sold,Shopify,not_used
+Gross profit,Shopify,gross_profit
+Shipping city,Shopify,city
+Shipping region,Shopify,state
+Shipping country,Shopify,country
+Online store conversion rate,Shopify,derived
+Sales channel,Shopify,channel
+Order date,WooCommerce,date
+Order number,WooCommerce,recognised
+Order status,WooCommerce,recognised
+Order total,WooCommerce,revenue
+Net revenue,WooCommerce,revenue
+Items sold,WooCommerce,recognised
+Coupon code,WooCommerce,recognised
+Payment method,WooCommerce,recognised
+Billing city,WooCommerce,city
+Billing state,WooCommerce,state
+Billing country,WooCommerce,country
+Product name,WooCommerce,product
+SKU,WooCommerce,sku
+Qty,WooCommerce,recognised
+Create date,HubSpot,date
+Lifecycle stage,HubSpot,recognised
+Lead status,HubSpot,recognised
+Original source,HubSpot,channel
+Original source drill-down 1,HubSpot,recognised
+Deal stage,HubSpot,recognised
+Deal name,HubSpot,recognised
+Deal owner,HubSpot,recognised
+Contact owner,HubSpot,recognised
+Pipeline,HubSpot,recognised
+Amount,HubSpot,ask
+Close date,HubSpot,date
+Number of form submissions,HubSpot,leads
+Number of sessions,HubSpot,recognised
+Number of pageviews,HubSpot,recognised
+Marketing emails opened,HubSpot,recognised
+Marketing emails clicked,HubSpot,recognised
+Became a lead date,HubSpot,recognised
+Associated company,HubSpot,recognised
+Industry,HubSpot,recognised
+Contact ID,HubSpot,customer_id
+Email,HubSpot,recognised
+Phone number,HubSpot,recognised
+Lead Source,Salesforce,channel
+Campaign Name,Salesforce,campaign_name
+Opportunity Name,Salesforce,recognised
+Stage,Salesforce,recognised
+Close Date,Salesforce,date
+Created Date,Salesforce,date
+Expected Revenue,Salesforce,recognised
+Probability (%),Salesforce,recognised
+Budgeted Cost in Campaign,Salesforce,budget
+Actual Cost in Campaign,Salesforce,spend
+Expected Revenue in Campaign,Salesforce,recognised
+Num Sent in Campaign,Salesforce,recognised
+Leads in Campaign,Salesforce,leads
+Opportunities in Campaign,Salesforce,opportunities
+Won Opportunities in Campaign,Salesforce,conversions
+Value Won Opportunities in Campaign,Salesforce,revenue
+Value Opportunities in Campaign,Salesforce,recognised
+Account Name,Salesforce,recognised
+Annual Revenue,Salesforce,recognised
+Owner,Salesforce,recognised
+Rating,Salesforce,recognised
+Is Won,Salesforce,recognised
+Lead Source,Zoho,channel
+Deal Name,Zoho,recognised
+Closing Date,Zoho,date
+Created Time,Zoho,date
+Actual Cost,Zoho,spend
+Budgeted Cost,Zoho,budget
+Expected Response,Zoho,recognised
+Num sent,Zoho,recognised
+Lead Owner,Zoho,recognised
+No of Employees,Zoho,recognised
+Campaign Name,Zoho,campaign_name
+Campaign title,Mailchimp,campaign_name
+Send date,Mailchimp,date
+Emails sent,Mailchimp,recognised
+Successful deliveries,Mailchimp,recognised
+Unique opens,Mailchimp,recognised
+Open rate,Mailchimp,derived
+Clicks,Mailchimp,clicks
+Unique clicks,Mailchimp,recognised
+Click rate,Mailchimp,derived
+Unsubscribes,Mailchimp,recognised
+Hard bounces,Mailchimp,recognised
+Soft bounces,Mailchimp,recognised
+Abuse complaints,Mailchimp,recognised
+Forwards,Mailchimp,recognised
+Total orders,Mailchimp,orders
+Total revenue,Mailchimp,revenue
+Subject line,Mailchimp,recognised
+List name,Mailchimp,customer_segment
+Campaign Name,Klaviyo,campaign_name
+Send Time,Klaviyo,date
+Message Channel,Klaviyo,channel
+Recipients,Klaviyo,recognised
+Delivered,Klaviyo,recognised
+Opens,Klaviyo,recognised
+Open Rate,Klaviyo,derived
+Clicks,Klaviyo,clicks
+Click Rate,Klaviyo,derived
+Placed Order,Klaviyo,orders
+Placed Order Value,Klaviyo,revenue
+Unsubscribes,Klaviyo,recognised
+Spam Complaints,Klaviyo,recognised
+Bounced,Klaviyo,recognised
+Flow Name,Klaviyo,recognised
+Date,generic,date
+Week,generic,week
+Week Starting,generic,week
+Month,generic,month
+Quarter,generic,quarter
+Year,generic,year
+Campaign,generic,campaign_name
+Channel,generic,channel
+Region,generic,region
+State,generic,state
+City,generic,city
+City Tier,generic,city_tier
+Spend (₹),generic,spend
+Spend in INR,generic,spend
+Ad Spend (USD),generic,spend
+Cost (Rs.),generic,spend
+Media Spend,generic,spend
+Amt spent,generic,spend
+Amt spnd,generic,spend
+Spnd,generic,spend
+Sum of Spend,generic,spend
+Budget (INR),generic,budget
+Impr,generic,impressions
+Imps,generic,impressions
+Clks,generic,clicks
+Leads,generic,leads
+Lead count,generic,leads
+No. of Leads,generic,leads
+Count of Leads,generic,leads
+Enquiries,generic,leads
+Qualified Leads,generic,qualified_leads
+MQLs,generic,qualified_leads
+SQLs,generic,qualified_leads
+Opportunities,generic,opportunities
+Conv,generic,conversions
+Convs,generic,conversions
+Enrolments,generic,conversions
+Admissions,generic,conversions
+Sales,generic,ask
+Rev,generic,revenue
+Revenue (Rs.),generic,revenue
+Revenue ₹,generic,revenue
+Tot Rev,generic,revenue
+Net Revenue,generic,revenue
+Gross Revenue,generic,revenue
+Txn,generic,orders
+Txns,generic,orders
+Qty,generic,recognised
+Orders,generic,orders
+Customers,generic,customers
+New Customers,generic,customers
+AOV,generic,derived
+CPL,generic,derived
+CAC,generic,derived
+ROI %,generic,derived
+ROAS,generic,derived
+Margin %,generic,margin
+Profit,generic,ask
+Product Cost,generic,not_used
+Total Cost,generic,not_used
+Marketing Cost,generic,ask
+Product,generic,product
+Course,generic,product
+Programme,generic,product
+Category,generic,product_category
+Segment,generic,customer_segment
+Audience,generic,customer_segment
+Age Group,generic,age
+Customer Segment,generic,customer_segment
+New vs Returning,generic,new_returning
+CampaignName,generic,campaign_name
+AdSpend,generic,spend
+TotalRevenue,generic,revenue
+LeadCount,generic,leads
+Cmp Name,generic,campaign_name
+Chnl,generic,channel
+Wk,generic,week
+Dt,generic,date
+Customer ID,generic,customer_id
+Notes,generic,recognised
+Remarks,generic,recognised
+Discount,generic,recognised
+Units Sold,generic,recognised
+Landing Page,generic,recognised
+Campaign Status,generic,recognised
+Ad Format,generic,recognised
+Lead Score,HubSpot,recognised
+Spend Cap,Meta,recognised
+Date of Birth,generic,recognised
+Date Modified,generic,recognised
+Junk Leads,generic,recognised
+Rejected Leads,generic,recognised
+Lost Revenue,generic,recognised
+Revenue Goal,generic,ask
