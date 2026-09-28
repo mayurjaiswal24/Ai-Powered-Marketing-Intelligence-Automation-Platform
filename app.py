@@ -32,6 +32,7 @@ PAGE_RENDERERS = {
     "Anomalies": layout.page_anomalies,
     "Profitability": layout.page_profitability,
     "Targets": layout.page_targets,
+    "Pacing & Forecast": layout.page_pacing,
 }
 
 

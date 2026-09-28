@@ -513,3 +513,55 @@ def profit_status(roas: pd.Series, break_even: pd.Series, contribution: pd.Serie
     if contribution is not None:
         status[ratio.isna() & (contribution.astype(float) < 0)] = LOSS
     return status
+
+
+# ---------------------------------------------------------------------------------------------
+# Budget pacing (U6): pacing ratio, projected month-end spend, over/under
+# ---------------------------------------------------------------------------------------------
+
+ON_PACE, OVERSPENDING, UNDERSPENDING = "On Pace", "Overspending", "Underspending"
+PACING_STATUSES = [ON_PACE, OVERSPENDING, UNDERSPENDING, NOT_AVAILABLE]
+
+
+def pacing_metrics(spend_to_date, planned_to_date, remaining_planned, recent_spend,
+                   recent_planned) -> dict:
+    """Month-to-date pacing from summed daily spend and planned budget. Formulas:
+      Pacing ratio          = Spend to date / Planned budget to date
+      Recent utilisation    = Spend in the last 7 days / Planned budget in those days
+                              (falls back to the pacing ratio when those days had no budget)
+      Month budget          = Planned to date + Planned for the rest of the month
+      Projected month-end   = Spend to date + Remaining planned x Recent utilisation
+                              (assumes the recent pace continues; nothing left = spend to date)
+      Projected over/under  = Projected month-end - Month budget (above 0 = overspend)
+      Utilisation to date   = Spend to date / Month budget x 100"""
+    spend_to_date = float(spend_to_date or 0.0)
+    planned_to_date = float(planned_to_date or 0.0)
+    remaining_planned = float(remaining_planned or 0.0)
+    ratio = safe_divide(spend_to_date, planned_to_date)
+    recent = safe_divide(recent_spend, recent_planned)
+    recent = ratio if recent is None else recent
+    month_budget = planned_to_date + remaining_planned
+    if remaining_planned == 0:
+        projected = spend_to_date
+    else:
+        projected = None if recent is None else spend_to_date + remaining_planned * recent
+    return {"spend_to_date": spend_to_date, "planned_to_date": planned_to_date,
+            "remaining_planned": remaining_planned, "month_budget": month_budget,
+            "pacing_ratio": ratio, "recent_utilisation": recent, "projected_spend": projected,
+            "projected_variance": None if projected is None or month_budget == 0 else projected - month_budget,
+            "utilisation_to_date_pct": safe_divide(spend_to_date, month_budget, 100.0)}
+
+
+def pacing_status(ratio, band: float | None = None) -> str:
+    """On Pace within +/-band of the plan (both boundaries count as on pace); Overspending above,
+    Underspending below; no planned budget to date = Not available."""
+    if band is None:
+        from config.settings import PACING_BAND as band
+    if ratio is None or pd.isna(ratio):
+        return NOT_AVAILABLE
+    ratio = round(float(ratio), 9)
+    if ratio > round(1 + band, 9):
+        return OVERSPENDING
+    if ratio < round(1 - band, 9):
+        return UNDERSPENDING
+    return ON_PACE

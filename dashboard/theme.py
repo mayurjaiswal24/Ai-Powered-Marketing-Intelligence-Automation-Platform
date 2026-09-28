@@ -131,6 +131,15 @@ TARGET_STATUS_BACKGROUND = {"On Target": "#e3f4e8", "Within 10%": "#fff3d1", "Of
                             "Over Target": "#fde2e1", "Under Target": "#fde2e1", "Partial month": PANEL,
                             "Not available": PANEL}
 
+# Budget pacing (U6): green on pace, red overspending (money beyond the plan), amber underspending
+# (budget left unused); grey partial month / not available. The word is always shown too.
+PACING_STATUS_COLORS = {"On Pace": GOOD, "Overspending": BAD, "Underspending": WARNING,
+                        "Partial month": NEUTRAL, "Not available": NEUTRAL}
+PACING_STATUS_BACKGROUND = {"On Pace": "#e3f4e8", "Overspending": "#fde2e1", "Underspending": "#fff3d1",
+                            "Partial month": PANEL, "Not available": PANEL}
+# Forecast (U6): the forecast line is dashed in the focus colour; its likely range is a light wash.
+FORECAST_RANGE_ALPHA = 0.14
+
 
 def entity_colors(entities) -> dict[str, str]:
     """Colour per channel/platform: the fixed CHANNEL_COLORS first, then the unused palette

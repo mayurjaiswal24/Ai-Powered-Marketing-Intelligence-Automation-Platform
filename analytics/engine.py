@@ -19,6 +19,8 @@ from analytics.findings import Finding, generate_findings
 from analytics.funnel import funnel_by_channel, funnel_table
 from analytics.incidents import INCIDENT_COLUMNS, build_incidents
 from analytics.kpis import KPIResult, compute_kpis
+from analytics.forecast import forecast_analysis
+from analytics.pacing import pacing_analysis
 from analytics.profitability import profitability_analysis
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import all_time_series, seasonality_index
@@ -53,6 +55,11 @@ class AnalysisResult:
     # an assumed margin). None on analyses saved before U4. Not part of tables(), so the stored
     # tables and the AI evidence pack are unchanged.
     profitability: object = None
+    # U6 budget pacing (analytics/pacing.py: Budget column, as of the last date) and weekly forecast
+    # (analytics/forecast.py: overall, default horizon), for the full dataset. None on analyses saved
+    # before U6. Not part of tables(), so the stored tables and the AI evidence pack are unchanged.
+    pacing: object = None
+    forecast: object = None
 
     def tables(self) -> dict[str, pd.DataFrame]:
         """Every result table by name (the names findings refer to)."""
@@ -121,6 +128,9 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
         notes=list(getattr(capabilities, "notes", []) or []), paid_kpis=paid_kpis)
     result.incidents = build_incidents(anomalies, df)
     result.profitability = profitability_analysis(df)
+    if has_dates:
+        result.pacing = pacing_analysis(df)
+        result.forecast = forecast_analysis(df)
     result.findings = generate_findings(result.tables(), data_end=result.metadata.get("date_max"))
     return result
 

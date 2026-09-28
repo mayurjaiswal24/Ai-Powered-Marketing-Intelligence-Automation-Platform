@@ -478,3 +478,79 @@ def target_bullet_chart(scorecard: pd.DataFrame, title: str, subtitle: str | Non
     fig.update_yaxes(showgrid=False, automargin=True)
     fig.update_layout(bargap=0.4)
     return fig
+
+
+# ---------------------------------------------------------------------------------------------
+# Budget pacing and forecast (U6)
+# ---------------------------------------------------------------------------------------------
+
+def utilisation_chart(monthly: pd.DataFrame, title: str, subtitle: str | None = None) -> go.Figure | None:
+    """Budget used per month (spend as % of budget) with a labelled dotted 'Budget (100%)' line.
+    Colour = pacing status (green on pace, red overspending, amber underspending, grey partial
+    month); the hover also says the status, budget, spend and variance."""
+    if not _has(monthly, "period", "budget_utilisation"):
+        return None
+    from analytics.targets import month_label
+    data = monthly[monthly["budget_utilisation"].notna()]
+    if data.empty:
+        return None
+    labels = [month_label(p) for p in data["period"]]
+    fig = _base(title, subtitle=subtitle)
+    colors = [theme.PACING_STATUS_COLORS.get(s, theme.NEUTRAL) for s in data["status"]]
+    hover = [f"<b>{lab}</b><br>{format_value(r.budget_utilisation, 'percent')} of budget used<br>"
+             f"Budget {format_value(r.budget, 'money', compact=True)} · Spend {format_value(r.spend, 'money', compact=True)}"
+             f"<br>{r.status}" for lab, r in zip(labels, data.itertuples())]
+    fig.add_trace(go.Bar(x=labels, y=data["budget_utilisation"], marker=dict(color=colors),
+                         text=[format_value(v, "percent") for v in data["budget_utilisation"]],
+                         textposition="outside", cliponaxis=False,
+                         textfont=dict(color=theme.INK_SECONDARY, size=11),
+                         customdata=hover, hovertemplate="%{customdata}<extra></extra>"))
+    fig.add_hline(y=100, line=dict(color=theme.INK_MUTED, width=1, dash="dot"), layer="below")
+    fig.add_annotation(x=1, xref="paper", xanchor="right", y=100, yanchor="bottom", showarrow=False,
+                       text="Budget (100%)", font=dict(color=theme.INK_MUTED, size=11),
+                       bgcolor=_hex_to_rgba(theme.SURFACE, 0.85))
+    top = max(float(data["budget_utilisation"].max()), 100.0)
+    fig.update_yaxes(range=[0, top * 1.18], ticksuffix="%", showgrid=True, gridcolor=theme.GRID)
+    fig.update_xaxes(showgrid=False, type="category")
+    fig.update_layout(bargap=0.35)
+    return fig
+
+
+def forecast_chart(history: pd.DataFrame, forecast: pd.DataFrame, fmt: str, title: str,
+                   subtitle: str | None = None, history_weeks: int = 26) -> go.Figure | None:
+    """Actual weeks as a solid line, the forecast as a dashed line of the same colour starting at
+    the last actual week, and the likely range (10th-90th percentile of past errors) as a light
+    shaded band. A labelled dotted line marks where the forecast starts."""
+    if not _has(history, "period", "actual") or not _has(forecast, "period", "forecast"):
+        return None
+    hist = history.sort_values("period").tail(history_weeks)
+    fig = _base(title, subtitle=subtitle)
+    last_x, last_y = hist["period"].iloc[-1], float(hist["actual"].iloc[-1])
+    band_x = [last_x] + list(forecast["period"])
+    fig.add_trace(go.Scatter(
+        x=hist["period"], y=hist["actual"], mode="lines", name="Actual", line=dict(color=theme.PRIMARY, width=2),
+        customdata=[f"Week of {format_date(p)}<br>Actual <b>{format_value(v, fmt)}</b>"
+                    for p, v in zip(hist["period"], hist["actual"])],
+        hovertemplate="%{customdata}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=band_x, y=[last_y] + list(forecast["high"]), mode="lines",
+                             line=dict(width=0), hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(x=band_x, y=[last_y] + list(forecast["low"]), mode="lines", line=dict(width=0),
+                             fill="tonexty", fillcolor=_hex_to_rgba(theme.PRIMARY, theme.FORECAST_RANGE_ALPHA),
+                             name="Likely Range (10th–90th Percentile)", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=band_x, y=[last_y] + list(forecast["forecast"]), mode="lines", name="Forecast",
+        line=dict(color=theme.PRIMARY, width=2, dash="dash"),
+        customdata=[f"Week of {format_date(last_x)}<br>Actual <b>{format_value(last_y, fmt)}</b>"] + [
+            f"Week of {format_date(r.period)} (forecast)<br><b>{format_value(r.forecast, fmt)}</b><br>"
+            f"Likely range {format_value(r.low, fmt, compact=True)} – {format_value(r.high, fmt, compact=True)}"
+            for r in forecast.itertuples()],
+        hovertemplate="%{customdata}<extra></extra>"))
+    fig.add_vline(x=last_x, line=dict(color=theme.INK_MUTED, width=1, dash="dot"))
+    fig.add_annotation(x=last_x, y=1.0, yref="paper", yanchor="bottom", xanchor="left", showarrow=False,
+                       text="Forecast →", font=dict(color=theme.INK_MUTED, size=11))
+    values = list(hist["actual"]) + list(forecast["high"]) + [0.0]
+    _format_axis(fig, values, fmt)
+    fig.update_yaxes(range=[0, max(values) * 1.08 or 1])      # the value axis starts at zero
+    _show_legend(fig)
+    fig.update_layout(hovermode="closest", legend=dict(traceorder="normal"))
+    return fig

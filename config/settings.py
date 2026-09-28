@@ -162,6 +162,19 @@ TARGET_TOLERANCE = 0.10
 # Monthly spend is a plan to hit, not "more is better": within +/-5% of the target is "On Target",
 # within +/-10% is "Within 10%", beyond that "Over Target" or "Under Target".
 SPEND_ON_TARGET_BAND = 0.05
+
+# --- Budget pacing and forecast (U6, analytics/pacing.py, analytics/forecast.py) ----------------
+# Spend to date within +/-5% of the planned budget to date is "On Pace"; above = "Overspending",
+# below = "Underspending".
+PACING_BAND = 0.05
+PACING_RECENT_DAYS = 7             # "recent utilisation" = last 7 days' spend / planned budget
+FORECAST_MIN_WEEKS = 26            # full weeks of history needed before a forecast is shown
+FORECAST_HORIZON_WEEKS = 8         # default weeks ahead (the page allows 4-8)
+FORECAST_MIN_HORIZON_WEEKS = 4
+FORECAST_MAX_HORIZON_WEEKS = 8
+FORECAST_BACKTEST_WEEKS = 12       # methods are compared on the last 12 weeks (rolling origin)
+FORECAST_RANGE_PERCENTILES = (10, 90)   # shaded range = 10th-90th percentile of past errors
+FORECAST_COVERAGE_WEEKS = 26      # the range check replays the last 26 weeks
 ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE = 3   # entities needed to estimate "the typical change"
 
 # --- AI (Gemini) ---------------------------------------------------------------------------------

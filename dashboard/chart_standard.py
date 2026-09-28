@@ -296,3 +296,50 @@ def targets_title(scorecard: pd.DataFrame, neutral: str) -> str:
     if on == len(rated):
         return f"All {len(rated)} Metrics Are On Target" if len(rated) > 1 else f"{rated.iloc[0]['label']} Is On Target"
     return f"{on} of {len(rated)} Metrics On Target; the Rest Are Within 10%"
+
+
+# ---------------------------------------------------------------------------------------------
+# Budget pacing and forecast titles (U6): read the pacing / forecast results, never calculate KPIs
+# ---------------------------------------------------------------------------------------------
+
+def pacing_title(monthly: pd.DataFrame, neutral: str) -> str:
+    """'Every Full Month Underspent: 80.1%–82.7% of Budget Used', 'All 11 Full Months Were On Pace'
+    or '3 of 12 Full Months Overspent' (partial months are not rated)."""
+    if monthly is None or monthly.empty or "status" not in monthly:
+        return neutral
+    rated = monthly[monthly["status"].isin(["On Pace", "Overspending", "Underspending"])]
+    if rated.empty:
+        return neutral
+    counts = rated["status"].value_counts()
+    low, high = rated["budget_utilisation"].min(), rated["budget_utilisation"].max()
+    span = f"{format_value(low, 'percent')}–{format_value(high, 'percent')} of Budget Used"
+    if len(counts) == 1:
+        status = counts.index[0]
+        if status == "On Pace":
+            return f"All {len(rated)} Full Months Were On Pace" if len(rated) > 1 else "The Full Month Was On Pace"
+        verb = "Underspent" if status == "Underspending" else "Overspent"
+        return f"Every Full Month {verb}: {span}" if len(rated) > 1 else f"The Full Month {verb}: {span}"
+    over = int(counts.get("Overspending", 0))
+    if over:
+        return f"{over} of {len(rated)} Full Months Overspent the Budget"
+    return f"{int(counts.get('Underspending', 0))} of {len(rated)} Full Months Underspent the Budget"
+
+
+def forecast_title(history: pd.DataFrame, forecast: pd.DataFrame, metric: str, neutral: str) -> str:
+    """'Weekly Revenue Expected to Hold Near ₹52.0 L' or 'Weekly Leads Expected to Fall 8.2% vs the
+    Last 4 Weeks': the forecast's average week against the average of the last 4 actual weeks."""
+    if history is None or forecast is None or history.empty or forecast.empty:
+        return neutral
+    recent = float(history["actual"].tail(4).mean())
+    ahead = float(forecast["forecast"].mean())
+    label = f"Weekly {_label(metric)}"
+    if recent == 0:
+        return neutral
+    change = (ahead - recent) / abs(recent) * 100          # a display comparison, not a KPI
+    direction = direction_of(change)
+    if direction == "flat":
+        return f"{label} Expected to Hold Near {_fmt(metric, ahead)}"
+    if direction not in ("up", "down"):
+        return neutral
+    verb = "Rise" if direction == "up" else "Fall"
+    return f"{label} Expected to {verb} {format_value(abs(change), 'percent')} vs the Last 4 Weeks"

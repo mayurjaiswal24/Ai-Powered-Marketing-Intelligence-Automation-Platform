@@ -20,6 +20,8 @@ from analytics.kpis import KPI_REGISTRY, compute_kpis, group_kpis, has_profit_da
 from analytics.profitability import TABLE_COLUMNS as PROFIT_COLUMNS
 from analytics.profitability import assumed_margin_label, profitability_analysis, summary_lines
 from analytics import targets as tg
+from analytics import forecast as fc
+from analytics import pacing as pc
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
@@ -44,7 +46,7 @@ NAV_SECTIONS = [
     ("Data", ["Upload & Profile", "Data Quality"]),
     ("Analysis", ["Executive Overview", "Performance Trends", "Channels", "Campaigns", "Funnel",
                   "Segments", "Anomalies"]),
-    ("Planning", ["Profitability", "Targets"]),
+    ("Planning", ["Profitability", "Targets", "Pacing & Forecast"]),
     ("AI", ["AI Insights"]),
     ("Output", ["Reports"]),
     ("", ["About"]),
@@ -55,7 +57,7 @@ PAGE_ICONS = {
     "Upload & Profile": "upload_file", "Data Quality": "fact_check", "Executive Overview": "dashboard",
     "Performance Trends": "trending_up", "Channels": "hub", "Campaigns": "campaign",
     "Funnel": "filter_alt", "Segments": "pie_chart", "Anomalies": "notification_important",
-    "Profitability": "savings", "Targets": "flag",
+    "Profitability": "savings", "Targets": "flag", "Pacing & Forecast": "speed",
     "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
 }
 PAGE_DESCRIPTIONS = {
@@ -75,6 +77,8 @@ PAGE_DESCRIPTIONS = {
                      "measured against each one's own break-even ROAS.",
     "Targets": "Set a target for your key metrics and see which ones are on track, by channel and "
                "by month.",
+    "Pacing & Forecast": "Check whether spend is on track against the budget this month, and see a weekly "
+                         "forecast for the next few weeks with a likely range.",
     "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
                    "every statement cites the evidence it is based on.",
     "Reports": "Download an executive PDF report and an analytical Excel workbook for the full "
@@ -1619,6 +1623,167 @@ def page_targets(filters: Filters) -> None:
 
 
 # ---------------------------------------------------------------------------------------------
+# Page: Pacing & Forecast (Planning, U6)
+# ---------------------------------------------------------------------------------------------
+
+PACING_BUDGET_KEY = "pacing_monthly_budget"
+
+
+def session_monthly_budget() -> float | None:
+    """The monthly budget the user entered (session only), or None."""
+    value = _state().get(PACING_BUDGET_KEY)
+    return None if value is None or float(value) <= 0 else float(value)
+
+
+def _pacing_status_table(shown: pd.DataFrame, height: int | None = None) -> None:
+    """A text table whose Status column is a coloured badge (the word is always shown)."""
+    if shown is None or shown.empty:
+        return
+    styled = shown.style.map(lambda v: f"background-color: {theme.PACING_STATUS_BACKGROUND.get(v, theme.PANEL)}; "
+                                       f"color: {theme.INK}; font-weight: 600", subset=["Status"])
+    st.dataframe(styled, hide_index=True, width="stretch", **({"height": height} if height else {}))
+
+
+def _monthly_budget_input() -> None:
+    """Only when the data has no Budget column: an optional monthly budget, prefilled from the
+    Monthly Spend target (Planning > Targets) when one is set."""
+    target = current_targets().get("monthly_spend")
+    kwargs = {} if PACING_BUDGET_KEY in _state() else {"value": target}
+    st.number_input("Monthly Budget (₹)", min_value=0.0, step=10000.0, key=PACING_BUDGET_KEY,
+                    placeholder="For example 6000000", **kwargs,
+                    help="This data has no Budget column. Enter the planned marketing budget per month; it is "
+                         "spread evenly over each month's days. It is used for this session only and is "
+                         "never saved.")
+    if target and session_monthly_budget() == target:
+        st.caption("Filled in from your Monthly Spend target (Planning > Targets).")
+
+
+def _pacing_section(df: pd.DataFrame, stored) -> None:
+    st.markdown("## Budget Pacing")
+    if not pc.can_pace(df):
+        _data_missing_state(pc.REASON_NO_DATES)
+        return
+    if not pc.has_budget_column(df):
+        _monthly_budget_input()
+    first, last = pd.Timestamp(df["date"].min()).date(), pd.Timestamp(df["date"].max()).date()
+    as_of = st.date_input("As Of", value=last, min_value=first, max_value=last, key="pacing_as_of",
+                          format="DD/MM/YYYY", help="Pacing is measured for the month of this date, up to "
+                          "this date. The default is the last date in the data.")
+    use_stored = (stored is not None and getattr(stored, "available", False) and as_of == last
+                  and not stored.assumed)
+    result = stored if use_stored else pc.pacing_analysis(df, as_of, session_monthly_budget())
+    if not result.available:
+        ui.empty_state(result.reason, icon="account_balance_wallet")
+        return
+    if result.assumed:
+        st.warning(f"{result.label}. Pacing figures are based on your input, not on budget data.")
+    p = result.overall
+    band = config_settings.PACING_BAND
+    month = tg.month_label(p["month"])
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(f"Budget · {month}", format_value(p["month_budget"], "money", compact=True), border=True,
+              help="Planned budget for the whole month (days not in the data yet are planned at the last "
+                   "7 days' average).")
+    c2.metric("Spend to Date", format_value(p["spend_to_date"], "money", compact=True), border=True,
+              help=f"Spend from the 1st of the month to the as-of date (day {p['day']} of {p['days_in_month']}). "
+                   f"Planned to date: {format_value(p['planned_to_date'], 'money', compact=True)}.")
+    ratio = None if p["pacing_ratio"] is None else p["pacing_ratio"] * 100
+    c3.metric("Pacing", format_value(ratio, "percent"), delta=p["status"], delta_color="off", border=True,
+              delta_arrow="off",
+              help=f"Spend to date ÷ planned budget to date. Within ±{band * 100:.0f}% = On Pace.")
+    var = p["projected_variance"]
+    c4.metric("Projected Month-End", format_value(p["projected_spend"], "money", compact=True),
+              delta=None if var is None else (f"{format_value(abs(var), 'money', compact=True)} "
+                                              f"{'over' if var > 0 else 'under'} budget"),
+              delta_color="off", delta_arrow="off", border=True,
+              help="Spend to date + the rest of the month's plan × the last 7 days' utilisation "
+                   "(assumes the recent pace continues).")
+    st.markdown("\n".join(f"- {line}" for line in pc.summary_lines(result)))
+
+    monthly = result.monthly
+    start, end = cs.date_span(df)
+    note = result.label if result.assumed else None
+    ui.show_chart(charts.utilisation_chart(
+        monthly, cs.pacing_title(monthly, "Budget Used by Month"),
+        subtitle=cs.subtitle(None, "month", start, end,
+                             note=" · ".join(x for x in ("Spend as % of Budget", note) if x))),
+        "Monthly budget use needs a date column.")
+    st.caption(f"On Pace = within ±{band * 100:.0f}% of the budget. A month with fewer days of data than "
+               "calendar days is a partial month and is not rated.")
+    with st.expander("Monthly Budget Table"):
+        _pacing_status_table(pc.display_monthly(monthly))
+    if not result.channels.empty:
+        st.markdown(f"## Pacing by Channel · {month}")
+        _pacing_status_table(pc.display_entities(result.channels, "channel", "Channel"))
+        st.caption("Owned channels (for example email to the company's own list) have mostly fixed costs, so "
+                   "read their pacing with care.")
+    if not result.campaigns.empty:
+        with st.expander(f"Pacing by Campaign · {month}"):
+            _pacing_status_table(pc.display_entities(result.campaigns, "campaign", "Campaign"), height=460)
+    elif result.assumed:
+        st.caption("Pacing by channel and campaign needs a Budget column in the data.")
+
+
+def _forecast_channels(df: pd.DataFrame) -> list:
+    """[None (= all channels)] + channels by spend, largest first."""
+    from analytics.common import channel_key
+    key = channel_key(df)
+    if key is None:
+        return [None]
+    size = df.groupby(key)["spend"].sum() if "spend" in df else df.groupby(key).size()
+    return [None] + [str(c) for c in size.sort_values(ascending=False, kind="stable").index]
+
+
+def _forecast_section(df: pd.DataFrame, stored) -> None:
+    st.markdown("## Forecast")
+    c1, c2, c3 = st.columns([2, 2, 1])
+    channel = c1.selectbox("Channel", _forecast_channels(df), key="forecast_channel",
+                           format_func=lambda c: "All Channels" if c is None else
+                           f"{c}{cs.OWNED_SUFFIX}" if channel_type(c) == "owned" else c)
+    low, high = config_settings.FORECAST_MIN_HORIZON_WEEKS, config_settings.FORECAST_MAX_HORIZON_WEEKS
+    horizon = c3.selectbox("Weeks Ahead", list(range(low, high + 1)), key="forecast_horizon",
+                           index=config_settings.FORECAST_HORIZON_WEEKS - low)
+    use_stored = stored is not None and channel is None and getattr(stored, "horizon", None) == horizon
+    result = stored if use_stored else fc.forecast_analysis(df, horizon, channel)
+    if not result.available:
+        ui.empty_state(result.reason, icon="query_stats")
+        return
+    metric = c2.selectbox("Metric", list(result.metrics), key="forecast_metric",
+                          format_func=lambda m: title_case(KPI_REGISTRY[m].label))
+    mf = result.metrics[metric]
+    label = title_case(KPI_REGISTRY[metric].label)
+    scope = "All Channels" if channel is None else channel
+    fig = charts.forecast_chart(
+        mf.history, mf.forecast, KPI_REGISTRY[metric].fmt,
+        cs.forecast_title(mf.history, mf.forecast, metric, f"Weekly {label} Forecast"),
+        subtitle=cs.subtitle(metric, "week", mf.history["period"].iloc[-26:].iloc[0], mf.forecast["period"].iloc[-1],
+                             note=f"{scope} · {cs.PARTIAL_WEEKS_NOTE} · Dashed = Forecast"))
+    ui.show_chart(fig, "Not enough weekly data for a forecast.")
+    st.info(f"{fc.accuracy_sentence(mf)} The shaded range covers the middle 80% of that method's past errors "
+            f"(10th to 90th percentile), so about 8 in 10 weeks should fall inside it. {fc.LIMITS_NOTE}",
+            icon=":material/insights:")
+    st.markdown("### Method and Accuracy by Metric")
+    ui.show_table(fc.summary_table(result), wrap_headers=True)
+    st.caption(f"Based on {result.weeks} full weeks. Typical error = total absolute error ÷ total actual (WAPE) "
+               f"when each method forecast the last {config_settings.FORECAST_BACKTEST_WEEKS} weeks using only "
+               "the data known at the time.")
+    with st.expander(f"Weekly Forecast · {label}"):
+        ui.show_table(fc.weekly_table(mf))
+
+
+def page_pacing(filters: Filters) -> None:
+    output = current_output()
+    _header("Pacing & Forecast")
+    df = output.clean.clean_df
+    if df is None or df.empty:
+        _no_rows_state()
+        return
+    st.caption("This page uses the full dataset: the sidebar filters do not apply here, because pacing "
+               "needs the whole month and the forecast needs the whole history.")
+    _pacing_section(df, getattr(output.analysis, "pacing", None))
+    _forecast_section(df, getattr(output.analysis, "forecast", None))
+
+# ---------------------------------------------------------------------------------------------
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
 
@@ -1967,6 +2132,31 @@ def _export_targets(output):
         return None
 
 
+def _export_pacing(output):
+    """Pacing for the exports (full dataset, as of the last date): the stored result, or one based
+    on the session's monthly budget; None when pacing is not possible."""
+    try:
+        stored = getattr(output.analysis, "pacing", None)
+        if stored is not None and stored.available:
+            return stored
+        result = pc.pacing_analysis(output.clean.clean_df, None, session_monthly_budget())
+        return result if result.available else None
+    except Exception:  # noqa: BLE001 - a pacing problem must not block the reports
+        logger.exception("Could not prepare pacing for the reports")
+        return None
+
+
+def _export_forecast(output):
+    """The weekly forecast for the exports (full dataset, all channels, default horizon), or None."""
+    try:
+        stored = getattr(output.analysis, "forecast", None)
+        result = stored if stored is not None else fc.forecast_analysis(output.clean.clean_df)
+        return result if result.available else None
+    except Exception:  # noqa: BLE001 - a forecast problem must not block the reports
+        logger.exception("Could not prepare the forecast for the reports")
+        return None
+
+
 def page_reports() -> None:
     output = current_output()
     _header("Reports")
@@ -1979,7 +2169,8 @@ def page_reports() -> None:
             try:
                 with st.spinner("Building the PDF report…"):
                     path = export_pdf(output.analysis, ai=_ai_sections(), profitability=_export_profitability(output),
-                                      targets=_export_targets(output))
+                                      targets=_export_targets(output), pacing=_export_pacing(output),
+                                      forecast=_export_forecast(output))
                 _state()["pdf_path"] = str(path)
             except ReportError as exc:
                 ui.friendly_error(exc)
@@ -1998,7 +2189,8 @@ def page_reports() -> None:
                     path = export_workbook(output.analysis, output.clean.clean_df,
                                            output.clean.quality_log_df, ai=_ai_sections(),
                                            profitability=_export_profitability(output),
-                                           targets=_export_targets(output))
+                                           targets=_export_targets(output), pacing=_export_pacing(output),
+                                           forecast=_export_forecast(output))
                 _state()["excel_path"] = str(path)
             except WorkbookError as exc:
                 ui.friendly_error(exc)

@@ -539,16 +539,96 @@ def _targets(book: _Book, result) -> None:
         row += 2
 
 
+def _pacing(book: _Book, result) -> None:
+    """U6: sheet "Pacing" - the as-of summary, every month's budget use, then the as-of month by
+    channel and campaign (Budget column only). Figures based on a user budget are labelled."""
+    if result is None or not getattr(result, "available", False):
+        return
+    from analytics.pacing import summary_lines
+    from analytics.targets import month_label
+    ws = book.sheet("Pacing")
+    row = 0
+    if result.assumed:
+        ws.write_string(row, 0, f"{result.label}: every figure on this sheet depends on it (the data has no "
+                        "Budget column).", book.fmt["section"])
+        row += 1
+    ws.write_string(row, 0, f"{result.label}. Pacing = spend to date / planned budget to date; On Pace within "
+                    f"±{cfg.PACING_BAND * 100:.0f}%. Projected month-end = spend to date + remaining plan × the "
+                    f"last {cfg.PACING_RECENT_DAYS} days' utilisation.", book.fmt["subtitle"])
+    row += 1
+    for line in summary_lines(result):
+        ws.write_string(row, 0, line, book.fmt["subtitle"])
+        row += 1
+    row += 1
+    if not result.monthly.empty:
+        ws.write_string(row, 0, "Months", book.fmt["section"])
+        monthly = result.monthly.assign(month=[month_label(p) for p in result.monthly["period"]])
+        row = book.table(ws, monthly, start_row=row + 1, freeze=False, filter_=False,
+                         columns=["month", "budget", "spend", "budget_utilisation", "variance", "days", "status"],
+                         formats={"variance": "money", "status": "text", "month": "text"})
+    month = month_label(result.overall["month"])
+    cols = ["month_budget", "planned_to_date", "spend_to_date", "pacing (%)", "projected_spend",
+            "projected_variance", "status"]
+    fmts = {c: "money" for c in cols}
+    fmts.update({"pacing (%)": "percent", "status": "text"})
+    for title, table, key in ((f"Channels · {month}", result.channels, "channel"),
+                              (f"Campaigns · {month}", result.campaigns, "campaign")):
+        if table is None or table.empty:
+            continue
+        ws.write_string(row, 0, title, book.fmt["section"])
+        row = book.table(ws, table.rename(columns={"pacing_pct": "pacing (%)"}), start_row=row + 1,
+                         columns=[key] + cols, formats=fmts, freeze=False,
+                         filter_=False)
+
+
+def _forecast(book: _Book, result) -> None:
+    """U6: sheet "Forecast" - method and accuracy per metric, then every forecast week with its
+    likely range (real numbers)."""
+    if result is None or not getattr(result, "available", False):
+        return
+    from analytics.forecast import LIMITS_NOTE, METHODS
+    from analytics.kpis import KPI_REGISTRY
+    from utils.formatting import title_case
+    ws = book.sheet("Forecast")
+    ws.write_string(0, 0, f"Weekly forecast for all channels, {result.horizon} weeks ahead, from {result.weeks} full "
+                    f"weeks. Method per metric = lowest error (WAPE) when forecasting the last "
+                    f"{cfg.FORECAST_BACKTEST_WEEKS} weeks; range = 10th-90th percentile of past errors.",
+                    book.fmt["subtitle"])
+    ws.write_string(1, 0, LIMITS_NOTE, book.fmt["subtitle"])
+    summary = pd.DataFrame([{"metric": title_case(KPI_REGISTRY[m].label), "method": METHODS[mf.method],
+                             "typical error (%)": mf.wape} for m, mf in result.metrics.items()])
+    ws.write_string(3, 0, "Method and Accuracy", book.fmt["section"])
+    row = book.table(ws, summary, start_row=4, freeze=False, filter_=False,
+                     formats={"metric": "text", "method": "text", "typical error (%)": "percent"})
+    ws.write_string(row, 0, "Weekly Forecast", book.fmt["section"])
+    row += 1
+    headers = ["Metric", "Week Starting", "Forecast", "Low (10th Percentile)", "High (90th Percentile)"]
+    for j, h in enumerate(headers):
+        ws.write_string(row, j, h, book.fmt["header"])
+    for m, mf in result.metrics.items():
+        fmt = book.number_format(KPI_REGISTRY[m].fmt, mf.forecast["forecast"])
+        fmt = book.fmt["count"] if KPI_REGISTRY[m].fmt == "count" else fmt
+        for r in mf.forecast.itertuples():
+            row += 1
+            ws.write_string(row, 0, title_case(KPI_REGISTRY[m].label), book.fmt["text"])
+            book.write_value(ws, row, 1, pd.Timestamp(r.period), book.fmt["date"])
+            for j, v in ((2, r.forecast), (3, r.low), (4, r.high)):
+                book.write_value(ws, row, j, float(v), fmt)
+    ws.set_column(0, 1, 18)
+    ws.set_column(2, 4, 20)
+
+
 # ---------------------------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------------------------
 
 def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
                       quality_log: pd.DataFrame | None = None, ai: dict | None = None,
-                      profitability=None, targets=None) -> list[str]:
+                      profitability=None, targets=None, pacing=None, forecast=None) -> list[str]:
     """Write the workbook to a path or binary buffer. Returns the sheet names written.
     `profitability` (optional) replaces the result's own, e.g. one based on an assumed margin.
-    `targets` (optional, U5) adds the "Targets" sheet."""
+    `targets` (optional, U5) adds the "Targets" sheet. `pacing` / `forecast` (optional, U6) replace
+    the result's own (e.g. pacing based on the user's monthly budget) for "Pacing" and "Forecast"."""
     generated = format_datetime_ist(datetime.now(timezone.utc)) + " IST"
     try:
         book = _Book(str(output) if isinstance(output, Path) else output)
@@ -561,6 +641,8 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
         _channels(book, result)
         _profitability(book, profitability if profitability is not None else getattr(result, "profitability", None))
         _targets(book, targets)
+        _pacing(book, pacing if pacing is not None else getattr(result, "pacing", None))
+        _forecast(book, forecast if forecast is not None else getattr(result, "forecast", None))
         _segments(book, result)
         _funnel(book, result)
         _trends(book, result)
@@ -579,13 +661,14 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
 
 def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: pd.DataFrame | None = None,
                     exports_dir: str | Path | None = None, db_path=None, ai: dict | None = None,
-                    profitability=None, targets=None) -> Path:
+                    profitability=None, targets=None, pacing=None, forecast=None) -> Path:
     """Save under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Workbook", run_id, "xlsx")
-    generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability, targets=targets)
+    generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability, targets=targets,
+                      pacing=pacing, forecast=forecast)
     if run_id:
         from database import repository
         from database.connection import DatabaseError
