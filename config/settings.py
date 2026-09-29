@@ -224,6 +224,9 @@ AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long
 AI_TEMPERATURE = 0.2               # low: we want careful, repeatable interpretation
 AI_MAX_CALLS_PER_REQUEST = 2       # one request may use a 2nd call: fallback model or unreadable answer
 AI_NUMBER_TOLERANCE = 0.01         # relative tolerance when checking AI numbers against evidence
+# Prompt v7: an incident this short (days) is never the primary cause of a trend over the 28-day
+# comparison window; the evaluator marks such a claim as weak.
+AI_SHORT_INCIDENT_DAYS = 14
 # AI field mapping (ai/mapping.py): what Gemini may see about a problem column.
 AI_MAPPING_SAMPLE_VALUES = 3       # at most this many example values per problem column
 AI_MAPPING_SAMPLE_CHARS = 40       # each example value is cut to this length

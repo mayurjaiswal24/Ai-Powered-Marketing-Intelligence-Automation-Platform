@@ -2149,8 +2149,8 @@ def page_ai() -> None:
     c3.metric("Unverified Figures", format_count(ev["unverified"]), border=True,
               help="Statements with at least one figure that could not be matched to their evidence.")
     c4.metric("Weak", format_count(ev.get("weak", 0)), border=True,
-              help="Kept but weak: it restates a single finding, or leaves out the ₹ impact of the "
-                   "incident it relies on.")
+              help="Kept but weak: it breaks one of the AI quality rules (for example it restates a single "
+                   "finding or uses wording that claims a cause). The reason is shown under the statement.")
     c5.metric("Dropped", format_count(ev["dropped"]), border=True,
               help="Statements removed because they cited no valid evidence.")
     usage = ("saved insights, no AI call used" if run.from_cache else

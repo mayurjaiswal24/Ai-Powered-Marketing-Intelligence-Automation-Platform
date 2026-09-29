@@ -99,7 +99,7 @@ def test_size_limit_trims_lowest_priority_first(analysis):
 
 def test_fingerprint_changes_with_the_new_prompt_version(pack):
     from ai.cache import compute_fingerprint
-    assert PROMPT_VERSION == "v6"
+    assert PROMPT_VERSION >= "v6"             # the v6 rules stay in later versions
     assert pack.fingerprint != compute_fingerprint(pack.json_text, "m", prompt_version="v5")
 
 

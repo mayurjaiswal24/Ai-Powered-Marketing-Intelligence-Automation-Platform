@@ -20,6 +20,10 @@
 6. Forecasts (v6): a money range with one shared unit ("₹2.7-5.9 Cr") is read as two amounts, so
    both ends are checked. An item that quotes figures from the forecast evidence must quote at
    least two of them (a range) and the past error; otherwise it is marked WEAK.
+7. v7, also marked WEAK: causal-certainty wording (prompts.BANNED_CAUSAL_PHRASES); calling an
+   incident of AI_SHORT_INCIDENT_DAYS or fewer the primary cause of a trend without saying it
+   is partial; and, when the pacing evidence is not "On Pace", recommendations that never refer
+   to it (the flag is put on the top-ranked recommendation, where the reader sees it).
 """
 
 from __future__ import annotations
@@ -38,6 +42,13 @@ ID_PATTERN = re.compile(r"^E\d{2,3}$")
 # "₹2.7-5.9 Cr" / "₹2.7 to ₹5.9 Cr": the unit written once applies to both ends of the range.
 MONEY_RANGE = re.compile(r"₹\s?(\d[\d,]*(?:\.\d+)?)\s?(–|-|to)\s?(₹\s?)?(\d[\d,]*(?:\.\d+)?)\s?(Cr|crore|L|lakhs|lakh)\b")
 from config.settings import AI_NUMBER_TOLERANCE as RELATIVE_TOLERANCE  # noqa: E402
+from config.settings import AI_SHORT_INCIDENT_DAYS  # noqa: E402
+from ai.prompts import BANNED_CAUSAL_PHRASES  # noqa: E402
+
+BANNED = re.compile(r"\b(" + "|".join(re.escape(p) for p in BANNED_CAUSAL_PHRASES) + r")\b", re.IGNORECASE)
+PRIMARY_CAUSE = re.compile(r"\b(primar(y|ily)|main(ly)?|mostly|largely|chiefly|driven by|caused by)\b", re.IGNORECASE)
+PARTIAL = re.compile(r"\b(partial(ly)?|part of|contribut\w*|unexplained)\b", re.IGNORECASE)
+PACING_WORDS = re.compile(r"\b(pacing|underspen\w*|overspen\w*|unused budget|of plan)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -120,6 +131,7 @@ def evaluate(insights: dict, pack) -> tuple[dict, Evaluation]:
             for item in kept_items:
                 _add_at_stake(item, pack)
             kept_items = rank_by_at_stake(kept_items)
+            _pacing_check(kept_items, pack, ev)
         checked[key] = (kept_items[0] if kept_items else None) if key == "executive_summary" else kept_items
     return checked, ev
 
@@ -150,11 +162,59 @@ def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
                 shown = ", ".join(f"{i}: {pack.by_id[i].facts.get('estimated impact', '').split(' (')[0]}" for i in ids)
                 weak.append(f"Does not mention the rupee impact of the incident it relies on ({shown}).")
     weak += _forecast_checks(item, pack)
+    weak += _wording_checks(item, pack)
     item["weak"] = bool(weak)
     item["weak_reasons"] = weak
     if weak:
         ev.weak += 1
         item["warnings"] = item.get("warnings", []) + weak
+
+
+def _incident_days(ev_item) -> int | None:
+    """Length in days of an incident evidence item ("period": "8 Sep 2026 to 9 Sep 2026")."""
+    import pandas as pd
+    try:
+        start, end = (pd.Timestamp(x.strip()) for x in ev_item.facts.get("period", "").split(" to "))
+    except (ValueError, TypeError):
+        return None
+    return int((end - start).days) + 1
+
+
+def _wording_checks(item: dict, pack) -> list[str]:
+    """v7: banned causal-certainty wording; a short incident called the primary cause of a trend."""
+    text = item.get("text", "") or ""
+    reasons = []
+    used = BANNED.findall(text)
+    if used:
+        reasons.append(f'Uses causal-certainty wording ("{used[0].lower()}"); use "consistent with", '
+                       '"may indicate" or "one contributing factor".')
+    if PRIMARY_CAUSE.search(text) and not PARTIAL.search(text):
+        for eid in item.get("evidence_ids", []):
+            ev_item = pack.by_id.get(eid)
+            days = _incident_days(ev_item) if ev_item is not None and ev_item.type == "incident" else None
+            if days is not None and days <= AI_SHORT_INCIDENT_DAYS:
+                reasons.append(f"Treats a {days}-day incident as the main cause of a longer trend; describe it "
+                               "as a partial or contributing factor.")
+                break
+    return reasons
+
+
+def _pacing_check(recommendations: list[dict], pack, ev) -> None:
+    """v7: when pacing is off plan, at least one recommendation must refer to it."""
+    pacing = [i for i in pack.by_id.values() if i.type == "pacing" and i.facts.get("status") != "On Pace"]
+    if not pacing or not recommendations:
+        return
+    if any(pacing[0].id in r.get("evidence_ids", []) or PACING_WORDS.search(r.get("text", "") or "")
+           for r in recommendations):
+        return
+    top = recommendations[0]
+    reason = (f"No recommendation refers to budget pacing ({pacing[0].facts.get('status')} in the latest "
+              f"month, {pacing[0].id}).")
+    if not top.get("weak"):
+        ev.weak += 1
+    top["weak"] = True
+    top["weak_reasons"] = top.get("weak_reasons", []) + [reason]
+    top["warnings"] = top.get("warnings", []) + [reason]
 
 
 def _forecast_checks(item: dict, pack) -> list[str]:
