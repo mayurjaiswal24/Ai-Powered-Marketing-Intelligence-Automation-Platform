@@ -354,12 +354,15 @@ def page_upload() -> None:
                                     help="One row per day and campaign works best. Maximum size: "
                                          f"{limit_mb} MB.")
         if uploaded is not None and _state().get("uploaded_id") != uploaded.file_id:
-            _state()["uploaded_id"] = uploaded.file_id
             try:
                 raw_df, report = load_raw(uploaded)
                 _reset_for_new_file(raw_df, report, uploaded.name)
             except IngestionError as exc:
                 ui.friendly_error(exc)
+            # Marked as handled only AFTER the data is stored (or the file was rejected). Streamlit
+            # can stop a run at any session-state access when a new rerun arrives; marking it first
+            # made that rerun skip the file and show "No data is loaded yet" with the file attached.
+            _state()["uploaded_id"] = uploaded.file_id
     with right, st.container(border=True, height="stretch"):
         ui.card_title("Try the Demo", "No file at hand? Explore the platform with realistic sample "
                       "data from an education brand.")

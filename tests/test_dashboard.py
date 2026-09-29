@@ -219,6 +219,51 @@ def test_app_no_revenue_hides_revenue_kpis(app):
     _visit_all_pages(at)
 
 
+def _upload_clean_sample(at):
+    data = (ROOT / "data" / "sample" / "marketing_clean.csv").read_bytes()
+    return at.file_uploader(key="uploader").upload("marketing_clean.csv", data, "text/csv").run()
+
+
+def _profiled_on_this_run(at) -> bool:
+    text = " ".join(m.value for m in at.markdown)
+    return "Dataset Profile" in text and "No data is loaded yet" not in text
+
+
+def test_upload_profiles_file_on_first_interaction(app):
+    at = _upload_clean_sample(app.run())
+    assert not at.exception
+    assert _profiled_on_this_run(at)
+    assert [m.value for m in at.metric][1] == "8,471"
+
+
+def test_upload_survives_rerun_arriving_while_file_is_read(app, monkeypatch):
+    """Bug fix: a rerun request that arrives while the file is being read (a click, or the browser
+    re-sending the uploader's state) stops the run at the next session-state access. The file must
+    still be profiled in the restarted run, in the same single interaction, never skipped."""
+    import dashboard.layout as layout
+    from streamlit.proto.WidgetStates_pb2 import WidgetStates
+    from streamlit.runtime.scriptrunner import get_script_run_ctx
+    from streamlit.runtime.scriptrunner_utils.script_requests import RerunData
+    real_load_raw, calls = layout.load_raw, []
+
+    def load_raw_interrupted_once(source, *args, **kwargs):
+        result = real_load_raw(source, *args, **kwargs)
+        calls.append(source.name)
+        if len(calls) == 1:                       # same widget states, as the browser would send
+            ctx = get_script_run_ctx()
+            states = WidgetStates()
+            states.widgets.extend(ctx.session_state.get_widget_states())
+            ctx.script_requests.request_rerun(RerunData(widget_states=states))
+        return result
+
+    monkeypatch.setattr(layout, "load_raw", load_raw_interrupted_once)
+    at = _upload_clean_sample(app.run())
+    assert not at.exception
+    assert len(calls) == 2                        # the interrupted read was retried, not skipped
+    assert _profiled_on_this_run(at)
+    assert [m.value for m in at.metric][1] == "8,471"
+
+
 def test_pages_before_analysis_show_empty_state(app):
     at = app.run()
     at.sidebar.radio(key="page").set_value("Executive Overview").run()
