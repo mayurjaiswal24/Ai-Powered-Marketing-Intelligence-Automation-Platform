@@ -565,3 +565,32 @@ def pacing_status(ratio, band: float | None = None) -> str:
     if ratio < round(1 - band, 9):
         return UNDERSPENDING
     return ON_PACE
+
+
+# ---------------------------------------------------------------------------------------------
+# Response curves (U7 scenario planner): conversions = a x spend^b per channel
+# ---------------------------------------------------------------------------------------------
+
+def response_scale(base_conversions, base_spend, b) -> float | None:
+    """Anchor the curve to the recent average week: a = conversions / spend^b, so the curve passes
+    exactly through the last 8 weeks' average spend and conversions (the regression gives b, the
+    shape; the anchor keeps the level current)."""
+    if base_conversions is None or base_spend is None or b is None or float(base_spend) <= 0:
+        return None
+    return float(base_conversions) / float(base_spend) ** float(b)
+
+
+def response_conversions(spend, a, b) -> float | None:
+    """Weekly conversions expected at a weekly spend: a x spend^b (0 at no spend). With 0 < b <= 1
+    each extra rupee buys a little less than the one before (diminishing returns)."""
+    if spend is None or a is None or b is None or pd.isna(spend):
+        return None
+    return 0.0 if float(spend) <= 0 else float(a) * float(spend) ** float(b)
+
+
+def marginal_cost_per_conversion(spend, a, b) -> float | None:
+    """Cost of the NEXT conversion at this weekly spend = 1 / (a x b x spend^(b-1)), the inverse of
+    the curve's slope. Rises as spend grows when b < 1. None when it cannot be worked out."""
+    if spend is None or a is None or b is None or float(spend) <= 0 or float(a) <= 0 or float(b) <= 0:
+        return None
+    return safe_divide(1.0, float(a) * float(b) * float(spend) ** (float(b) - 1.0))

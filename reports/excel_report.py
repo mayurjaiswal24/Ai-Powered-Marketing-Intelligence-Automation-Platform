@@ -618,13 +618,88 @@ def _forecast(book: _Book, result) -> None:
     ws.set_column(2, 4, 20)
 
 
+def _response_curves(book: _Book, result) -> None:
+    """U7: sheet "Response_Curves" - the data check per paid channel, then each qualifying
+    channel's curve, marginal cost and guardrails (real numbers). Scenarios are not included."""
+    if result is None or getattr(result, "checks", None) is None or result.checks.empty:
+        return
+    from analytics.response_curves import HONEST_NOTE, clamp_note, summary_frame
+    ws = book.sheet("Response_Curves")
+    ws.write_string(0, 0, "Weekly conversions = a x spend^b per paid channel, fitted on full weeks (incident weeks "
+                    "left out) and anchored to the last 8 weeks' average. Marginal cost per conversion = "
+                    "1 / (a x b x spend^(b-1)) at the current weekly spend. Per-result channels are not fitted.",
+                    book.fmt["subtitle"])
+    ws.write_string(1, 0, HONEST_NOTE, book.fmt["subtitle"])
+    row = 2
+    if not result.available:
+        ws.write_string(row, 0, result.reason, book.fmt["subtitle"])
+        row += 1
+    for cv in result.usable.values():
+        if cv.clamped:
+            ws.write_string(row, 0, clamp_note(cv), book.fmt["subtitle"])
+            row += 1
+    ws.write_string(row + 1, 0, "Data Check", book.fmt["section"])
+    checks = result.checks.rename(columns={"cv": "spend variation (CV)", "max_min": "highest / lowest week"})
+    row = book.table(ws, checks, start_row=row + 2, freeze=False, filter_=False,
+                     formats={"pricing": "text", "weeks_with_spend": "count", "spend variation (CV)": "number",
+                              "highest / lowest week": "ratio", "qualifies": "text", "result": "text"})
+    summary = summary_frame(result)
+    if not summary.empty:
+        ws.write_string(row, 0, "Curves and Marginal Cost", book.fmt["section"])
+        money = ["weekly_spend_now", "aov", "cpa", "marginal_cost_per_conversion", "guardrail_low", "guardrail_high"]
+        fmts = {c: "money" for c in money}
+        fmts.update({"b": "number", "b_fitted": "number", "r_squared": "number", "weeks_used": "count",
+                     "weekly_conversions_now": "number", "conversions_per_lakh": "number",
+                     "pricing": "text", "status": "text", "confidence": "text", "incidents_left_out": "text"})
+        book.table(ws, summary, start_row=row + 1, freeze=False, filter_=False, formats=fmts)
+
+
+def scenario_workbook(result, scenario, output) -> None:
+    """U7 "Download Scenario (Excel)": one scenario from the planner (labelled estimate, weekly,
+    real numbers). Session-only: nothing is saved by the app."""
+    from analytics.response_curves import HONEST_NOTE
+    try:
+        book = _Book(output)
+        ws = book.sheet("Scenario")
+        ws.write_string(0, 0, f"Scenario: {scenario.name}", book.fmt["title"])
+        ws.write_string(1, 0, "Estimate per week for the channels in the planner, from past patterns. CAC = spend / "
+                        "conversions; revenue = conversions x each channel's average order value of the last 8 weeks. "
+                        "Likely range = 10th-90th percentile.", book.fmt["subtitle"])
+        ws.write_string(2, 0, HONEST_NOTE, book.fmt["subtitle"])
+        row = 3
+        for w in scenario.warnings:
+            ws.write_string(row, 0, w, book.fmt["subtitle"])
+            row += 1
+        t = scenario.totals
+        totals = pd.DataFrame([{"metric": label, "now": t.get(f"{k}_before"), "scenario": t.get(f"{k}_after"),
+                                "low (10th percentile)": t.get(f"{k}_low"),
+                                "high (90th percentile)": t.get(f"{k}_high")}
+                               for k, label in (("spend", "Spend per week"), ("conversions", "Conversions per week"),
+                                                ("revenue", "Revenue per week"), ("cac", "CAC"), ("roas", "ROAS"))])
+        ws.write_string(row + 1, 0, "Totals", book.fmt["section"])
+        row = book.table(ws, totals, start_row=row + 2, freeze=False, filter_=False,
+                         formats={"metric": "text", "now": "number", "scenario": "number",
+                                  "low (10th percentile)": "number", "high (90th percentile)": "number"})
+        ws.write_string(row, 0, "By Channel", book.fmt["section"])
+        table = scenario.table.drop(columns=["per_lakh_after"], errors="ignore")
+        fmts = {c: "money" for c in table.columns if c.startswith(("spend", "revenue", "marginal"))}
+        fmts.update({c: "number" for c in table.columns if c.startswith("conversions")})
+        fmts["pricing"] = "text"
+        book.table(ws, table, start_row=row + 1, freeze=False, filter_=False, formats=fmts)
+        ws.set_column(0, 0, 24)
+        book.close()
+    except Exception as exc:  # noqa: BLE001
+        raise WorkbookError("The scenario file could not be created. Please try again.") from exc
+
+
 # ---------------------------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------------------------
 
 def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
                       quality_log: pd.DataFrame | None = None, ai: dict | None = None,
-                      profitability=None, targets=None, pacing=None, forecast=None) -> list[str]:
+                      profitability=None, targets=None, pacing=None, forecast=None,
+                      response_curves=None) -> list[str]:
     """Write the workbook to a path or binary buffer. Returns the sheet names written.
     `profitability` (optional) replaces the result's own, e.g. one based on an assumed margin.
     `targets` (optional, U5) adds the "Targets" sheet. `pacing` / `forecast` (optional, U6) replace
@@ -643,6 +718,8 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
         _targets(book, targets)
         _pacing(book, pacing if pacing is not None else getattr(result, "pacing", None))
         _forecast(book, forecast if forecast is not None else getattr(result, "forecast", None))
+        _response_curves(book, response_curves if response_curves is not None
+                         else getattr(result, "response_curves", None))
         _segments(book, result)
         _funnel(book, result)
         _trends(book, result)
@@ -661,14 +738,15 @@ def generate_workbook(result, output, clean_df: pd.DataFrame | None = None,
 
 def export_workbook(result, clean_df: pd.DataFrame | None = None, quality_log: pd.DataFrame | None = None,
                     exports_dir: str | Path | None = None, db_path=None, ai: dict | None = None,
-                    profitability=None, targets=None, pacing=None, forecast=None) -> Path:
+                    profitability=None, targets=None, pacing=None, forecast=None,
+                    response_curves=None) -> Path:
     """Save under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Workbook", run_id, "xlsx")
     generate_workbook(result, path, clean_df, quality_log, ai, profitability=profitability, targets=targets,
-                      pacing=pacing, forecast=forecast)
+                      pacing=pacing, forecast=forecast, response_curves=response_curves)
     if run_id:
         from database import repository
         from database.connection import DatabaseError

@@ -22,6 +22,7 @@ from analytics.kpis import KPIResult, compute_kpis
 from analytics.forecast import forecast_analysis
 from analytics.pacing import pacing_analysis
 from analytics.profitability import profitability_analysis
+from analytics.response_curves import response_analysis
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import all_time_series, seasonality_index
 
@@ -60,6 +61,9 @@ class AnalysisResult:
     # before U6. Not part of tables(), so the stored tables and the AI evidence pack are unchanged.
     pacing: object = None
     forecast: object = None
+    # U7 response curves per paid channel (analytics/response_curves.py: data check, curves,
+    # marginal cost) for the scenario planner. None on analyses saved before U7; not in tables().
+    response_curves: object = None
 
     def tables(self) -> dict[str, pd.DataFrame]:
         """Every result table by name (the names findings refer to)."""
@@ -131,6 +135,7 @@ def run_analysis(clean_df: pd.DataFrame, capabilities=None, quality_summary=None
     if has_dates:
         result.pacing = pacing_analysis(df)
         result.forecast = forecast_analysis(df)
+        result.response_curves = response_analysis(df, result.incidents)
     result.findings = generate_findings(result.tables(), data_end=result.metadata.get("date_max"))
     return result
 

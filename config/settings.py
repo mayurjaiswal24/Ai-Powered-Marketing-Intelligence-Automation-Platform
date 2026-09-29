@@ -177,6 +177,33 @@ FORECAST_RANGE_PERCENTILES = (10, 90)   # shaded range = 10th-90th percentile of
 FORECAST_COVERAGE_WEEKS = 26      # the range check replays the last 26 weeks
 ANOMALY_MIN_ENTITIES_FOR_COMMON_MOVE = 3   # entities needed to estimate "the typical change"
 
+# --- Scenario planner (U7, analytics/response_curves.py) --------------------------------------
+# Data check per paid channel (full weeks): enough weeks with spend, and spend that varied enough
+# (coefficient of variation, and highest week / lowest week) to see how results respond to it.
+RESPONSE_MIN_WEEKS = 20
+RESPONSE_MIN_CV = 0.15
+RESPONSE_MIN_MAX_RATIO = 1.5
+RESPONSE_MIN_FIT_WEEKS = 12        # weeks left after incident weeks are removed, to fit a curve
+RESPONSE_RECENT_WEEKS = 8          # baseline spend, curve anchor, AOV and CPA = the last 8 full weeks
+# How each channel is priced. "auction" (the default) gets a fitted curve; "performance" channels
+# are paid per result, so their spend follows results and is never curve-fitted (keys lower-case).
+CHANNEL_PRICING = {"affiliate": "performance", "affiliates": "performance",
+                   "affiliate network": "performance"}
+PERFORMANCE_CAP_MULTIPLE = 1.2     # performance channel: at most 1.2 x its best week's conversions
+RESPONSE_BOOTSTRAP_SAMPLES = 200   # curve refits on resampled weeks, for the 10th-90th percentile range
+RESPONSE_BOOTSTRAP_SEED = 7        # fixed seed: the same data always gives the same range
+RESPONSE_RANGE_PERCENTILES = (10, 90)
+# Confidence in a curve: High needs R-squared >= 0.5 on >= 30 weeks; Medium >= 0.25 on >= 20 weeks.
+RESPONSE_CONFIDENCE_HIGH = (0.5, 30)
+RESPONSE_CONFIDENCE_MEDIUM = (0.25, 20)
+# Guardrails: a scenario's weekly spend stays within 0.5 x the lowest and 1.3 x the highest weekly
+# spend seen for that channel (outside that the curve is a guess).
+SCENARIO_GUARDRAIL_LOW = 0.5
+SCENARIO_GUARDRAIL_HIGH = 1.3
+SCENARIO_MOVE_PCT = 15             # "Move Budget" default: 15% of the FROM channel's weekly spend
+SCENARIO_SLIDER_PCT = 50           # advanced sliders: each channel -50% to +50%
+SCENARIO_SUGGEST_MAX_CHANGE = 0.30 # "Suggest Allocation": at most +/-30% per channel
+
 # --- AI (Gemini) ---------------------------------------------------------------------------------
 # The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
 # trimmed first. Keeps each call small (free-tier friendly) and focused.

@@ -554,3 +554,63 @@ def forecast_chart(history: pd.DataFrame, forecast: pd.DataFrame, fmt: str, titl
     _show_legend(fig)
     fig.update_layout(hovermode="closest", legend=dict(traceorder="normal"))
     return fig
+
+
+# ---------------------------------------------------------------------------------------------
+# Scenario planner (U7)
+# ---------------------------------------------------------------------------------------------
+
+def response_curve_chart(curve, new_spend: float | None, title: str, subtitle: str | None = None,
+                         points: int = 60) -> go.Figure | None:
+    """One channel's weekly conversions vs weekly spend: the estimated curve in the channel's
+    colour with its likely range (10th-90th percentile) as a light band, the observed weeks as dots
+    (incident weeks left out of the fit are hollow grey), and labelled dotted lines at the current
+    and the scenario spend. The curve is drawn only inside the guardrails (the spend range seen)."""
+    if curve is None or not getattr(curve, "usable", False) or curve.weekly is None or curve.weekly.empty:
+        return None
+    color = theme.entity_colors([curve.channel])[curve.channel]
+    grid = np.linspace(max(curve.guard_low, 1.0), curve.guard_high, points)
+    mid = [curve.conversions(s) for s in grid]
+    band = [curve.conversions_range(s) for s in grid]
+    fig = _base(title, subtitle=subtitle)
+    fig.add_trace(go.Scatter(x=grid, y=[b[1] for b in band], mode="lines", line=dict(width=0),
+                             hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(x=grid, y=[b[0] for b in band], mode="lines", line=dict(width=0), fill="tonexty",
+                             fillcolor=_hex_to_rgba(color, theme.FORECAST_RANGE_ALPHA),
+                             name="Likely Range (10th–90th Percentile)", hoverinfo="skip"))
+    fig.add_trace(go.Scatter(
+        x=grid, y=mid, mode="lines", name="Estimated Curve", line=dict(color=color, width=2),
+        customdata=[f"Weekly spend {format_value(s, 'money', compact=True)}<br>About <b>{format_value(m, 'count')}"
+                    f"</b> conversions a week" for s, m in zip(grid, mid)],
+        hovertemplate="%{customdata}<extra></extra>"))
+    w = curve.weekly[curve.weekly["spend"] > 0]
+    for excluded, name in ((False, "Past Weeks"), (True, "Incident Weeks (Left Out)")):
+        part = w[w["excluded"] == excluded]
+        if part.empty:
+            continue
+        marker = (dict(color=theme.SURFACE, size=7, line=dict(color=theme.CONTEXT, width=1.5)) if excluded
+                  else dict(color=_hex_to_rgba(color, 0.55), size=7))
+        fig.add_trace(go.Scatter(
+            x=part["spend"], y=part["conversions"], mode="markers", name=name, marker=marker,
+            customdata=[f"Week of {format_date(p)}{' (incident, left out)' if excluded else ''}<br>Spend "
+                        f"{format_value(s, 'money', compact=True)} · {format_value(c, 'count')} conversions"
+                        for p, s, c in zip(part["period"], part["spend"], part["conversions"])],
+            hovertemplate="%{customdata}<extra></extra>"))
+    marks = [(curve.base_spend, "Now", theme.INK_MUTED)]
+    if new_spend is not None and abs(float(new_spend) - curve.base_spend) > 0.5:
+        marks.append((float(new_spend), "Scenario", theme.INK))
+    for x, label, ink in marks:
+        fig.add_vline(x=x, line=dict(color=ink, width=1, dash="dot"))
+        fig.add_annotation(x=x, y=0.99, yref="paper", yanchor="top", showarrow=False, text=label,
+                           bgcolor=_hex_to_rgba(theme.SURFACE, 0.85),
+                           xanchor="left" if label == "Scenario" and x >= curve.base_spend else "right",
+                           font=dict(color=ink, size=11))
+    _format_axis(fig, list(grid) + [0.0], "money", axis="x")
+    values = list(w["conversions"]) + [b[1] for b in band if b[1] is not None] + [0.0]
+    _format_axis(fig, values, "count")
+    fig.update_yaxes(range=[0, max(values) * 1.08 or 1], showgrid=True, gridcolor=theme.GRID,
+                     title_text="Conversions per Week")
+    fig.update_xaxes(showgrid=False, title_text="Spend per Week (₹)")
+    _show_legend(fig)
+    fig.update_layout(hovermode="closest")
+    return fig

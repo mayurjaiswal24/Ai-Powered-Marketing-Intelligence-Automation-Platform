@@ -22,6 +22,7 @@ from analytics.profitability import assumed_margin_label, profitability_analysis
 from analytics import targets as tg
 from analytics import forecast as fc
 from analytics import pacing as pc
+from analytics import response_curves as rc
 from analytics.segments import SEGMENT_DIMENSIONS, available_dimensions, segment_table
 from analytics.trends import time_series
 from config.fields import FIELD_BY_NAME, FIELDS, channel_type
@@ -46,7 +47,7 @@ NAV_SECTIONS = [
     ("Data", ["Upload & Profile", "Data Quality"]),
     ("Analysis", ["Executive Overview", "Performance Trends", "Channels", "Campaigns", "Funnel",
                   "Segments", "Anomalies"]),
-    ("Planning", ["Profitability", "Targets", "Pacing & Forecast"]),
+    ("Planning", ["Profitability", "Targets", "Pacing & Forecast", "Scenario Planner"]),
     ("AI", ["AI Insights"]),
     ("Output", ["Reports"]),
     ("", ["About"]),
@@ -58,6 +59,7 @@ PAGE_ICONS = {
     "Performance Trends": "trending_up", "Channels": "hub", "Campaigns": "campaign",
     "Funnel": "filter_alt", "Segments": "pie_chart", "Anomalies": "notification_important",
     "Profitability": "savings", "Targets": "flag", "Pacing & Forecast": "speed",
+    "Scenario Planner": "tune",
     "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
 }
 PAGE_DESCRIPTIONS = {
@@ -79,6 +81,8 @@ PAGE_DESCRIPTIONS = {
                "by month.",
     "Pacing & Forecast": "Check whether spend is on track against the budget this month, and see a weekly "
                          "forecast for the next few weeks with a likely range.",
+    "Scenario Planner": "Estimate what moving budget between paid channels could do, from how each channel's "
+                        "results responded to its spend in the past.",
     "AI Insights": "Google Gemini interprets the verified findings. It never calculates the numbers; "
                    "every statement cites the evidence it is based on.",
     "Reports": "Download an executive PDF report and an analytical Excel workbook for the full "
@@ -1783,6 +1787,232 @@ def page_pacing(filters: Filters) -> None:
     _pacing_section(df, getattr(output.analysis, "pacing", None))
     _forecast_section(df, getattr(output.analysis, "forecast", None))
 
+
+# ---------------------------------------------------------------------------------------------
+# Page: Scenario Planner (Planning, U7)
+# ---------------------------------------------------------------------------------------------
+
+SCENARIO_MODES = ["Move Budget", "Adjust Each Channel", "Suggest Allocation"]
+
+
+def session_response_curves(output):
+    """The stored response curves, or (analyses saved before U7) curves worked out now and kept
+    for this session. Never saved: scenarios are session-only."""
+    stored = getattr(output.analysis, "response_curves", None)
+    if stored is not None:
+        return stored
+    cache = _state().get("rc_cache")
+    if cache is None or cache[0] != id(output):
+        cache = (id(output), rc.response_analysis(output.clean.clean_df, output.analysis.incidents))
+        _state()["rc_cache"] = cache
+    return cache[1]
+
+
+def _scenario_card(col, label: str, t: dict, key: str, fmt: str, lower_is_better: bool = False) -> None:
+    before, after = t.get(f"{key}_before"), t.get(f"{key}_after")
+    low, high = t.get(f"{key}_low"), t.get(f"{key}_high")
+    delta = None
+    if before is not None and after is not None:
+        diff = after - before
+        shown = format_value(abs(diff), fmt, compact=True)
+        delta = ("No change" if format_value(after, fmt, compact=True) == format_value(before, fmt, compact=True)
+                 else ("+" if diff >= 0 else "-") + shown + " vs now")
+    col.metric(label, format_value(after, fmt, compact=True), delta=delta,
+               delta_color="off" if delta == "No change" else "inverse" if lower_is_better else "normal",
+               delta_arrow="off" if delta == "No change" else "auto", border=True,
+               help=f"Now: {format_value(before, fmt, compact=True)} a week. Likely range in the scenario "
+                    f"(10th–90th percentile): {format_value(low, fmt, compact=True)} – "
+                    f"{format_value(high, fmt, compact=True)}. An estimate from past patterns.")
+    col.caption(f"Now {format_value(before, fmt, compact=True)} · Likely {format_value(low, fmt, compact=True)}"
+                f" – {format_value(high, fmt, compact=True)}")
+
+
+def _scenario_inputs(result) -> tuple[dict, list, str]:
+    """The scenario the user asked for: (weekly spend per channel, warnings, name)."""
+    channels = list(result.usable)
+    mode = st.radio("Scenario", SCENARIO_MODES, key="scenario_mode", horizontal=True,
+                    help="Move Budget shifts a share of one channel's spend to another. Adjust Each Channel "
+                         "changes every channel separately. Suggest Allocation lets the app move money towards "
+                         "the channels where the next rupee buys the most.")
+    if mode == "Move Budget":
+        # Default: from the channel where the next conversion costs the most to the one where it costs least.
+        by_cost = sorted(channels, key=lambda c: result.usable[c].marginal_cost(result.usable[c].base_spend)
+                         or float("inf"))
+        for key, default in (("scenario_from", by_cost[-1]), ("scenario_to", by_cost[0])):
+            if _state().get(key) not in channels:
+                _state()[key] = default
+        c1, c2, c3 = st.columns([2, 2, 1])
+        source = c1.selectbox("From", channels, key="scenario_from")
+        target = c2.selectbox("To", channels, key="scenario_to")
+        if "scenario_pct" not in _state():
+            _state()["scenario_pct"] = config_settings.SCENARIO_MOVE_PCT
+        pct = c3.number_input("Share to Move (%)", min_value=1, max_value=50, step=1, key="scenario_pct",
+                              help="Share of the FROM channel's weekly spend to move. The total stays the same.")
+        if source == target:
+            st.caption("Choose two different channels.")
+        spend, warnings = rc.move_budget(result, source, target, pct)
+        return spend, warnings, f"Move {pct:g}% of {source} to {target}"
+    if mode == "Adjust Each Channel":
+        limit = config_settings.SCENARIO_SLIDER_PCT
+        cols = st.columns(2)
+        changes = {}
+        for i, c in enumerate(channels):
+            changes[c] = cols[i % 2].slider(f"{c} (% Change)", -limit, limit, 0, 5, key=f"scenario_adj_{c}",
+                                            format="%d%%")
+        spend, warnings = rc.adjust_channels(result, changes)
+        base_total, new_total = sum(rc.baseline(result).values()), sum(spend.values())
+        diff = new_total - base_total
+        change = ("no change" if abs(diff) < 1 else
+                  ("+" if diff > 0 else "−") + format_value(abs(diff), "money", compact=True) + " vs now")
+        st.markdown(f"**Weekly Total: {format_value(new_total, 'money', compact=True)}** ({change})")
+        return spend, warnings, "Adjust Each Channel"
+    spend = rc.suggest_allocation(result)
+    st.caption(f"Suggested allocation: moves money from the channels where the last rupee buys the fewest "
+               f"conversions to those where the next rupee buys the most, at most "
+               f"±{config_settings.SCENARIO_SUGGEST_MAX_CHANGE * 100:.0f}% per channel, inside each channel's "
+               "past spend range, with the same total. It is an estimate, not a plan to follow blindly.")
+    return spend, [], "Suggested Allocation (Estimate)"
+
+
+def page_scenarios(filters: Filters) -> None:
+    output = current_output()
+    _header("Scenario Planner")
+    df = output.clean.clean_df
+    if df is None or df.empty:
+        _no_rows_state()
+        return
+    st.caption("This page uses the full dataset: the sidebar filters do not apply here, because the curves "
+               "need every week of each channel's history.")
+    result = session_response_curves(output)
+    if result is None or result.checks is None or result.checks.empty:
+        ui.empty_state(getattr(result, "reason", "") or rc.REASON_NO_DATA, icon="tune")
+        return
+    st.markdown("## Data Check")
+    ui.show_table(rc.checks_table(result), wrap_headers=True)
+    st.caption(f"A paid channel qualifies with at least {config_settings.RESPONSE_MIN_WEEKS} full weeks of spend, "
+               f"spend variation (CV) of at least {config_settings.RESPONSE_MIN_CV:.2f} and a highest week at least "
+               f"{config_settings.RESPONSE_MIN_MAX_RATIO:g}× the lowest. Owned channels are left out. Channels "
+               "priced per result (for example Affiliate) are not curve-fitted: their spend follows their results.")
+    if not result.available:
+        ui.empty_state(result.reason, icon="tune")
+        return
+    st.info(rc.HONEST_NOTE, icon=":material/info:")
+
+    st.markdown("## Budget Efficiency by Channel")
+    ui.show_table(rc.efficiency_table(result), wrap_headers=True)
+    st.markdown("\n".join(f"- {rc.per_lakh_sentence(cv)}" for cv in result.usable.values()))
+    for cv in result.usable.values():
+        if cv.clamped:
+            st.warning(rc.clamp_note(cv))
+    st.caption("Curve: weekly conversions = a × spend^b, fitted on past weeks (incident weeks left out) and "
+               "anchored to the last 8 weeks' average. b below 1 = each extra rupee buys a little less. "
+               "Next conversion cost = 1 ÷ the curve's slope at today's weekly spend.")
+
+    st.markdown("## Try a Scenario")
+    note = _state().pop("scenario_prefill_note", None)
+    if note:
+        st.success(note)
+    spend, warnings, name = _scenario_inputs(result)
+    scenario = rc.evaluate(result, spend, name, warnings)
+    for w in scenario.warnings:
+        st.warning(w)
+    t = scenario.totals
+    st.markdown(f"### Estimated Weekly Results · {name}")
+    c1, c2, c3, c4 = st.columns(4)
+    _scenario_card(c1, "Conversions per Week", t, "conversions", "count")
+    _scenario_card(c2, "Revenue per Week", t, "revenue", "money")
+    _scenario_card(c3, "CAC", t, "cac", "money", lower_is_better=True)
+    _scenario_card(c4, "ROAS", t, "roas", "ratio")
+    st.caption("Estimate · per week · channels in the planner only · CAC = spend ÷ conversions · revenue = "
+               "conversions × each channel's average order value of the last 8 weeks. Scenarios are not "
+               "saved: they stay in this browser session only.")
+    ui.show_table(rc.scenario_display(scenario), wrap_headers=True)
+    buffer = io.BytesIO()
+    try:
+        from reports.excel_report import scenario_workbook
+        scenario_workbook(result, scenario, buffer)
+        st.download_button("Download Scenario (Excel)", buffer.getvalue(), file_name="Scenario_Estimate.xlsx",
+                           key="download_scenario", icon=":material/download:",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except WorkbookError as exc:
+        ui.friendly_error(exc)
+
+    st.markdown("## Response Curve by Channel")
+    channels = list(result.usable)
+    channel = st.selectbox("Channel", channels, key="scenario_curve_channel")
+    cv = result.usable[channel]
+    new = float(scenario.table.set_index("channel").loc[channel, "spend_after"])
+    ui.show_chart(charts.response_curve_chart(
+        cv, new, cs.response_title(cv, None, f"{channel}: Weekly Conversions vs Spend"),
+        subtitle=cs.subtitle(None, "week", *cs.date_span(df),
+                             note=f"Conversions vs Spend (₹) · {cs.PARTIAL_WEEKS_NOTE} · Estimate")),
+        "Not enough weekly data for a curve.")
+    if cv.status == "performance":
+        st.caption(f"{channel} is paid per result, so it is not curve-fitted: conversions = spend ÷ its recent "
+                   f"cost per conversion, up to {config_settings.PERFORMANCE_CAP_MULTIPLE:g}× its best week.")
+
+
+# ---------------------------------------------------------------------------------------------
+# "Open in Scenario Planner" from an AI budget-move recommendation (UI only: pre-fills the page)
+# ---------------------------------------------------------------------------------------------
+
+def _evidence_channel(ev) -> str | None:
+    """The channel an evidence item is about: a channel item's name, or a campaign's channel."""
+    if ev.type == "channel":
+        return ev.title.split(": ", 1)[-1]
+    if ev.type == "campaign":
+        name = str(ev.facts.get("channel", "")).replace(" (owned channel)", "").strip()
+        return name or None
+    return None
+
+
+def ai_scenario_move(item: dict, pack, channels) -> tuple[str, str, float] | None:
+    """(FROM, TO, %) for an AI budget-move recommendation, when both channels are in the planner:
+    FROM = the channel of the item the money moves from, TO = the best-ROAS other cited channel."""
+    from ai.evaluator import budget_source
+    pct = item.get("test_shift_pct")
+    if not pct or pack is None:
+        return None
+    source = budget_source(item, pack)
+    frm = _evidence_channel(source) if source is not None else None
+    if frm not in channels:
+        return None
+    options = []
+    for i, eid in enumerate(item.get("evidence_ids", [])):
+        ev = pack.by_id.get(eid)
+        if ev is None or ev is source:
+            continue
+        ch = _evidence_channel(ev)
+        if ch in channels and ch != frm:
+            options.append((ev.values.get("roas", float("-inf")), -i, ch))
+    if not options:
+        return None
+    return frm, max(options)[2], float(pct)
+
+
+def _ai_scenario_button(item: dict, pack, key: str) -> None:
+    """'Open in Scenario Planner' under an AI budget move whose channels are both in the planner."""
+    output = current_output()
+    try:
+        curves = session_response_curves(output) if output is not None else None
+        move = ai_scenario_move(item, pack, list(curves.usable)) if curves is not None and curves.available else None
+    except Exception:  # noqa: BLE001 - the button is a convenience; the insight still shows
+        logger.exception("Could not prepare the scenario for an AI recommendation")
+        move = None
+    if move is not None:
+        st.button("Open in Scenario Planner", key=f"open_scenario_{key}", on_click=_open_scenario, args=move,
+                  icon=":material/tune:", help=f"Estimate moving {move[2]:g}% of {move[0]} to {move[1]}.")
+
+
+def _open_scenario(frm: str, to: str, pct: float) -> None:
+    """Button callback: pre-fill Move Budget and open the Scenario Planner."""
+    state = _state()
+    state.update(scenario_mode="Move Budget", scenario_from=frm, scenario_to=to, scenario_pct=int(round(pct)),
+                 page="Scenario Planner",
+                 scenario_prefill_note=f"Pre-filled from an AI recommendation: move {pct:g}% of {frm} to {to}. "
+                                       "The estimate below is calculated by the app, not by the AI.")
+
+
 # ---------------------------------------------------------------------------------------------
 # Pages: AI Insights, Data Quality, Reports
 # ---------------------------------------------------------------------------------------------
@@ -1949,6 +2179,8 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
         details.append(item["at_stake_text"] + ", calculated by the app.")
     for d in details:
         st.caption(d)
+    if item.get("test_shift_pct"):
+        _ai_scenario_button(item, pack, key)
     for w in item.get("warnings", []):
         st.warning(w)
     with st.expander(f"Evidence {ids}"):
@@ -2157,6 +2389,15 @@ def _export_forecast(output):
         return None
 
 
+def _export_response_curves(output):
+    """Response curves for the exports (full dataset): stored, or worked out for older analyses."""
+    try:
+        return session_response_curves(output)
+    except Exception:  # noqa: BLE001 - a curve problem must not block the reports
+        logger.exception("Could not prepare the response curves for the reports")
+        return None
+
+
 def page_reports() -> None:
     output = current_output()
     _header("Reports")
@@ -2170,7 +2411,8 @@ def page_reports() -> None:
                 with st.spinner("Building the PDF report…"):
                     path = export_pdf(output.analysis, ai=_ai_sections(), profitability=_export_profitability(output),
                                       targets=_export_targets(output), pacing=_export_pacing(output),
-                                      forecast=_export_forecast(output))
+                                      forecast=_export_forecast(output),
+                                      response_curves=_export_response_curves(output))
                 _state()["pdf_path"] = str(path)
             except ReportError as exc:
                 ui.friendly_error(exc)
@@ -2190,7 +2432,8 @@ def page_reports() -> None:
                                            output.clean.quality_log_df, ai=_ai_sections(),
                                            profitability=_export_profitability(output),
                                            targets=_export_targets(output), pacing=_export_pacing(output),
-                                           forecast=_export_forecast(output))
+                                           forecast=_export_forecast(output),
+                                           response_curves=_export_response_curves(output))
                 _state()["excel_path"] = str(path)
             except WorkbookError as exc:
                 ui.friendly_error(exc)

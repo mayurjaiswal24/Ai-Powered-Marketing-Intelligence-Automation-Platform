@@ -33,6 +33,7 @@ PAGE_RENDERERS = {
     "Profitability": layout.page_profitability,
     "Targets": layout.page_targets,
     "Pacing & Forecast": layout.page_pacing,
+    "Scenario Planner": layout.page_scenarios,
 }
 
 

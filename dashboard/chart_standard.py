@@ -343,3 +343,21 @@ def forecast_title(history: pd.DataFrame, forecast: pd.DataFrame, metric: str, n
         return neutral
     verb = "Rise" if direction == "up" else "Fall"
     return f"{label} Expected to {verb} {format_value(abs(change), 'percent')} vs the Last 4 Weeks"
+
+
+# ---------------------------------------------------------------------------------------------
+# Scenario planner titles (U7): read the response-curve results, never calculate KPIs
+# ---------------------------------------------------------------------------------------------
+
+def response_title(curve, spend: float | None, neutral: str) -> str:
+    """'Paid Search: The Next ₹1 L Buys About 11 Conversions' at the given weekly spend, or
+    'Affiliate Is Paid per Result: About ₹8,688 per Conversion'."""
+    if curve is None or not getattr(curve, "usable", False):
+        return neutral
+    spend = curve.base_spend if spend is None else spend
+    if curve.status == "performance":
+        return f"{curve.channel} Is Paid per Result: About {format_value(curve.cpa, 'money', compact=True)} per Conversion"
+    n = curve.per_lakh(spend)
+    if n is None:
+        return neutral
+    return f"{curve.channel}: The Next ₹1 L Buys About {format_value(n, 'count')} Conversions"

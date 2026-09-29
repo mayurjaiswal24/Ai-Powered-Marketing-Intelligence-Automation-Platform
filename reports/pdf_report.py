@@ -56,6 +56,7 @@ TAGS = {
     "Recommendation": ("#e0f1e0", "#006300"),
     "User assumption": ("#fdf1d6", "#8a5d00"),     # U4: figures based on a user-entered margin
     "User target": ("#fdf1d6", "#8a5d00"),         # U5: targets entered in the app
+    "Estimate": ("#fdf1d6", "#8a5d00"),            # U7: response-curve estimates from past patterns
 }
 
 
@@ -182,6 +183,7 @@ class _Report:
         self.targets = None                        # U5: TargetsResult, only when targets are set
         self.pacing = getattr(result, "pacing", None)        # U6
         self.forecast = getattr(result, "forecast", None)    # U6
+        self.response_curves = getattr(result, "response_curves", None)   # U7
         self.s = _styles()
         self.story: list = []
         self.section_no = 0
@@ -600,6 +602,32 @@ def _pacing_outlook(rep: _Report) -> None:
         rep.p(LIMITS_NOTE, "small")
 
 
+def _budget_efficiency(rep: _Report) -> None:
+    """Budget Efficiency (U7): the data check and, per paid channel in the planner, what the next
+    conversion costs at today's weekly spend. Scenarios are not part of the report."""
+    curves = rep.response_curves
+    if curves is None or getattr(curves, "checks", None) is None or curves.checks.empty:
+        return
+    from analytics.response_curves import (HONEST_NOTE, checks_table, clamp_note, efficiency_table,
+                                           per_lakh_sentence)
+    rep.h1("Budget Efficiency")
+    rep.p("How each paid channel's weekly conversions responded to its weekly spend in the past (weekly "
+          "conversions = a × spend^b, incident weeks left out, anchored to the last 8 weeks). The next "
+          "conversion cost is what one more conversion would cost at today's weekly spend.", "small")
+    checks = checks_table(curves)
+    rep.h2("Data check")
+    rep.table(checks, list(checks.columns))
+    if not curves.available:
+        rep.p(curves.reason, "small")
+        return
+    table = efficiency_table(curves).drop(columns=["Incident Weeks Left Out"], errors="ignore")
+    rep.h2("Next conversion cost by channel")
+    rep.table(table, list(table.columns))
+    rep.bullets([per_lakh_sentence(cv) for cv in curves.usable.values()] +
+                [clamp_note(cv) for cv in curves.usable.values() if cv.clamped])
+    rep.p(tag("Estimate") + " " + escape(HONEST_NOTE), "small", raw=True)
+
+
 def _funnel(rep: _Report) -> None:
     f = rep.r.funnel
     if f.empty:
@@ -871,7 +899,8 @@ def _appendix(rep: _Report) -> None:
 # ---------------------------------------------------------------------------------------------
 
 def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None,
-                 profitability=None, targets=None, pacing=None, forecast=None) -> None:
+                 profitability=None, targets=None, pacing=None, forecast=None,
+                 response_curves=None) -> None:
     """Write the executive report for `result` to a file path or a binary buffer. `profitability`
     (optional) replaces the result's own, e.g. one based on the user's assumed margin. `targets`
     (optional, U5) adds "Performance vs Targets". `pacing` / `forecast` (optional, U6) replace the
@@ -886,10 +915,12 @@ def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None
         rep.pacing = pacing
     if forecast is not None:
         rep.forecast = forecast
+    if response_curves is not None:
+        rep.response_curves = response_curves
     try:
         _cover(rep, generated)
         for section in (_executive_summary, _kpi_overview, _overall_performance, _channels,
-                        _campaigns, _profitability, _targets, _pacing_outlook, _funnel, _segments, _trends, _key_findings,
+                        _campaigns, _profitability, _targets, _pacing_outlook, _budget_efficiency, _funnel, _segments, _trends, _key_findings,
                         _performance_concerns, _ai_section, _data_quality, _methodology,
                         _limitations, _appendix):
             section(rep)
@@ -909,14 +940,14 @@ def generate_pdf(result, output: str | Path | io.BytesIO, ai: dict | None = None
 
 def export_pdf(result, exports_dir: str | Path | None = None, db_path=None,
                ai: dict | None = None, profitability=None, targets=None, pacing=None,
-               forecast=None) -> Path:
+               forecast=None, response_curves=None) -> Path:
     """Save the report under exports/<run_id>/ and record it in the database (if the run was saved)."""
     run_id = result.metadata.get("run_id")
     folder = Path(exports_dir or EXPORTS_DIR) / (str(run_id) if run_id else "unsaved")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / export_filename("Marketing_Intelligence_Report", run_id, "pdf")
     generate_pdf(result, path, ai=ai, profitability=profitability, targets=targets, pacing=pacing,
-                 forecast=forecast)
+                 forecast=forecast, response_curves=response_curves)
     if run_id:
         from database import repository
         from database.connection import DatabaseError
