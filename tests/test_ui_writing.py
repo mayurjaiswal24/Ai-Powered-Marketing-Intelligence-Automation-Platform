@@ -41,7 +41,8 @@ def test_sentence_and_date_range():
 def test_about_copy_is_exact():
     titles = [t for t, _ in layout.ABOUT_FEATURES]
     assert titles == ["Upload Any Marketing Export", "Clean and Validate the Data", "Calculate Verified KPIs",
-                      "Detect What Changed", "Explain Results in Plain Language", "Share the Results"]
+                      "Detect What Changed", "Plan What's Next", "Explain Results in Plain Language",
+                      "Share the Results"]
     assert all(text.endswith(".") and text[0].isupper() for _, text in layout.ABOUT_FEATURES)
     assert layout.ABOUT_FOOTER.startswith("Built with Python, pandas, Streamlit, Plotly, SQLite, Google "
                                           "Gemini, ReportLab, Matplotlib and XlsxWriter.")

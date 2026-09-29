@@ -63,8 +63,8 @@ PAGE_ICONS = {
     "AI Insights": "auto_awesome", "Reports": "description", "About": "info",
 }
 PAGE_DESCRIPTIONS = {
-    "Upload & Profile": "Turn any marketing export into verified KPIs, insights and ready-to-share "
-                        "reports in minutes.",
+    "Upload & Profile": "Turn any marketing export into verified KPIs, profitability, targets, pacing, "
+                        "forecasts and budget plans, with ready-to-share reports, in minutes.",
     "Data Quality": "See what was fixed, flagged or excluded during cleaning, and what it means for "
                     "the numbers.",
     "Executive Overview": "See the headline numbers, where the money goes and the most important findings.",
@@ -365,8 +365,8 @@ def page_upload() -> None:
         ("Upload", "Add a CSV or Excel export from any ad platform, CRM or campaign tracker."),
         ("Check the Mapping", "The app recognises your columns and cleans the data. Confirm anything "
                           "it is unsure about."),
-        ("Analyse", "Run the analysis to get verified KPIs, channel and campaign insights, "
-                    "incidents and reports."),
+        ("Analyse", "Run the analysis to get verified KPIs, channel and campaign insights, incidents, "
+                    "profitability, targets, budget pacing, a forecast, scenario planning and reports."),
     ])
     left, right = st.columns([3, 2], gap="large")
     with left, st.container(border=True, height="stretch"):
@@ -2477,6 +2477,8 @@ ABOUT_FEATURES = [
      "recalculated from totals."),
     ("Detect What Changed", "Trends, channel and campaign rankings, segment performance, and "
      "incidents ranked by their ₹ impact."),
+    ("Plan What's Next", "Break-even profitability, targets, budget pacing, an 8-week forecast and a "
+     "what-if budget planner, all under Planning."),
     ("Explain Results in Plain Language", "Optional AI insights that cite the verified numbers "
      "behind every statement."),
     ("Share the Results", "A PDF report and an analytical Excel workbook that match the dashboard "

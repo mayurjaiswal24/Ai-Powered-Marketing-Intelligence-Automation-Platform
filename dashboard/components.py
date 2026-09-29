@@ -39,10 +39,12 @@ _DEFAULT_NAME = "Marketing Intelligence Platform"
 
 
 def brand_header() -> None:
-    """Sidebar top: a small bar-chart logo mark and the product name."""
+    """Sidebar top: the product mark (assets/logo.svg) and the product name."""
+    from utils.logo import logo_data_uri
+    uri = logo_data_uri()
+    mark = f"<img class='mi-logo' src='{uri}' alt=''>" if uri else ""
     st.markdown(
-        "<div class='mi-brand'><div class='mi-logo'><span style='height:9px'></span>"
-        "<span style='height:14px'></span><span style='height:19px'></span></div>"
+        f"<div class='mi-brand'>{mark}"
         f"<div><div class='mi-brand-name'>{html.escape(_detail('APP_NAME') or _DEFAULT_NAME)}</div>"
         "<div class='mi-brand-sub'>Marketing analytics &amp; AI insights</div></div></div>",
         unsafe_allow_html=True)

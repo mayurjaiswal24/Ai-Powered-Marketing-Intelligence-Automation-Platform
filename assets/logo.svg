@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Marketing Intelligence Platform</title>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#1c5cab"/>
+  <rect x="12" y="38" width="10" height="15" rx="2" fill="#9ec0ea"/>
+  <rect x="27" y="30" width="10" height="23" rx="2" fill="#9ec0ea"/>
+  <rect x="42" y="22" width="10" height="31" rx="2" fill="#9ec0ea"/>
+  <polyline points="9,39 17,32 32,24 47,15 53,11" fill="none" stroke="#ffffff" stroke-width="4.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="53" cy="11" r="4.5" fill="#ffffff"/>
+</svg>

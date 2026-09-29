@@ -10,8 +10,8 @@ from pathlib import Path
 
 import streamlit as st
 
-# Browser tab: product name and the "MJ" monogram (assets/brand/mj_icon.png).
-_ICON = Path(__file__).resolve().parent / "assets" / "brand" / "mj_icon.png"
+# Browser tab: product name and the product mark (assets/logo.svg, also used in the sidebar and PDF).
+_ICON = Path(__file__).resolve().parent / "assets" / "logo.svg"
 st.set_page_config(page_title="Marketing Intelligence Platform",
                    page_icon=str(_ICON) if _ICON.exists() else None,
                    layout="wide", initial_sidebar_state="auto")

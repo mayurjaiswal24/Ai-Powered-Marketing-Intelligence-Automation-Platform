@@ -340,9 +340,7 @@ APP_CSS = f"""
   /* --- Sidebar: brand header, grouped menu, signature --- */
   [data-testid="stSidebar"] {{ border-right: 1px solid {BORDER}; }}
   .mi-brand {{ display: flex; align-items: center; gap: 0.6rem; margin: -0.4rem 0 0.2rem 0; }}
-  .mi-logo {{ width: 34px; height: 34px; border-radius: 9px; background: {BRAND}; flex: none;
-              display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; }}
-  .mi-logo span {{ width: 5px; background: #ffffff; border-radius: 2px; }}
+  .mi-logo {{ width: 34px; height: 34px; flex: none; display: block; }}
   .mi-brand-name {{ font-weight: 680; color: {INK}; font-size: 0.98rem; line-height: 1.15; }}
   .mi-brand-sub {{ color: {INK_MUTED}; font-size: 0.74rem; }}
   .st-key-mi_nav [role="radiogroup"] {{ gap: 0.1rem; }}

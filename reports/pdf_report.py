@@ -23,7 +23,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
-from reportlab.platypus import (CondPageBreak, Image, KeepTogether, PageBreak, Paragraph,
+from reportlab.platypus import (CondPageBreak, Flowable, Image, KeepTogether, PageBreak, Paragraph,
                                 SimpleDocTemplate, Spacer, Table, TableStyle)
 
 from analytics.kpis import KPI_REGISTRY, RATIO_KPIS
@@ -33,6 +33,7 @@ from dashboard import chart_standard as cs
 from dashboard import theme
 from dashboard.tables import format_table
 from reports import export_filename, pdf_charts
+from utils.logo import draw_logo
 from utils.formatting import (strip_evidence_tags, format_count, format_date, format_date_range, format_datetime_ist,
                               format_value, title_case, title_case_label)
 
@@ -166,8 +167,9 @@ def _decorate(meta: dict, generated: str, title: str = REPORT_TITLE, first_page:
         canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 11 * mm, str(meta.get("dataset_name") or ""))
         canvas.setFont("DejaVu", 7.5)
         canvas.setFillColor(colors.HexColor(theme.INK_MUTED))
-        canvas.drawString(MARGIN, 10 * mm, cfg.REPORT_SIGNATURE)
-        canvas.drawString(MARGIN, 6.5 * mm, f"Generated {generated} · Confidential: internal use only")
+        draw_logo(canvas, MARGIN, 6 * mm, 6.5 * mm)            # product mark (assets/logo.svg)
+        canvas.drawString(MARGIN + 8.5 * mm, 10 * mm, cfg.REPORT_SIGNATURE)
+        canvas.drawString(MARGIN + 8.5 * mm, 6.5 * mm, f"Generated {generated} · Confidential: internal use only")
         canvas.restoreState()
     return on_page
 
@@ -278,10 +280,26 @@ class _Report:
 # Sections
 # ---------------------------------------------------------------------------------------------
 
+class _Logo(Flowable):
+    """The product mark as a flowable (cover page)."""
+
+    def __init__(self, size: float):
+        super().__init__()
+        self.size = size
+
+    def wrap(self, *_args):
+        return self.size, self.size
+
+    def draw(self):
+        draw_logo(self.canv, 0, 0, self.size)
+
+
 def _cover(rep: _Report, generated: str) -> None:
     meta = rep.r.metadata
     s = rep.s
-    rep.story.append(Spacer(1, 55 * mm))
+    rep.story.append(Spacer(1, 37 * mm))
+    rep.story.append(_Logo(14 * mm))                           # product mark (assets/logo.svg)
+    rep.story.append(Spacer(1, 4 * mm))
     rep.story.append(Paragraph(REPORT_TITLE, s["cover_title"]))
     rep.story.append(Spacer(1, 4 * mm))
     rep.story.append(Paragraph("A performance, efficiency and data quality review generated "
