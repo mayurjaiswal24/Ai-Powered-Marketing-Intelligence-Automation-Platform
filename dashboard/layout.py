@@ -518,8 +518,11 @@ def _recent_analyses() -> None:
                 continue
             state = _state()
             for key in ("raw_df", "report", "source_label", "overrides", "prep", "prep_key", "view",
-                        "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm", "uploaded_id"):
+                        "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
                 state.pop(key, None)
+            # A file still sitting in the upload box counts as handled, so the rerun opens this saved
+            # analysis instead of reading that file in again. Uploading a file afterwards still works.
+            state["uploaded_id"] = getattr(state.get("uploader"), "file_id", None)
             state["output"] = output
             st.rerun()
 

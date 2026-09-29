@@ -264,6 +264,25 @@ def test_upload_survives_rerun_arriving_while_file_is_read(app, monkeypatch):
     assert [m.value for m in at.metric][1] == "8,471"
 
 
+def test_open_recent_analysis_ignores_file_left_in_uploader(app):
+    """Bug fix: "Open" on a Recent Analysis opens that saved analysis, even with a file attached."""
+    at = app.run()
+    at.button(key="load_sample").click().run()
+    at.button(key="run_analysis").click().run()
+    run_id = at.session_state["output"].run_id
+    data = (ROOT / "data" / "sample" / "marketing_no_revenue.csv").read_bytes()
+    at.file_uploader(key="uploader").upload("marketing_no_revenue.csv", data, "text/csv").run()
+    assert at.session_state["source_label"] == "marketing_no_revenue.csv"     # file attached and read
+    at.button(key=f"open_run_{run_id}").click().run()
+    assert not at.exception
+    assert at.session_state["output"].run_id == run_id
+    assert "raw_df" not in at.session_state                                # the attached file was not reloaded
+    assert any(f"Opened Analysis #{run_id}" in s.value for s in at.success)
+    assert "Dataset Profile" not in " ".join(m.value for m in at.markdown)
+    at.run()                                                               # stays open on later reruns
+    assert "raw_df" not in at.session_state and at.session_state["output"].run_id == run_id
+
+
 def test_pages_before_analysis_show_empty_state(app):
     at = app.run()
     at.sidebar.radio(key="page").set_value("Executive Overview").run()
