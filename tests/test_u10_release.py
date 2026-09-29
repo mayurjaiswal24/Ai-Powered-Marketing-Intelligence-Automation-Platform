@@ -45,17 +45,18 @@ def test_pdf_footers_and_excel_title_block_show_the_version(output, tmp_path):
 
 def test_roadmap_badges_follow_app_version():
     now = layout.roadmap_html("2.0")
-    assert now.count("Current") == 1 and now.count("Planned") == 2        # the v3.0 name is also "Planned"
-    assert now.index("v2.0 · Decision Intelligence") < now.index(">Current<") < now.index("v3.0 · Planned")
+    assert now.count("Current") == 1 and "Planned" not in now and "v3.0" not in now
+    assert now.index("v2.0 · Decision Intelligence") < now.index(">Current<") < now.index("What I&#x27;d Build Next")
     for version, name, text in layout.ABOUT_ROADMAP:
-        assert f"v{version} · {name}" in now and text.replace("'", "&#x27;") in now
+        heading = f"v{version} · {name}" if version else name
+        assert heading.replace("'", "&#x27;") in now and text.replace("'", "&#x27;") in now
     later = layout.roadmap_html("3.0")
-    assert "mi-badge-planned" not in later and later.index(">Current<") > later.index("v3.0 · Planned")
+    assert later.count("Current") == 0 and "mi-badge" not in later               # no step is v3.0
 
 
 def test_roadmap_copy_is_exact():
     assert [(v, n) for v, n, _ in layout.ABOUT_ROADMAP] == [
-        ("1.0", "Foundation"), ("2.0", "Decision Intelligence"), ("3.0", "Planned")]
+        ("1.0", "Foundation"), ("2.0", "Decision Intelligence"), ("", "What I'd Build Next")]
     assert layout.ABOUT_ROADMAP[1][2].startswith("Insight-driven visualisation, profitability and break-even")
     assert layout.ABOUT_ROADMAP[2][2].endswith("scheduled reports and alerts, team workspaces.")
 

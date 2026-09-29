@@ -63,9 +63,9 @@ New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" a
 |---|---|---|
 | **v1.0 · Foundation** | Released | Upload and auto-mapping, data cleaning, verified KPIs, channel, campaign, funnel and segment analysis, incident detection, AI insights, PDF and Excel reports. |
 | **v2.0 · Decision Intelligence** | **Current** | Insight-driven visualisation, profitability and break-even analysis, targets, budget pacing and forecast, scenario planner, Basic and Professional views, self-learning column mapping and smarter AI recommendations. |
-| **v3.0** | Planned | Customer lifetime value and cohorts, multi-touch attribution, live connections to ad platforms, scheduled reports and alerts, team workspaces. |
+| **What I'd Build Next** | | Customer lifetime value and cohorts, multi-touch attribution, live connections to ad platforms, scheduled reports and alerts, team workspaces. |
 
-v3.0 is a direction, not a promise. The version number comes from `APP_VERSION` in `config/settings.py`.
+The last row lists ideas, not promises. The version number comes from `APP_VERSION` in `config/settings.py`.
 
 _Screenshots: add `docs/images/overview.png`, `anomalies.png`, `ai_insights.png`, `pdf.png`._
 
@@ -222,7 +222,7 @@ docs/                   architecture, methodology, demo script, project walkthro
 
 ## Future improvements
 
-Planned for v3.0:
+What I'd build next:
 
 - **Customer lifetime value and cohorts:** judge channels by the value of the customers they
   bring over time, not only by first-order revenue.
