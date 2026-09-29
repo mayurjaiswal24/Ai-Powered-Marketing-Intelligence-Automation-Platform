@@ -31,7 +31,7 @@ from dashboard import chart_standard as cs
 from dashboard import charts, components as ui, theme
 from dashboard.filters import (DATE_PRESETS, Filters, apply_dimension_filters, apply_filters,
                                available_filters, describe, describe_chips, preset_range)
-from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, learn_mappings, load_raw,
+from dashboard.pipeline import (DEFAULT_SAMPLE, SAMPLE_DATASETS, load_raw,
                                 prepare, reopen_run, run_pipeline, sample_path)
 from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
@@ -121,36 +121,12 @@ def current_prep():
     key = (s["report"].file_hash, tuple(sorted(s.get("overrides", {}).items(), key=str)))
     if s.get("prep_key") != key:
         layout, assistant = _assistant(s["raw_df"].columns)
-        s["prep"] = prepare(s["raw_df"], s["report"], s.get("overrides") or None, assistant=assistant,
-                            learned=_learned())
+        s["prep"] = prepare(s["raw_df"], s["report"], s.get("overrides") or None, assistant=assistant)
         s["ai_map_session_calls"] = s.get("ai_map_session_calls", 0) + assistant.calls_made
         if s["prep"].ai.source == "none" and s["prep"].ai.note:
             s.setdefault("ai_map_tried", {})[layout] = s["prep"].ai.note
         s["prep_key"] = key
     return s["prep"]
-
-
-def _learned() -> dict | None:
-    """Mappings learned from earlier files (U2); none in public mode or if the database fails."""
-    if not config_settings.settings.learning_active:
-        return None
-    from database import repository
-    from database.connection import DatabaseError
-    try:
-        return repository.load_learned_mappings()
-    except DatabaseError:
-        return None
-
-
-def _learn(prep) -> None:
-    """After a successful run: remember user choices and verified AI mappings (never public)."""
-    if not config_settings.settings.learning_active:
-        return
-    from database.connection import DatabaseError
-    try:
-        learn_mappings(prep)
-    except DatabaseError:
-        pass                                   # learning must never break an analysis
 
 
 def _session_id() -> str:
@@ -467,7 +443,6 @@ def page_upload() -> None:
             st.toast("Analysis complete", icon=":material/check_circle:")
             _state()["output"] = output
             _state()["output_prep_key"] = _state().get("prep_key")
-            _learn(prep)
             _preload_demo(output, prep.report)
             for key in ("view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
                 _state().pop(key, None)
@@ -619,8 +594,6 @@ def _confirm_delete(run_id: int, file_name: str) -> None:
 def _source_label(m) -> str:
     if m.source == "user":
         return "Your choice"
-    if m.source == "learned":
-        return "Learned"
     return "AI" if m.source in ("ai", "ai_rejected") else "Rule"
 
 
@@ -2225,7 +2198,6 @@ def page_quality() -> None:
     log = output.clean.quality_log_df
     if log.empty:
         ui.empty_state("No changes were needed: the data was used as supplied.", icon="task_alt")
-        _learned_mappings_panel()
         return
     f1, f2 = st.columns(2)
     severities = f1.multiselect("Severity", ["error", "warning", "info"], key="dq_sev", placeholder="All",
@@ -2252,50 +2224,7 @@ def page_quality() -> None:
     st.caption("Data Row 1 is the first row under the column headings in your file.")
     st.download_button("Download Change Log (CSV)", buffer.getvalue(),
                        file_name="data_quality_log.csv", mime="text/csv", key="dq_download")
-    _learned_mappings_panel()
     _ai_usage_panel()
-
-
-def _learned_mappings_panel() -> None:
-    """How many column names the app has learned, and a way to forget them (with a confirm)."""
-    if not config_settings.settings.learning_active:
-        return
-    from database import repository
-    from database.connection import DatabaseError
-    st.markdown("## Learned Mappings")
-    try:
-        count = repository.count_learned_mappings()
-    except DatabaseError as exc:
-        ui.friendly_error(exc)
-        return
-    st.caption(f"The app has learned {format_count(count)} column name{'s' if count != 1 else ''} "
-               "from your earlier choices and from AI mappings that your file's own calculations "
-               "verified. A learned column maps without asking next time and is marked Learned.")
-    if message := _state().pop("forget_message", None):
-        st.success(message)
-    if not count:
-        return
-    if not _state().get("confirm_forget"):
-        if st.button("Forget Learned Mappings", key="forget_learned"):
-            _state()["confirm_forget"] = True
-            st.rerun()
-        return
-    st.warning(f"Forget all {format_count(count)} learned column names? New files will map with "
-               "the built-in rules only until you confirm columns again. This cannot be undone.")
-    yes, no = st.columns(2)
-    if yes.button("Yes, Forget", key="confirm_forget_yes", type="primary"):
-        _state().pop("confirm_forget", None)
-        try:
-            removed = repository.forget_learned_mappings()
-        except DatabaseError as exc:
-            ui.friendly_error(exc)
-            return
-        _state()["forget_message"] = f"{format_count(removed)} learned mappings were forgotten."
-        _state().pop("prep_key", None)          # the open file maps again without them
-        st.rerun()
-    if no.button("Cancel", key="confirm_forget_no"):
-        _state().pop("confirm_forget", None)
-        st.rerun()
 
 
 def _ai_usage_panel() -> None:
@@ -2493,7 +2422,7 @@ ABOUT_ROADMAP = [
     ("1.0", "Foundation", "Upload and auto-mapping, data cleaning, verified KPIs, channel, campaign, funnel "
      "and segment analysis, incident detection, AI insights, PDF and Excel reports."),
     ("2.0", "Decision Intelligence", "Insight-driven visualisation, profitability and break-even analysis, "
-     "targets, budget pacing and forecast, scenario planner, Basic and Professional views, self-learning "
+     "targets, budget pacing and forecast, scenario planner, Basic and Professional views, knowledge-base "
      "column mapping and smarter AI recommendations."),
     ("", "What I'd Build Next", "Customer lifetime value and cohorts, multi-touch attribution, live connections to ad "
      "platforms, scheduled reports and alerts, team workspaces."),

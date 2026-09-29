@@ -52,8 +52,8 @@ New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" a
   conversion, and budget moves with honest ranges and guardrails.
 - **Basic and Professional views**: the same numbers in plain sentences with green/yellow/red cards,
   or in full analyst detail.
-- **Self-learning column mapping**: a knowledge base of headers from 16 sources plus mappings
-  learned from earlier confirmed choices.
+- **Knowledge-base column mapping**: headers from 16 sources, context rules and value patterns;
+  anything still open goes to Gemini fresh for each new column layout.
 - **Smarter AI recommendations**: budget advice follows the cost of the next conversion,
   profitability and pacing, with extra evaluator checks (capacity, underspend logic, wording).
 
@@ -62,7 +62,7 @@ New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" a
 | Version | Status | Contents |
 |---|---|---|
 | **v1.0 · Foundation** | Released | Upload and auto-mapping, data cleaning, verified KPIs, channel, campaign, funnel and segment analysis, incident detection, AI insights, PDF and Excel reports. |
-| **v2.0 · Decision Intelligence** | **Current** | Insight-driven visualisation, profitability and break-even analysis, targets, budget pacing and forecast, scenario planner, Basic and Professional views, self-learning column mapping and smarter AI recommendations. |
+| **v2.0 · Decision Intelligence** | **Current** | Insight-driven visualisation, profitability and break-even analysis, targets, budget pacing and forecast, scenario planner, Basic and Professional views, knowledge-base column mapping and smarter AI recommendations. |
 | **What I'd Build Next** | | Customer lifetime value and cohorts, multi-touch attribution, live connections to ad platforms, scheduled reports and alerts, team workspaces. |
 
 The last row lists ideas, not promises. The version number comes from `APP_VERSION` in `config/settings.py`.

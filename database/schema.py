@@ -15,8 +15,8 @@ import sqlite3
 
 from config.fields import COUNT_FIELDS, FIELDS
 
-SCHEMA_VERSION = 5   # 2: run_snapshots; 3: mapping cache + mapping-call log, runs.session_id;
-                     # 4: learned_mappings (U2); 5: targets (U5)
+SCHEMA_VERSION = 6   # 2: run_snapshots; 3: mapping cache + mapping-call log, runs.session_id;
+                     # 4: learned_mappings (U2); 5: targets (U5); 6: learned_mappings removed
 
 
 def _record_column_type(name: str, ftype: str) -> str:
@@ -231,17 +231,6 @@ CREATE TABLE IF NOT EXISTS ai_mapping_calls (
 );
 CREATE INDEX IF NOT EXISTS ix_ai_mapping_calls_created ON ai_mapping_calls(created_at);
 
--- Learned mappings (U2): a column name the user confirmed, or an AI mapping the file's own
--- calculations verified (green), is remembered so the next file with that column name maps
--- without asking. header = the normalised column name. Never written in public mode.
-CREATE TABLE IF NOT EXISTS learned_mappings (
-    header      TEXT PRIMARY KEY,
-    field       TEXT NOT NULL,
-    source      TEXT NOT NULL CHECK (source IN ('AI verified', 'user confirmed')),
-    times_seen  INTEGER NOT NULL DEFAULT 1,
-    last_used   TEXT NOT NULL
-);
-
 -- Targets (U5): the user's target per metric for a column layout (the same layout key as
 -- mapping_cache), so the next file with the same columns shows the same targets. Never written in
 -- public mode (targets then live in the browser session only).
@@ -273,6 +262,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
     # Version 3: runs remember the browser session that made them (public mode isolation).
     if "session_id" not in table_columns(conn, "runs"):
         conn.execute("ALTER TABLE runs ADD COLUMN session_id TEXT")
+    # Version 6: no cross-file mapping learning any more (see docs/DECISIONS.md).
+    conn.execute("DROP TABLE IF EXISTS learned_mappings")
     current = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
     if current is None or current < SCHEMA_VERSION:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))

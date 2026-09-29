@@ -426,47 +426,6 @@ def count_mapping_calls(since_iso: str, session_id: str | None = None, db_path=N
         return conn.execute(sql, params).fetchone()[0]
 
 
-# --- Learned mappings (U2) ------------------------------------------------------------------------
-
-def load_learned_mappings(db_path=None) -> dict[str, tuple[str, str]]:
-    """{normalised column name: (field, 'user confirmed' / 'AI verified')}."""
-    with session(db_path) as conn:
-        rows = conn.execute("SELECT header, field, source FROM learned_mappings").fetchall()
-    return {header: (fname, source) for header, fname, source in rows}
-
-
-def save_learned_mappings(entries, db_path=None) -> None:
-    """entries = [(header, field, source)]; source None = seen again (keep the stored source).
-    Seen again: times_seen + 1 and last_used now. A user's choice replaces an AI-verified one;
-    an AI-verified mapping never replaces the user's choice."""
-    with session(db_path) as conn:
-        for header, fname, source in entries:
-            row = conn.execute("SELECT field, source FROM learned_mappings WHERE header = ?",
-                               (header,)).fetchone()
-            if row is None:
-                if source is None:
-                    continue
-                conn.execute("INSERT INTO learned_mappings (header, field, source, times_seen, "
-                             "last_used) VALUES (?, ?, ?, 1, ?)", (header, fname, source, _now()))
-                continue
-            if source is None or (row[1] == "user confirmed" and source == "AI verified"):
-                fname, source = row
-            conn.execute("UPDATE learned_mappings SET field = ?, source = ?, "
-                         "times_seen = times_seen + 1, last_used = ? WHERE header = ?",
-                         (fname, source, _now(), header))
-
-
-def count_learned_mappings(db_path=None) -> int:
-    with session(db_path) as conn:
-        return conn.execute("SELECT COUNT(*) FROM learned_mappings").fetchone()[0]
-
-
-def forget_learned_mappings(db_path=None) -> int:
-    """Delete every learned mapping; returns how many were removed."""
-    with session(db_path) as conn:
-        return conn.execute("DELETE FROM learned_mappings").rowcount
-
-
 # --- Targets (U5) ----------------------------------------------------------------------------------
 
 def load_targets(layout_key: str, db_path=None) -> dict[str, float]:

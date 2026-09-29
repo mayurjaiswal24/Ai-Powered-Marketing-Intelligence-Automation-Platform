@@ -1,4 +1,4 @@
-"""U2 - Mapping knowledge base: header corpus proof, context rule, value patterns, learning.
+"""U2 - Mapping knowledge base: header corpus proof, context rule, value patterns, no learning.
 
 No real AI anywhere: AI mappings come from the fake mapper in test_ai_mapping.
 """
@@ -9,18 +9,16 @@ from pathlib import Path
 
 import pandas as pd
 
-import config.settings as config_settings
 from config import knowledge
 from config.fields import CRITICAL_FIELDS
-from config.settings import load_settings
-from dashboard.pipeline import SAMPLE_DIR, learn_mappings, load_raw, prepare
+from dashboard.pipeline import SAMPLE_DIR, load_raw, prepare
 from database import repository
-from ingestion.mapper import is_learnable, map_fields, normalize_header
+from ingestion.mapper import map_fields, normalize_header
 from ingestion.profiler import profile_dataset
-from tests.test_ai_mapping import FakeMapper, csv_prep, outlay_frame
+from tests.test_ai_mapping import FakeMapper, assistant, csv_prep, outlay_frame
 
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "header_corpus.csv"
-NEW_SOURCES = {"recognised", "context", "values", "learned"}
+NEW_SOURCES = {"recognised", "context", "values"}
 
 
 def outcome(m) -> str:
@@ -161,57 +159,50 @@ def test_sample_files_do_not_use_the_new_stages():
         assert not {m.source for m in mapping.columns} & NEW_SOURCES, name
 
 
-# --- Learning ---------------------------------------------------------------------------------
+# --- No cross-file learning ------------------------------------------------------------------
 
-def test_learned_mapping_is_used_after_rules_only():
-    learned = {"outlay": ("spend", "user confirmed"), "cost": ("budget", "user confirmed"),
-               "results": ("leads", "user confirmed")}
-    m = map_fields(["Outlay", "Results"], learned=learned)
-    assert m.by_column("Outlay").source == "learned" and m.by_column("Outlay").status == "confirmed"
-    assert m.active == {"spend": "Outlay"}
-    assert m.by_column("Results").status == "uncertain"          # ambiguous stays a decision
-    assert map_fields(["Cost"], learned=learned).active == {"spend": "Cost"}   # built-in wins
-    ai = map_fields(["Outlay"], learned={"outlay": ("spend", "AI verified")})
-    assert ai.by_column("Outlay").status == "high_confidence"
-    assert is_learnable("outlay") and not is_learnable("cost") and not is_learnable("results")
+def test_mapper_has_no_learned_step():
+    """An unknown header stays open for Gemini; nothing remembered can fill it."""
+    m = map_fields(["Outlay", "Clicks"])
+    assert m.by_column("Outlay").status not in ("confirmed", "high_confidence")
+    assert "learned" not in {c.source for c in m.columns}
+    assert not hasattr(repository, "load_learned_mappings")
 
 
-def test_learn_only_from_user_choices_and_green_ai(tmp_path):
-    db = tmp_path / "learn.db"
-    green = csv_prep(tmp_path, outlay_frame(cpc_factor=1.0), FakeMapper({"Outlay": "spend"}))
-    assert green.badges["Outlay"] == "verified"
-    assert learn_mappings(green, db_path=db) == 1
-    assert repository.load_learned_mappings(db_path=db) == {"outlay": ("spend", "AI verified")}
+def test_new_layout_asks_gemini_fresh_same_layout_reuses_cache(tmp_path):
+    db = tmp_path / "m.db"
+    first = outlay_frame(cpc_factor=1.0)
+    path = tmp_path / "a.csv"
+    first.to_csv(path, index=False)
+    raw, report = load_raw(path)
+    fake = FakeMapper({"Outlay": "spend"})
+    done = prepare(raw, report, assistant=assistant(fake, db))
+    assert done.badges["Outlay"] == "verified" and len(fake.requests) == 1
 
-    yellow_dir = tmp_path / "y"
-    yellow_dir.mkdir()
-    yellow = csv_prep(yellow_dir, outlay_frame(), FakeMapper({"Outlay": "spend"}))
-    assert yellow.badges["Outlay"] == "check"
-    red_dir = tmp_path / "r"
-    red_dir.mkdir()
-    red = csv_prep(red_dir, outlay_frame(cpc_factor=1.5), FakeMapper({"Outlay": "spend"}))
-    other = tmp_path / "other.db"
-    assert learn_mappings(yellow, db_path=other) == 0 and learn_mappings(red, db_path=other) == 0
-    assert repository.count_learned_mappings(db_path=other) == 0
+    # Same column layout again -> the layout cache answers, no new call.
+    again = prepare(raw, report, assistant=assistant(fake, db))
+    assert again.ai.source == "cache" and len(fake.requests) == 1
 
-    # The next file with the same column name maps without AI, marked "learned".
-    raw, report = load_raw(tmp_path / "f.csv")
-    again = prepare(raw, report, learned=repository.load_learned_mappings(db_path=db))
-    assert again.mapping.by_column("Outlay").source == "learned" and again.validation.can_analyse
-    learn_mappings(again, db_path=db)                              # seen again
-    # A user's choice replaces the AI-verified one; forgetting clears everything.
-    user = prepare(raw, report, {"Outlay": "budget"})
-    learn_mappings(user, db_path=db)
-    assert repository.load_learned_mappings(db_path=db) == {"outlay": ("budget", "user confirmed")}
+    # A different file (new layout) with the same "Outlay" header -> Gemini is asked fresh,
+    # and its new answer is used: a verified answer from the other file is never carried over.
+    other = outlay_frame().assign(Region="North")
+    path2 = tmp_path / "b.csv"
+    other.to_csv(path2, index=False)
+    raw2, report2 = load_raw(path2)
+    fresh = FakeMapper({"Outlay": "budget"})
+    new = prepare(raw2, report2, assistant=assistant(fresh, db))
+    assert new.ai.source == "call" and len(fresh.requests) == 1
+    assert "Outlay" in {p["column"] for p in fresh.requests[0]["problem_columns"]}
+    assert new.mapping.by_column("Outlay").field == "budget"
+    # Without AI the header stays for the user to choose.
+    assert prepare(raw2, report2).mapping.by_column("Outlay").source != "ai"
+
+
+def test_old_learned_mappings_table_is_dropped(tmp_path):
+    db = tmp_path / "old.db"
+    import sqlite3
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE learned_mappings (header TEXT PRIMARY KEY, field TEXT)")
     with repository.session(db) as conn:
-        assert conn.execute("SELECT times_seen FROM learned_mappings").fetchone()[0] == 3
-    assert repository.forget_learned_mappings(db_path=db) == 1
-    assert repository.count_learned_mappings(db_path=db) == 0
-
-
-def test_no_learning_in_public_mode():
-    assert load_settings({}).learning_active
-    assert not load_settings({"PUBLIC_MODE": "true"}).learning_active
-    assert not load_settings({"LEARNING_ENABLED": "false"}).learning_active
-    public = dataclasses.replace(config_settings.settings, public_mode=True)
-    assert not public.learning_active
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "learned_mappings" not in tables

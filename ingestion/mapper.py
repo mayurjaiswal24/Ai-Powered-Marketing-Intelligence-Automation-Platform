@@ -27,8 +27,9 @@ Knowledge base (U2, config/knowledge/): extra header names per source (Google Ad
 Shopify, HubSpot, ...), short forms (amt, rev, txn), known-but-not-analysed columns ("Recognised:
 Sessions (not used in this analysis)", never sent to Gemini), a context rule for Meta "Results"
 (the Objective column decides leads vs. conversions), value patterns (a column of "Meta",
-"Google Ads" values is Platform; a column of dates is suggested as Date) and mappings learned from
-the user's earlier choices. Built-in synonyms above always keep priority.
+"Google Ads" values is Platform; a column of dates is suggested as Date). Built-in synonyms above
+always keep priority. Nothing is learned across files: a header the rules cannot settle goes to
+Gemini fresh for each new column layout (see docs/DECISIONS.md).
 
 Alternative considered: ask Gemini to map columns. Rejected (locked decision): mappings drive
 every number in the product, so they must be repeatable and explainable.
@@ -170,13 +171,6 @@ def _is_known(key: str) -> bool:
             or key in _PROFIT or key in _RECOGNISED or _is_derived_name(key))
 
 
-def is_learnable(key: str) -> bool:
-    """May a mapping for this header be learned? Only for names the built-in knowledge does not
-    already settle: never for synonyms, ambiguous names ("Results"), profit/cost safety rules,
-    derived metrics or recognised columns (those stay per-file decisions or fixed rules)."""
-    return bool(key) and not _is_known(key)
-
-
 def _knowledge_key(column: str, normalized: str) -> str:
     """The header form to look up. Normally the normalized header itself; only when that is
     unknown, try camelCase splitting ("CampaignName"), short forms ("Amt spnd" -> "amount
@@ -243,8 +237,7 @@ def _fuzzy_scores(normalized: str) -> dict[str, float]:
 def map_fields(source, column_types: dict[str, str] | None = None,
                overrides: dict[str, str | None] | None = None,
                ai: dict[str, tuple[str | None, str]] | None = None,
-               ai_rejected: dict[str, str] | None = None,
-               learned: dict[str, tuple[str, str]] | None = None) -> MappingResult:
+               ai_rejected: dict[str, str] | None = None) -> MappingResult:
     """Map columns to canonical fields.
 
     `source` is a DatasetProfile (preferred: data types and value shapes are then checked), a
@@ -253,11 +246,9 @@ def map_fields(source, column_types: dict[str, str] | None = None,
     `ai` = Gemini's decisions for the columns the rules left open {column: (field or None,
     reason)}; applied only to those columns (user > AI > rules). `ai_rejected` = {column: field}
     AI mappings the file's own calculations proved wrong: not applied, the user must choose.
-    `learned` = {header key: (field, "user confirmed" / "AI verified")} remembered from earlier
-    files (database learned_mappings); used after built-in synonyms and context rules only.
 
     Recognition order per column: exact synonym (built-in, then knowledge base) -> context rule
-    (Meta "Results") -> recognised-but-not-analysed -> learned -> value pattern -> fuzzy ->
+    (Meta "Results") -> recognised-but-not-analysed -> value pattern -> fuzzy ->
     Gemini (only what is still open, see ai/mapping.py).
     """
     columns, column_types, ratio_like = _columns_and_types(source, column_types)
@@ -272,7 +263,7 @@ def map_fields(source, column_types: dict[str, str] | None = None,
     values = _top_values(source)
     context = {"results": _results_meaning(columns, values)}
     proposals = [_propose(col, column_types.get(col), ratio_like.get(col, False), overrides,
-                          values.get(col), context, learned or {})
+                          values.get(col), context)
                  for col in columns]
 
     # 2. One field per column and one column per field. User choices first, then confirmed,
@@ -449,8 +440,7 @@ def _is_derived_name(normalized: str) -> bool:
 
 
 def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: dict,
-             values: dict[str, int] | None = None, context: dict | None = None,
-             learned: dict | None = None) -> ColumnMapping:
+             values: dict[str, int] | None = None, context: dict | None = None) -> ColumnMapping:
     normalized = _knowledge_key(column, normalize_header(column))   # unchanged for known headers
 
     if column in overrides:
@@ -517,16 +507,6 @@ def _propose(column: str, column_type: str | None, ratio_like: bool, overrides: 
         text = f"Recognised: {_RECOGNISED[normalized]} (not used in this analysis)"
         return ColumnMapping(column, normalized, None, "not_used", 100, "recognised",
                              note=text, reason=text)
-
-    known = (learned or {}).get(normalized)
-    if known and known[0] in FIELD_BY_NAME and _type_fits(known[0], column_type):
-        fname, how = known
-        by_user = how == "user confirmed"
-        return ColumnMapping(column, normalized, fname, "confirmed" if by_user else "high_confidence",
-                             100, "learned",
-                             reason="learned: you chose this for the same column name before" if by_user
-                             else "learned: an AI suggestion for this column name that a file's own "
-                                  "calculations verified")
 
     # Values that look like percentages/ratios are derived metrics, whatever the name says.
     if ratio_like:

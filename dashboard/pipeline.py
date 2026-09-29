@@ -23,7 +23,7 @@ from ai.mapping import AIMappingOutcome, MappingAssistant, contradicted_ai_colum
 from ai.mapping import badges as ai_badges
 from ingestion.crosscheck import CrossCheckResult, apply_to_mapping, cross_check
 from ingestion.loader import LoadReport, load_file
-from ingestion.mapper import ACTIVE_STATUSES, MappingResult, is_learnable, map_fields
+from ingestion.mapper import MappingResult, map_fields
 from ingestion.plausibility import PlausibilityWarning, check_plausibility
 from ingestion.profiler import DatasetProfile, profile_dataset
 from ingestion.validator import ValidationResult, validate
@@ -80,17 +80,15 @@ def load_raw(source, filename: str | None = None) -> tuple[pd.DataFrame, LoadRep
 
 def prepare(raw_df: pd.DataFrame, report: LoadReport,
             overrides: dict[str, str | None] | None = None,
-            assistant: MappingAssistant | None = None,
-            learned: dict[str, tuple[str, str]] | None = None) -> PreparedUpload:
+            assistant: MappingAssistant | None = None) -> PreparedUpload:
     """Profile the raw table, map its columns and check what the data supports.
 
     Order of authority: the user's choices (this session's `overrides`, then choices saved for
     this column layout) > Gemini (only for columns the rules left open) > Python rules.
     Without an `assistant` no AI is used (tests, AI switched off).
     Cheap enough to repeat whenever the user changes a mapping choice: Gemini's answer is cached
-    per column layout, so it is asked at most once per layout.
-    `learned` = mappings remembered from earlier files (see learn_mappings); None = not used
-    (tests, public mode).
+    per column layout, so it is asked at most once per layout. Nothing is carried over from
+    other files: a new layout's open columns always go to Gemini fresh.
     """
     profile = profile_dataset(raw_df)
     remembered = {}
@@ -98,18 +96,17 @@ def prepare(raw_df: pd.DataFrame, report: LoadReport,
         remembered = {c: f for c, f in assistant.remembered_choices(raw_df.columns).items()
                       if c in raw_df.columns}
     choices = {**remembered, **(overrides or {})}
-    mapping = map_fields(profile, overrides=choices, learned=learned)
+    mapping = map_fields(profile, overrides=choices)
 
     ai = AIMappingOutcome()
     if assistant is not None:
         ai = assistant.suggest(raw_df, report, mapping)
         if ai.decisions:
-            mapping = map_fields(profile, overrides=choices, ai=ai.decisions, learned=learned)
+            mapping = map_fields(profile, overrides=choices, ai=ai.decisions)
     checks = cross_check(raw_df, mapping)          # the file's own CPC/CTR/ROAS vs. the mapping
     rejected = contradicted_ai_columns(mapping, checks)
     if rejected:                                   # AI proven wrong: not applied, user chooses
-        mapping = map_fields(profile, overrides=choices, ai=ai.decisions, ai_rejected=rejected,
-                             learned=learned)
+        mapping = map_fields(profile, overrides=choices, ai=ai.decisions, ai_rejected=rejected)
         checks = cross_check(raw_df, mapping)
     profile.apply_mapping(raw_df, mapping)
     validation = validate(mapping, profile)
@@ -117,27 +114,6 @@ def prepare(raw_df: pd.DataFrame, report: LoadReport,
     warnings = check_plausibility(raw_df, mapping)
     return PreparedUpload(raw_df, report, profile, mapping, validation, checks, warnings, ai,
                           ai_badges(mapping, checks), remembered)
-
-
-def learn_mappings(prep: PreparedUpload, db_path=None) -> int:
-    """Remember this file's mappings for column names the built-in knowledge does not cover:
-    the user's choices ("user confirmed") and AI mappings the file's own calculations verified
-    (green badge, "AI verified"). Never AI mappings that were not verified (yellow) or failed
-    (red), and never plain rule mappings. Learned mappings used again count as seen again.
-    The caller decides whether learning is on (never in public mode). Returns entries written."""
-    entries = []
-    for m in prep.mapping.columns:
-        if m.status not in ACTIVE_STATUSES or not m.field or not is_learnable(m.normalized):
-            continue
-        if m.source == "user":
-            entries.append((m.normalized, m.field, "user confirmed"))
-        elif m.source == "ai" and prep.badges.get(m.column) == "verified":
-            entries.append((m.normalized, m.field, "AI verified"))
-        elif m.source == "learned":
-            entries.append((m.normalized, m.field, None))
-    if entries:
-        repository.save_learned_mappings(entries, db_path=db_path)
-    return len(entries)
 
 
 def run_pipeline(prep: PreparedUpload, progress: Callable[[str], None] = lambda _msg: None,
