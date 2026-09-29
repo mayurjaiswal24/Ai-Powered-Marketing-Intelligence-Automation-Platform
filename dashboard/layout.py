@@ -1936,7 +1936,8 @@ def page_scenarios(filters: Filters) -> None:
     st.caption("Estimate · per week · channels in the planner only · CAC = spend ÷ conversions · revenue = "
                "conversions × each channel's average order value of the last 8 weeks. Scenarios are not "
                "saved: they stay in this browser session only.")
-    ui.show_table(rc.scenario_display(scenario), wrap_headers=True)
+    with st.container(key="mi_scroll_scenario"):
+        ui.show_table(rc.scenario_display(scenario), wrap_headers=True)
     buffer = io.BytesIO()
     try:
         from reports.excel_report import scenario_workbook
