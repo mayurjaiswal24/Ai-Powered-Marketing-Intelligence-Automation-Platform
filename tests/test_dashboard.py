@@ -283,6 +283,48 @@ def test_open_recent_analysis_ignores_file_left_in_uploader(app):
     assert "raw_df" not in at.session_state and at.session_state["output"].run_id == run_id
 
 
+def test_analysis_shows_live_elapsed_time_then_total(app, monkeypatch):
+    """Run Analysis shows a live elapsed-time line while the pipeline works (it must already be on
+    the page when processing starts), a large-file note up front, and "Done in Ns" at the end."""
+    import dataclasses
+    import config.settings as config_settings
+    import dashboard.components as components
+    import dashboard.layout as layout
+    events, real_clock, real_pipeline = [], components.elapsed_clock, layout.run_pipeline
+
+    def clock_spy(slot):
+        events.append("clock")
+        real_clock(slot)
+
+    def pipeline_spy(*args, **kwargs):
+        assert events == ["clock"]            # the live clock is showing while processing runs
+        events.append("pipeline")
+        return real_pipeline(*args, **kwargs)
+
+    monkeypatch.setattr(components, "elapsed_clock", clock_spy)
+    monkeypatch.setattr(layout, "run_pipeline", pipeline_spy)
+    monkeypatch.setattr(config_settings, "settings",
+                        dataclasses.replace(config_settings.settings, large_row_warning=1_000))
+    at = app.run()
+    at.button(key="load_sample").click().run()           # 8,471 rows: above the lowered threshold
+    at.button(key="run_analysis").click().run()
+    assert not at.exception and events == ["clock", "pipeline"]
+    status = at.status[0]
+    assert status.label.startswith("Analysis complete: done in ") and status.label.endswith("s")
+    captions = [c.value for c in status.caption]
+    assert "Large file: this may take a minute or two." in captions
+    assert any(c.startswith("Done in ") for c in captions)
+    assert not any("mi-elapsed-clock" in m.value for m in status.markdown)   # clock replaced
+
+
+def test_elapsed_clock_markup_and_duration_format():
+    from dashboard.theme import APP_CSS
+    from utils.formatting import format_duration
+    assert ".mi-elapsed-clock::after" in APP_CSS and "@property --mi-sec" in APP_CSS
+    assert [format_duration(s) for s in (0.2, 14.4, 59.6, 125, None, float("nan"))] == \
+        ["1s", "14s", "1m 0s", "2m 5s", "N/A", "N/A"]
+
+
 def test_pages_before_analysis_show_empty_state(app):
     at = app.run()
     at.sidebar.radio(key="page").set_value("Executive Overview").run()

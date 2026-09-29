@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import io
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -38,7 +39,7 @@ from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
 from utils.formatting import (as_sentence, strip_evidence_tags, format_count, format_date, format_date_range,
-                              format_datetime_ist, format_value, title_case)
+                              format_datetime_ist, format_duration, format_value, title_case)
 
 logger = logging.getLogger("marketing_intelligence")
 
@@ -436,14 +437,27 @@ def page_upload() -> None:
     run = st.button("Run Analysis", type="primary", key="run_analysis",
                     disabled=not prep.validation.can_analyse)
     if run:
+        started = time.perf_counter()
         try:
             with st.status("Analysing your data…", expanded=True) as status:
-                status.write("Reading file…")
-                status.write("Checking mapping…")
-                output = run_pipeline(prep, progress=lambda msg: status.write(msg),
-                                      session_id=_session_id() if _public() else None)
-                status.update(label="Analysis complete", state="complete", expanded=False)
-            st.toast("Analysis complete", icon=":material/check_circle:")
+                if prep.report.rows > config_settings.settings.large_row_warning:
+                    status.caption("Large file: this may take a minute or two.")
+                steps = status.container()      # the steps grow above the clock, so it stays last
+                clock = status.empty()
+                ui.elapsed_clock(clock)
+                steps.write("Reading file…")
+                steps.write("Checking mapping…")
+                try:
+                    output = run_pipeline(prep, progress=lambda msg: steps.write(msg),
+                                          session_id=_session_id() if _public() else None)
+                except Exception:
+                    clock.caption(f"Stopped after {format_duration(time.perf_counter() - started)}.")
+                    raise
+                took = format_duration(time.perf_counter() - started)
+                clock.caption(f"Done in {took}.")
+                status.update(label=f"Analysis complete: done in {took}", state="complete",
+                              expanded=False)
+            st.toast(f"Analysis complete: done in {took}", icon=":material/check_circle:")
             _state()["output"] = output
             _state()["output_prep_key"] = _state().get("prep_key")
             _preload_demo(output, prep.report)

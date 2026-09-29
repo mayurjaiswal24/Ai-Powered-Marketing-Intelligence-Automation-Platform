@@ -309,6 +309,21 @@ APP_CSS = f"""
                   white-space: nowrap; }}
   .mi-run-meta {{ color: {INK_MUTED}; font-size: 0.8rem; }}
 
+  /* Live "14s elapsed" line while an analysis runs. The browser does the counting (two integer
+     properties animated once per second and shown through CSS counters), so it keeps ticking
+     while Python is busy and adds no work on the server. Minutes appear after 60s: "2m 5s". */
+  @property --mi-sec {{ syntax: '<integer>'; inherits: false; initial-value: 0; }}
+  @property --mi-min {{ syntax: '<integer>'; inherits: false; initial-value: 0; }}
+  @keyframes mi-sec {{ from {{ --mi-sec: 0; }} to {{ --mi-sec: 60; }} }}
+  @keyframes mi-min {{ from {{ --mi-min: 0; }} to {{ --mi-min: 60; }} }}
+  @keyframes mi-show {{ to {{ max-width: 5em; }} }}
+  .mi-elapsed {{ color: {INK_SECONDARY}; font-size: 0.875rem; font-variant-numeric: tabular-nums; }}
+  .mi-elapsed-clock {{ counter-reset: mi-min var(--mi-min) mi-sec var(--mi-sec);
+      animation: mi-sec 60s steps(60, end) infinite, mi-min 3600s steps(60, end) forwards; }}
+  .mi-elapsed-clock::before {{ content: counter(mi-min) "m "; white-space: pre; display: inline-block;
+      max-width: 0; overflow: hidden; vertical-align: bottom; animation: mi-show 0s 60s forwards; }}
+  .mi-elapsed-clock::after {{ content: counter(mi-sec) "s elapsed"; }}
+
   /* About page */
   .mi-about-list {{ margin: 0.3rem 0 0 0; padding-left: 1.1rem; color: {INK_SECONDARY}; }}
   .mi-about-list li {{ margin: 0.55rem 0; }}

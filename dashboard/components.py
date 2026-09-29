@@ -110,6 +110,13 @@ def steps_guide(steps: list[tuple[str, str]]) -> None:
     st.markdown(f"<div class='mi-steps'>{cards}</div>", unsafe_allow_html=True)
 
 
+def elapsed_clock(slot) -> None:
+    """A live "14s elapsed" line in `slot` (an st.empty). The browser counts the seconds (see
+    .mi-elapsed-clock in theme.py), so no Python code has to run to keep it moving."""
+    slot.markdown("<div class='mi-elapsed'><span class='mi-elapsed-clock'></span></div>",
+                  unsafe_allow_html=True)
+
+
 def card_title(title: str, subtitle: str | None = None) -> None:
     st.markdown(f"<div class='mi-card-title'>{html.escape(title)}</div>"
                 + (f"<div class='mi-card-sub'>{html.escape(subtitle)}</div>" if subtitle else ""),

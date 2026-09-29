@@ -162,6 +162,16 @@ def format_date_range(start, end) -> str:
     return f"{format_date(start)} – {format_date(end)}"
 
 
+def format_duration(seconds) -> str:
+    """How long something took: '42s', '2m 5s' (the same style as the live elapsed-time line).
+    Anything under a second shows as '1s', so a finished step never reads '0s'."""
+    if _is_missing(seconds) or seconds < 0:
+        return NA
+    total = max(1, round(seconds))
+    minutes, secs = divmod(total, 60)
+    return f"{minutes}m {secs}s" if minutes else f"{secs}s"
+
+
 # ---------------------------------------------------------------------------------------------
 # Display text (docs/UI_STYLE_GUIDE.md). Applied where text is SHOWN, so labels stored in the
 # analysis (and the AI evidence built from them) never change.
