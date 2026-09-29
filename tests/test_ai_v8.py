@@ -170,3 +170,53 @@ def test_rendered_text_has_no_evidence_tags_but_stored_data_does(analysis, tmp_p
     assert not any(BRACKET_TAG.search(s) for s in shown)
     # The stored answer is unchanged: the tags are still there for the evaluator's citation checks
     assert ai == TAGGED and "[E47]" in ai["recommendations"][0]["text"]
+
+
+# --- Capacity of channels paid per result (Affiliate: "at most about ₹69,290 more a week") ------------
+
+def _capacity_reasons(item):
+    return [r for r in item.get("weak_reasons", []) if "stated capacity" in r]
+
+
+def test_capacity_check_with_the_fake_client(analysis, pack, tmp_path):
+    """(a) within capacity - not flagged; (b) above it - weak with both amounts; (c) an auction channel
+    has no capacity, so the check never fires on it."""
+    pacing, cost, video = _of_type(pack, "pacing"), _of_type(pack, "marginal_cost"), "E16"
+    assert "at most about ₹69,290 more a week" in cost.facts["Affiliate"]
+    assert "at most" not in cost.facts["Paid Search"]
+    ans = good_answer(pack)
+    ans["recommendations"] = [
+        _rec("Put up to ₹60,000 more a week into Affiliate, within its stated room of ₹69,290 more a week.",
+             [cost.id]),                                                                        # (a)
+        _rec("Deploy the unused September budget (80.7% of plan) into Affiliate, where the next conversion "
+             "costs ₹8,688, the lowest among paid channels.", [pacing.id, cost.id]),              # (b)
+        _rec("Deploy the unused September budget (80.7% of plan) into Paid Search, where the next conversion "
+             "costs least (₹9,521).", [pacing.id, cost.id, video]),                               # (c)
+    ]
+    client = FakeClient([json.dumps(ans)])
+    run = generate_ai_insights(analysis, client, db_path=tmp_path / "c.db")
+    assert run.ok and len(client.calls) == 1
+    recs = run.insights["recommendations"]
+    within = next(r for r in recs if r["text"].startswith("Put up to"))
+    over = _capacity_reasons(next(r for r in recs if "into Affiliate" in r["text"] and r is not within))
+    assert not _capacity_reasons(within)
+    assert over and "₹12.2 L over the month" in over[0] and "₹69,290 more a week" in over[0]
+    paid_search = next(r for r in recs if "into Paid Search" in r["text"])
+    assert not _capacity_reasons(paid_search)
+
+
+@pytest.mark.parametrize("text, extra, flagged", [
+    ("Move ₹2 L a week into Affiliate.", {}, True),                                   # weekly, above ₹69,290
+    ("Move ₹50,000 a week into Affiliate.", {}, False),                               # weekly, within
+    ("Deploy ₹2.5 L of the unused budget into Affiliate this month.", {}, False),     # month room ~₹2.97 L
+    ("Deploy ₹5 L of the unused budget into Affiliate this month.", {}, True),
+    ("Shift a small test budget from Video to Affiliate.", {"test_shift_pct": 10}, False),  # 10% × ₹2.6 L a week
+    ("Shift a test budget from Video to Affiliate.", {"test_shift_pct": 40}, True),         # 40% × ₹2.6 L = ₹1.0 L
+    ("Shift budget from Affiliate to Paid Search.", {"test_shift_pct": 40}, False),   # money leaves Affiliate
+    ("Scale Paid Search by ₹5 L a week.", {}, False),                                 # auction: no capacity
+])
+def test_capacity_amounts(pack, text, extra, flagged):
+    cost = _of_type(pack, "marginal_cost")
+    item = {**_rec(text, [cost.id, "E16", "E19"]), **extra, "source_evidence_id": "E16" if "from Video" in text else "E19"}
+    checked, _ = evaluate({"recommendations": [item]}, pack)
+    assert bool(_capacity_reasons(checked["recommendations"][0])) is flagged

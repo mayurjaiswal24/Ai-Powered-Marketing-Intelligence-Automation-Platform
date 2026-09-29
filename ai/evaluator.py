@@ -27,7 +27,8 @@
 8. v8, also WEAK: when the pacing evidence says "Underspending", a recommendation linked to pacing
    that only reallocates between channels must either deploy the unused budget into the channel(s)
    with the lowest cost of the next conversion, or say that the reallocation addresses efficiency,
-   not the underspend.
+   not the underspend. Also WEAK: a recommendation that puts added spend INTO a channel paid per
+   result (e.g. Affiliate) beyond the room stated in the evidence ("at most about ₹X more a week").
 """
 
 from __future__ import annotations
@@ -177,6 +178,7 @@ def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
     weak += _wording_checks(item, pack)
     if section == "recommendations":
         weak += _underspend_check(item, pack)
+        weak += _capacity_check(item, pack)
     item["weak"] = bool(weak)
     item["weak_reasons"] = weak
     if weak:
@@ -231,6 +233,71 @@ def _underspend_check(item: dict, pack) -> list[str]:
     return ["Reallocating between channels keeps total spend the same, so it does not fix the underspend: "
             "deploy the unused budget into the channel(s) with the lowest cost of the next conversion, or say "
             "that the move addresses efficiency, not the underspend."]
+
+
+CAPACITY = re.compile(r"at most about (₹\s?[\d,]+(?:\.\d+)?(?:\s?(?:Cr|L))?) more a week", re.IGNORECASE)
+WEEKLY_NOW = re.compile(r"now (₹\s?[\d,]+(?:\.\d+)?(?:\s?(?:Cr|L))?) a week", re.IGNORECASE)
+UNUSED_PHRASE = re.compile(r"\b(unused|unspent|underspent|remaining|leftover)\b[^.;]{0,20}\bbudget\b", re.IGNORECASE)
+PROPOSE_VERB = (r"\b(deploy\w*|mov\w*|shift\w*|add\w*|put\w*|allocat\w*|reallocat\w*|invest\w*|spend\w*|redirect\w*|"
+                r"channel\w*|increas\w*|rais\w*)\b(?:\s+(?:up to|about|around|roughly|the|an|a|extra|additional|"
+                r"unused|remaining|further|another))*\s+$")
+PER_WEEK = re.compile(r"^\s*(?:more\s+)?(?:a|per|each|every)\s+week\b|^\s*weekly\b|^\s*/\s*week\b", re.IGNORECASE)
+
+
+def _money(text: str) -> float | None:
+    nums = [n for n in extract_numbers(text, checkable_only=False) if n.kind == "money"]
+    return nums[0].value if nums else None
+
+
+def _capacity_check(item: dict, pack) -> list[str]:
+    """Added spend INTO a channel paid per result must stay within its stated room ("at most about ₹X
+    more a week" in the marginal_cost evidence). The proposed amount is, in this order: a ₹ figure
+    written right after a proposing verb ("deploy ₹2 L", "put up to ₹60,000 a week"); else the month's
+    unused budget when the text proposes "the unused budget" (plan to date - spend to date, from the
+    pacing evidence); else the test share of the source channel's current weekly spend. A weekly
+    amount is compared with the weekly room; any other amount is treated as one month's spending and
+    compared with the room over the latest month's days."""
+    from utils.formatting import format_inr
+    cost = next((i for i in pack.by_id.values() if i.type == "marginal_cost"), None)
+    if cost is None:
+        return []
+    text = item.get("text", "") or ""
+    reasons = []
+    for channel, fact in cost.facts.items():
+        room = CAPACITY.search(fact or "")
+        if not room or not re.search(rf"\b(into|to|towards?|in|on|scal\w*|increas\w*|grow\w*|boost\w*|expand\w*)\s+"
+                                     rf"(the\s+)?{re.escape(channel)}\b", text, re.IGNORECASE):
+            continue
+        weekly_room = _money(room.group(1))
+        pacing = next((i for i in pack.by_id.values() if i.type == "pacing"), None)
+        days = re.search(r"day \d+ of (\d+)", pacing.facts.get("latest month", "")) if pacing else None
+        month_room = weekly_room * (int(days.group(1)) if days else 30) / 7
+        proposals = []                                     # (amount, weekly?)
+        for m in NUMBER.finditer(text):
+            if m.group("rupee") and re.search(PROPOSE_VERB, text[:m.start()], re.IGNORECASE):
+                amount = _money(m.group(0))
+                if amount is not None:
+                    proposals.append((amount, bool(PER_WEEK.search(text[m.end():]))))
+        if not proposals and pacing is not None and UNUSED_PHRASE.search(text):
+            spent_vs_plan = [n.value for n in extract_numbers(pacing.facts.get("spend to date vs plan to date", ""),
+                                                             checkable_only=False) if n.kind == "money"]
+            if len(spent_vs_plan) >= 2 and spent_vs_plan[1] > spent_vs_plan[0]:
+                proposals.append((spent_vs_plan[1] - spent_vs_plan[0], False))
+        if not proposals and item.get("test_shift_pct"):
+            source = budget_source(item, pack)
+            name = source.title.split(": ", 1)[-1] if source is not None else ""
+            now = WEEKLY_NOW.search(cost.facts.get(name, "") or "")
+            if now and name != channel:
+                proposals.append((item["test_shift_pct"] / 100 * _money(now.group(1)), True))
+        for amount, weekly in proposals:
+            limit = weekly_room if weekly else month_room
+            if amount > limit * (1 + RELATIVE_TOLERANCE):
+                period = "a week" if weekly else "over the month"
+                reasons.append(f"Proposes about {format_inr(amount, compact=True)} {period} into {channel}, but its "
+                               f"stated capacity is only about {room.group(1)} more a week"
+                               + ("." if weekly else f" (about {format_inr(month_room, compact=True)} over the month)."))
+                break
+    return reasons
 
 
 def _pacing_check(recommendations: list[dict], pack, ev) -> None:
