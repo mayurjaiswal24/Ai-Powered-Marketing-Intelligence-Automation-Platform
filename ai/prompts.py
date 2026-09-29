@@ -36,11 +36,17 @@ v7 (owner review of the v6 answer): at least one recommendation must use the pac
 it is not "On Pace"; a short incident (days) is never the primary cause of a longer trend (weeks),
 only a partial or contributing factor, said explicitly; causal-certainty wording is banned
 (BANNED_CAUSAL_PHRASES). The evaluator marks each of these as weak.
+
+v8 (owner review of the v7 answer): moving budget between channels does not fix an underspend
+(total spend stays the same). A recommendation linked to an underspent month must either put the
+unused budget into the channel(s) with the lowest cost of the next conversion (raising total
+spend), or say that the reallocation addresses efficiency, not the underspend. The evaluator marks
+a pacing-linked reallocation that does neither as weak.
 """
 
 from __future__ import annotations
 
-PROMPT_VERSION = "v7"
+PROMPT_VERSION = "v8"
 
 # Causal-certainty wording the AI must not use (rule 3); the evaluator marks an item that uses
 # one of them as weak. Matched as whole words, ignoring case, in the statement text.
@@ -137,12 +143,18 @@ Planning evidence (profitability, next-conversion cost, pacing, forecast)
     do not invent losses; you may mention the campaigns closest to break-even.
 19. When a "pacing" item shows a status other than "On Pace", mention the pacing risk: at least
     one recommendation MUST refer to it directly and cite the pacing item's ID, quote the share of
-    plan used and tie it to the action (for example, put unused budget from underspending into the suggested
-    reallocation, or say which move to slow down when overspending).
+    plan used and tie it to the action (for example, how the unused budget from underspending is
+    used, see rule 21, or which move to slow down when overspending).
 20. Forecasts: always state a forecast as a range together with its past accuracy, for example
     "₹X to ₹Y over the next 8 weeks; past forecasts were off by about 12%", quoting both ends and
     the error exactly as written. Never present a forecast as a certainty or quote a single
     central estimate without its range, and never introduce a number that is not in the evidence.
+21. Underspending: moving budget between channels keeps total spend the same, so it does NOT fix
+    an underspend. A recommendation about an underspent month must EITHER (a) put the unused
+    budget into the channel(s) where the next conversion costs least (from the "marginal_cost"
+    item), raising total spend, and say so, for example "deploy the unused ₹X of budget into
+    Paid Search, where the next conversion costs least"; OR (b) if it only reallocates between
+    channels, say explicitly that the reallocation addresses efficiency, not the underspend itself.
 """
 
 

@@ -209,3 +209,17 @@ def as_sentence(text) -> str:
         return text
     text = text[0].upper() + text[1:]
     return text if text[-1] in ".!?…" else text + "."
+
+
+# Inline evidence tags the AI writes into its text, e.g. "[E47]", "[E01, E08]" or "(E16)".
+_EVIDENCE_TAG = re.compile(r"\s*[\[(](?:evidence\s+)?E\d{2,3}(?:\s*[,;]\s*E\d{2,3})*[\])]", re.IGNORECASE)
+
+
+def strip_evidence_tags(text) -> str:
+    """Display only: remove inline evidence-ID tags from AI text shown on screen, in the PDF and in
+    Excel. The stored answer keeps them (and its evidence_ids list), so the evaluator's citation
+    checks are unaffected; the IDs are still listed next to each statement."""
+    if not isinstance(text, str):
+        return text
+    out = _EVIDENCE_TAG.sub("", text)
+    return re.sub(r"[ \t]{2,}", " ", out).replace(" .", ".").replace(" ,", ",").replace(" ;", ";").strip()

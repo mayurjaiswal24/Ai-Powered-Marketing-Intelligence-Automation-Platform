@@ -92,8 +92,8 @@ def test_other_samples_and_uploads_run_the_full_pipeline(demo_on, tmp_path, monk
 
 
 # Upgrade v2.0 guard: the AI evidence pack for the Kalpa sample must not change by accident, so cached
-# insights stay valid. U1-U8 kept 037d98c5...; U9 (prompt v6, planning evidence) and the v7 prompt fix changed it on purpose.
-KALPA_EVIDENCE_FINGERPRINT = "253681a4b4b59afb4ed3c0a8db171dfc12669ae33014adcf95b4b3aa98335f75"
+# insights stay valid. U1-U8 kept 037d98c5...; U9 (prompt v6, planning evidence) and the v7 and v8 prompt fixes changed it on purpose.
+KALPA_EVIDENCE_FINGERPRINT = "bdac9fe1d842cd65f6e2c91daaf1110bc37be29eb5c113ed9068b55ae3f5af56"
 
 
 def test_kalpa_evidence_pack_fingerprint_unchanged(tmp_path):

@@ -37,7 +37,7 @@ from ingestion.loader import IngestionError
 from processing.cleaner import CleaningError
 from reports.excel_report import WorkbookError, export_workbook
 from reports.pdf_report import ReportError, export_pdf
-from utils.formatting import (as_sentence, format_count, format_date, format_date_range,
+from utils.formatting import (as_sentence, strip_evidence_tags, format_count, format_date, format_date_range,
                               format_datetime_ist, format_value, title_case)
 
 logger = logging.getLogger("marketing_intelligence")
@@ -2167,7 +2167,7 @@ def page_ai() -> None:
     if ev["dropped_items"]:
         with st.expander(f"Statements Removed for Lack of Evidence ({ev['dropped']})"):
             for d in ev["dropped_items"]:
-                st.markdown(f"- *{title_case(d['section'])}*: {d['text']} ({d['reason']})")
+                st.markdown(f"- *{title_case(d['section'])}*: {strip_evidence_tags(d['text'])} ({d['reason']})")
 
 
 def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
@@ -2176,10 +2176,10 @@ def _ai_item(item: dict, label: str, pack, lookup, key: str) -> None:
     weak = ("<span class='mi-tag mi-tag-weak'>Weak</span>"
             if item.get("weak") else "")
     st.markdown(f"<div class='mi-finding'><span class='mi-tag'>{html.escape(label)}</span>{weak}"
-                f"{html.escape(item.get('text', ''))}</div>", unsafe_allow_html=True)
+                f"{html.escape(strip_evidence_tags(item.get('text', '')))}</div>", unsafe_allow_html=True)
     details = []
     if item.get("validation_step"):
-        details.append(f"How to validate: {item['validation_step']}")
+        details.append(f"How to validate: {strip_evidence_tags(item['validation_step'])}")
     if item.get("metric_to_watch"):
         details.append(f"Priority: {str(item.get('priority', '')).capitalize()} · Metric to watch: "
                        f"{item['metric_to_watch']}")

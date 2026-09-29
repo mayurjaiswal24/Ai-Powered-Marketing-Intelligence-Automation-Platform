@@ -38,7 +38,7 @@ def _recs(*texts_ids):
 
 
 def test_prompt_v7_rules():
-    assert PROMPT_VERSION == "v7"
+    assert PROMPT_VERSION >= "v7"             # the v7 rules stay in later versions
     text = " ".join(SYSTEM_INSTRUCTIONS.lower().split())
     for rule in ("at least one recommendation must refer to it directly", "primary or main cause",
                  "contributed to part of the decline; the remaining drop is unexplained",
@@ -62,7 +62,7 @@ def test_no_recommendation_on_pacing_is_weak(pack):
 
 
 @pytest.mark.parametrize("text, cite_pacing", [
-    ("Move the unused budget from underspending into the Paid Search test.", False),
+    ("Move the unused budget from underspending into Paid Search, where the next conversion costs least.", False),
     ("Plan the next month's budget from the latest month's figures.", True),
 ])
 def test_recommendation_on_pacing_passes(pack, text, cite_pacing):

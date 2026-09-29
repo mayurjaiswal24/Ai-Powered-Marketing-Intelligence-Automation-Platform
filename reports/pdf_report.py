@@ -33,7 +33,7 @@ from dashboard import chart_standard as cs
 from dashboard import theme
 from dashboard.tables import format_table
 from reports import export_filename, pdf_charts
-from utils.formatting import (format_count, format_date, format_date_range, format_datetime_ist,
+from utils.formatting import (strip_evidence_tags, format_count, format_date, format_date_range, format_datetime_ist,
                               format_value, title_case, title_case_label)
 
 FONT_DIR = PROJECT_ROOT / "assets" / "fonts"
@@ -763,10 +763,10 @@ def _ai_section(rep: _Report) -> None:
             continue
         rep.h2(title)
         for item in items:
-            text = escape(item.get("text", ""))
+            text = escape(strip_evidence_tags(item.get("text", "")))
             extra = []
             if item.get("validation_step"):
-                extra.append(f"How to validate: {escape(item['validation_step'])}")
+                extra.append(f"How to validate: {escape(strip_evidence_tags(item['validation_step']))}")
             if item.get("metric_to_watch"):
                 extra.append(f"Priority: {escape(str(item.get('priority', '')).capitalize())} · Metric to "
                              f"watch: {escape(item['metric_to_watch'])}")

@@ -22,7 +22,7 @@ from config.settings import PROJECT_ROOT, settings
 from dashboard import theme
 from dashboard.tables import column_format, column_label
 from reports import export_filename
-from utils.formatting import (as_sentence, format_count, format_date, format_datetime_ist,
+from utils.formatting import (as_sentence, strip_evidence_tags, format_count, format_date, format_datetime_ist,
                               pct_decimals, title_case)
 
 EXPORTS_DIR = (Path(settings.exports_dir) if Path(settings.exports_dir).is_absolute()
@@ -363,9 +363,9 @@ def _ai(book: _Book, ai: dict | None) -> None:
     for key, title, label in SECTIONS:
         raw = ai.get(key)
         for item in raw if isinstance(raw, list) else ([raw] if raw else []):
-            rows.append({"section": title_case(title), "type": label, "text": item.get("text", ""),
+            rows.append({"section": title_case(title), "type": label, "text": strip_evidence_tags(item.get("text", "")),
                          "evidence_ids": ", ".join(item.get("evidence_ids", [])),
-                         "validation_step": item.get("validation_step", ""),
+                         "validation_step": strip_evidence_tags(item.get("validation_step", "")),
                          "priority": item.get("priority", ""),
                          "metric_to_watch": item.get("metric_to_watch", ""),
                          "test_shift_pct": item.get("test_shift_pct"),

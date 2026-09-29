@@ -24,6 +24,10 @@
    incident of AI_SHORT_INCIDENT_DAYS or fewer the primary cause of a trend without saying it
    is partial; and, when the pacing evidence is not "On Pace", recommendations that never refer
    to it (the flag is put on the top-ranked recommendation, where the reader sees it).
+8. v8, also WEAK: when the pacing evidence says "Underspending", a recommendation linked to pacing
+   that only reallocates between channels must either deploy the unused budget into the channel(s)
+   with the lowest cost of the next conversion, or say that the reallocation addresses efficiency,
+   not the underspend.
 """
 
 from __future__ import annotations
@@ -49,6 +53,14 @@ BANNED = re.compile(r"\b(" + "|".join(re.escape(p) for p in BANNED_CAUSAL_PHRASE
 PRIMARY_CAUSE = re.compile(r"\b(primar(y|ily)|main(ly)?|mostly|largely|chiefly|driven by|caused by)\b", re.IGNORECASE)
 PARTIAL = re.compile(r"\b(partial(ly)?|part of|contribut\w*|unexplained)\b", re.IGNORECASE)
 PACING_WORDS = re.compile(r"\b(pacing|underspen\w*|overspen\w*|unused budget|of plan)\b", re.IGNORECASE)
+# v8: moving money between channels vs. spending the unused budget.
+REALLOCATE = re.compile(r"\b(reallocat\w*|shift\w*|mov(e|es|ed|ing)|transfer\w*|redistribut\w*)\b", re.IGNORECASE)
+UNUSED_BUDGET = re.compile(r"\b(unused|unspent|underspent|remaining|leftover|left-over)\b[^.;]{0,40}(budget|spend|₹)"
+                           r"|\b(increas\w*|rais\w*|lift\w*)\b[^.;]{0,15}\btotal spend", re.IGNORECASE)
+NEXT_CONVERSION = re.compile(r"\bnext conversion\b|\bmarginal cost\b", re.IGNORECASE)
+EFFICIENCY_NOT_UNDERSPEND = re.compile(
+    r"\befficien\w*\b[^.]{0,60}\b(not|rather than|instead of)\b[^.]{0,40}\bunderspen\w*"
+    r"|\b(does|do|will|would) not (address|fix|solve|close|resolve|correct)\b[^.]{0,30}\bunderspen\w*", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -163,6 +175,8 @@ def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
                 weak.append(f"Does not mention the rupee impact of the incident it relies on ({shown}).")
     weak += _forecast_checks(item, pack)
     weak += _wording_checks(item, pack)
+    if section == "recommendations":
+        weak += _underspend_check(item, pack)
     item["weak"] = bool(weak)
     item["weak_reasons"] = weak
     if weak:
@@ -197,6 +211,26 @@ def _wording_checks(item: dict, pack) -> list[str]:
                                "as a partial or contributing factor.")
                 break
     return reasons
+
+
+def _underspend_check(item: dict, pack) -> list[str]:
+    """v8: a reallocation linked to an underspent month keeps total spend the same, so it must either
+    deploy the unused budget where the next conversion costs least (a) or say it only addresses
+    efficiency, not the underspend (b)."""
+    pacing = next((i for i in pack.by_id.values() if i.type == "pacing"), None)
+    if pacing is None or pacing.facts.get("status") != "Underspending":
+        return []
+    text = item.get("text", "") or ""
+    ids = item.get("evidence_ids", [])
+    if not (pacing.id in ids or PACING_WORDS.search(text)) or not REALLOCATE.search(text):
+        return []
+    cites_next_cost = NEXT_CONVERSION.search(text) or any(
+        pack.by_id[i].type == "marginal_cost" for i in ids if i in pack.by_id)
+    if (UNUSED_BUDGET.search(text) and cites_next_cost) or EFFICIENCY_NOT_UNDERSPEND.search(text):
+        return []
+    return ["Reallocating between channels keeps total spend the same, so it does not fix the underspend: "
+            "deploy the unused budget into the channel(s) with the lowest cost of the next conversion, or say "
+            "that the move addresses efficiency, not the underspend."]
 
 
 def _pacing_check(recommendations: list[dict], pack, ev) -> None:
