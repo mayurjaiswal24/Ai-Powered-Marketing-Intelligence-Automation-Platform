@@ -204,6 +204,16 @@ SCENARIO_MOVE_PCT = 15             # "Move Budget" default: 15% of the FROM chan
 SCENARIO_SLIDER_PCT = 50           # advanced sliders: each channel -50% to +50%
 SCENARIO_SUGGEST_MAX_CHANGE = 0.30 # "Suggest Allocation": at most +/-30% per channel
 
+# --- Basic view (U8, utils/plain_language.py) ----------------------------------------------------
+# A key number's colour: its target status when a target is set; otherwise the last N days compared
+# with the N days before. Worse by less than WATCH % = green, WATCH to BAD % = yellow, more = red.
+BASIC_COMPARE_DAYS = 30
+BASIC_WATCH_PCT = 5.0
+BASIC_BAD_PCT = 15.0
+BASIC_TOP_ALERTS = 3               # problem incidents on "Top Alerts" and in the Summary Report
+BASIC_TOP_CAMPAIGNS = 3            # best and weakest campaigns on "What's Working and What's Not"
+BASIC_MIN_SPEND_SHARE = 1.0        # campaigns under 1% of spend are too small to call best or weakest
+
 # --- AI (Gemini) ---------------------------------------------------------------------------------
 # The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
 # trimmed first. Keeps each call small (free-tier friendly) and focused.
@@ -286,6 +296,8 @@ class Settings:
     max_upload_mb: int = 50
     # Above this many rows we warn that analysis may be slow (the file still loads).
     large_row_warning: int = 200_000
+    # U8: the view a new session starts in, "Professional" (everything) or "Basic" (plain words).
+    default_view: str = "Professional"
 
     @property
     def has_gemini_key(self) -> bool:
@@ -329,7 +341,17 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         learning_enabled=_parse_bool(env.get("LEARNING_ENABLED"), defaults.learning_enabled),
         max_upload_mb=_parse_int(env.get("MAX_UPLOAD_MB"), defaults.max_upload_mb, minimum=1),
         large_row_warning=_parse_int(env.get("LARGE_ROW_WARNING"), defaults.large_row_warning, minimum=1),
+        default_view=_parse_view(env.get("DEFAULT_VIEW"), defaults.default_view),
     )
+
+
+VIEWS = ("Basic", "Professional")
+
+
+def _parse_view(value: str | None, default: str) -> str:
+    """'basic' / 'Professional' (any case) -> the view name; anything else -> the default."""
+    text = (value or "").strip().capitalize()
+    return text if text in VIEWS else default
 
 
 settings = load_settings()

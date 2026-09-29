@@ -148,9 +148,10 @@ class _NumberedCanvas(rl_canvas.Canvas):
         super().save()
 
 
-def _decorate(meta: dict, generated: str):
+def _decorate(meta: dict, generated: str, title: str = REPORT_TITLE, first_page: bool = False):
+    """Running header and footer (with the signature); `first_page` = also on page 1 (U8 summary)."""
     def on_page(canvas, doc):
-        if doc.page == 1:
+        if doc.page == 1 and not first_page:
             return
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor(theme.GRID))
@@ -159,7 +160,7 @@ def _decorate(meta: dict, generated: str):
         canvas.line(MARGIN, 14 * mm, PAGE_W - MARGIN, 14 * mm)
         canvas.setFont("DejaVu-Bold", 8)
         canvas.setFillColor(colors.HexColor(theme.INK))
-        canvas.drawString(MARGIN, PAGE_H - 11 * mm, REPORT_TITLE)
+        canvas.drawString(MARGIN, PAGE_H - 11 * mm, title)
         canvas.setFont("DejaVu", 8)
         canvas.setFillColor(colors.HexColor(theme.INK_SECONDARY))
         canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 11 * mm, str(meta.get("dataset_name") or ""))

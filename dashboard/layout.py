@@ -106,7 +106,8 @@ def _reset_for_new_file(raw_df, report, label):
     s = _state()
     s["raw_df"], s["report"], s["source_label"] = raw_df, report, label
     s["overrides"] = {}
-    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path", "ai_run", "ai_confirm"):
+    for key in ("output", "prep", "prep_key", "view", "view_key", "pdf_path", "excel_path", "summary_path",
+                "ai_run", "ai_confirm"):
         s.pop(key, None)
 
 
@@ -238,13 +239,14 @@ def _data_missing_state(message: str) -> None:
 # ---------------------------------------------------------------------------------------------
 
 def _nav_label(page: str) -> str:
-    return f":material/{PAGE_ICONS[page]}: {page}"
+    from dashboard.views.basic import BASIC_ICONS
+    return f":material/{PAGE_ICONS.get(page) or BASIC_ICONS[page]}: {page}"
 
 
-def _nav_section_starts() -> dict[int, str]:
+def _nav_section_starts(sections=NAV_SECTIONS) -> dict[int, str]:
     """1-based menu position of the first page in each section -> section label."""
     starts, position = {}, 1
-    for section, pages in NAV_SECTIONS:
+    for section, pages in sections:
         starts[position] = section
         position += len(pages)
     return starts
@@ -257,14 +259,20 @@ def _header(page: str, filters: Filters | None = None, title: str | None = None)
 
 
 def sidebar() -> tuple[str, Filters | None]:
+    from dashboard.views import basic      # U8: Basic view (its own menu, no filters)
     with st.sidebar:
         ui.brand_header()
-        st.markdown(theme.nav_css(_nav_section_starts()), unsafe_allow_html=True)
+        is_basic = basic.view_toggle() == basic.BASIC
+        sections, pages, key = ((basic.BASIC_SECTIONS, basic.BASIC_PAGES, basic.PAGE_KEY) if is_basic
+                                else (NAV_SECTIONS, PAGES, "page"))
+        st.markdown(theme.nav_css(_nav_section_starts(sections)), unsafe_allow_html=True)
         with st.container(key="mi_nav"):
-            page = st.radio("Menu", PAGES, key="page", label_visibility="collapsed",
+            page = st.radio("Menu", pages, key=key, label_visibility="collapsed",
                             format_func=_nav_label, width="stretch")
         filters = None
-        if page != "About":           # About is static: no filters, no data
+        if is_basic:
+            st.caption("The Basic view always shows the full dataset.")
+        elif page != "About":           # About is static: no filters, no data
             try:
                 filters = _sidebar_filters()
             except Exception:  # noqa: BLE001 - a filter problem must not hide the menu or footer
@@ -2400,12 +2408,13 @@ def _export_response_curves(output):
         return None
 
 
-def page_reports() -> None:
+def page_reports(show_header: bool = True) -> None:
     output = current_output()
-    _header("Reports")
+    if show_header:                     # the Basic Reports page draws its own header first (U8)
+        _header("Reports")
     pdf_col, excel_col = st.columns(2, gap="medium")
     with pdf_col, st.container(border=True, height="stretch"):
-        ui.card_title("Executive PDF Report", "A consulting-style report with KPIs, channel, campaign, "
+        ui.card_title("Executive PDF Report", "A consulting-style report with key numbers (KPIs), channel, campaign, "
                       "funnel and segment analysis, findings, performance concerns, data quality, "
                       "methodology and limitations.")
         if st.button("Generate PDF", key="generate_pdf", type="primary", icon=":material/picture_as_pdf:"):
@@ -2424,7 +2433,7 @@ def page_reports() -> None:
             st.download_button("Download PDF", Path(pdf_path).read_bytes(), file_name=Path(pdf_path).name,
                                mime="application/pdf", key="download_pdf", icon=":material/download:")
     with excel_col, st.container(border=True, height="stretch"):
-        ui.card_title("Analytical Excel Workbook", "All the supporting evidence (KPIs, clean data, "
+        ui.card_title("Analytical Excel Workbook", "All the supporting evidence (key numbers, clean data, "
                       "campaign, channel, segment, funnel and trend tables, incidents, the data quality "
                       "log and methodology) as real numbers you can sort and filter.")
         if st.button("Generate Excel", key="generate_excel", type="primary", icon=":material/table_view:"):

@@ -269,6 +269,28 @@ APP_CSS = f"""
       overflow-wrap: normal !important; overflow: visible !important; text-overflow: clip !important;
       min-width: 5.5rem; max-width: 20rem; }}
 
+  /* Basic view (U8): large key-number cards; the status colour is always written out as well */
+  .mi-basic-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.8rem;
+                    margin: 0.2rem 0 0.6rem 0; }}
+  .mi-basic-card {{ border: 1px solid {BORDER}; border-left: 5px solid {NEUTRAL}; border-radius: 10px;
+                    padding: 0.8rem 0.95rem; background: {SURFACE}; box-shadow: {CARD_SHADOW}; }}
+  .mi-basic-good {{ border-left-color: {GOOD}; }}
+  .mi-basic-watch {{ border-left-color: {WARNING}; }}
+  .mi-basic-bad {{ border-left-color: {BAD}; }}
+  .mi-basic-title {{ color: {INK_SECONDARY}; font-size: 0.86rem; font-weight: 560; }}
+  .mi-basic-value {{ color: {INK}; font-size: 1.9rem; font-weight: 700; line-height: 1.25; margin: 0.15rem 0; }}
+  .mi-basic-sentence {{ color: {INK_SECONDARY}; font-size: 0.88rem; margin-bottom: 0.45rem; }}
+  .mi-basic-status {{ font-size: 0.8rem; font-weight: 620; color: {INK_SECONDARY}; }}
+  .mi-basic-good .mi-basic-status {{ color: {GOOD_TEXT}; }}
+  .mi-basic-watch .mi-basic-status {{ color: #8a5d00; }}
+  .mi-basic-bad .mi-basic-status {{ color: #a32121; }}
+  .mi-basic-basis {{ font-weight: 400; color: {INK_MUTED}; }}
+  .mi-basic-dot {{ display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%;
+                   background: {NEUTRAL}; margin-right: 0.35rem; }}
+  .mi-basic-good .mi-basic-dot {{ background: {GOOD}; }}
+  .mi-basic-watch .mi-basic-dot {{ background: {WARNING}; }}
+  .mi-basic-bad .mi-basic-dot {{ background: {BAD}; }}
+
   /* Upload page: 3-step guide, demo card, recent-analysis cards */
   .mi-steps {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem;
                margin: 0.2rem 0 1.3rem 0; }}

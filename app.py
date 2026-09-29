@@ -19,6 +19,7 @@ st.set_page_config(page_title="Marketing Intelligence Platform",
 from dashboard import components as ui  # noqa: E402  (after set_page_config)
 from dashboard import layout  # noqa: E402
 from dashboard.theme import APP_CSS  # noqa: E402
+from dashboard.views import basic  # noqa: E402  (U8 Basic view)
 
 logger = logging.getLogger("marketing_intelligence")
 
@@ -50,6 +51,8 @@ def main() -> None:
             ui.page_header(page, layout.PAGE_DESCRIPTIONS.get(page),
                            eyebrow=layout.PAGE_SECTION.get(page) or None)
             layout.not_ready()
+        elif basic.current_view() == basic.BASIC and page in basic.RENDERERS:
+            basic.RENDERERS[page]()
         elif page in PAGE_RENDERERS:
             PAGE_RENDERERS[page](filters)
         elif page == "AI Insights":
