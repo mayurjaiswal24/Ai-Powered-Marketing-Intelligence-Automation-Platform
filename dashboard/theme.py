@@ -318,6 +318,21 @@ APP_CSS = f"""
   .mi-creator-name a {{ color: {BRAND}; text-decoration: none; }}
   .mi-creator-row {{ margin: 0.35rem 0; color: {INK_SECONDARY}; font-size: 0.92rem; }}
   .mi-creator-row b {{ color: {INK}; font-weight: 600; }}
+  .mi-roadmap {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.1rem;
+                 margin-top: 0.4rem; }}
+  .mi-roadmap-step {{ position: relative; border-top: 3px solid {GRID}; padding-top: 0.9rem; }}
+  .mi-roadmap-current {{ border-top-color: {BRAND}; }}
+  .mi-roadmap-planned {{ border-top-style: dashed; }}
+  .mi-roadmap-dot {{ position: absolute; top: -8px; left: 0; width: 13px; height: 13px; border-radius: 50%;
+                     background: {SURFACE}; border: 3px solid {AXIS}; }}
+  .mi-roadmap-current .mi-roadmap-dot {{ background: {BRAND}; border-color: {BRAND}; }}
+  .mi-roadmap-head {{ display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; color: {INK}; }}
+  .mi-roadmap-head b {{ font-weight: 640; }}
+  .mi-roadmap-step p {{ color: {INK_SECONDARY}; font-size: 0.9rem; margin: 0.35rem 0 0 0; }}
+  .mi-roadmap-planned p, .mi-roadmap-planned b {{ color: {INK_MUTED}; }}
+  .mi-badge {{ display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 0.74rem; font-weight: 600; }}
+  .mi-badge-current {{ background: {BRAND_SOFT}; color: {BRAND}; }}
+  .mi-badge-planned {{ background: {PANEL}; color: {INK_SECONDARY}; }}
   .mi-open-to {{ display: inline-block; margin: 0.5rem 0 0.4rem 0; padding: 0.3rem 0.7rem;
                  border-radius: 8px; background: {BRAND_SOFT}; color: {BRAND}; font-size: 0.86rem;
                  font-weight: 560; }}

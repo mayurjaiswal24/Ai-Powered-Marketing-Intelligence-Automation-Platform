@@ -2485,6 +2485,36 @@ ABOUT_FEATURES = [
 ABOUT_FOOTER = ("Built with Python, pandas, Streamlit, Plotly, SQLite, Google Gemini, ReportLab, "
                 "Matplotlib and XlsxWriter. Every number is calculated in Python; the AI only "
                 "interprets a verified summary of those numbers.")
+# Version roadmap (U10): (version, name, what it contains). The "Current" badge follows APP_VERSION;
+# later versions are "Planned" (a direction, never a promise).
+ABOUT_ROADMAP = [
+    ("1.0", "Foundation", "Upload and auto-mapping, data cleaning, verified KPIs, channel, campaign, funnel "
+     "and segment analysis, incident detection, AI insights, PDF and Excel reports."),
+    ("2.0", "Decision Intelligence", "Insight-driven visualisation, profitability and break-even analysis, "
+     "targets, budget pacing and forecast, scenario planner, Basic and Professional views, self-learning "
+     "column mapping and smarter AI recommendations."),
+    ("3.0", "Planned", "Customer lifetime value and cohorts, multi-touch attribution, live connections to ad "
+     "platforms, scheduled reports and alerts, team workspaces."),
+]
+
+
+def roadmap_html(current: str) -> str:
+    """Three-step timeline; the step equal to `current` gets "Current", later steps get "Planned"."""
+    def as_number(version: str) -> float:
+        try:
+            return float(version)
+        except ValueError:
+            return 0.0
+    steps = []
+    for version, name, text in ABOUT_ROADMAP:
+        state = ("current" if version == current else
+                 "planned" if as_number(version) > as_number(current) else "done")
+        badge = {"current": "<span class='mi-badge mi-badge-current'>Current</span>",
+                 "planned": "<span class='mi-badge mi-badge-planned'>Planned</span>"}.get(state, "")
+        steps.append(f"<div class='mi-roadmap-step mi-roadmap-{state}'><div class='mi-roadmap-dot'></div>"
+                     f"<div class='mi-roadmap-head'><b>v{html.escape(version)} · {html.escape(name)}</b>{badge}</div>"
+                     f"<p>{html.escape(text)}</p></div>")
+    return f"<div class='mi-roadmap'>{''.join(steps)}</div>"
 
 
 def page_about() -> None:
@@ -2498,3 +2528,6 @@ def page_about() -> None:
         st.caption(ABOUT_FOOTER)
     with who, st.container(border=True, height="stretch"):
         ui.creator_card()
+    with st.container(border=True):
+        ui.card_title("Version Roadmap")
+        st.markdown(roadmap_html(getattr(config_settings, "APP_VERSION", "")), unsafe_allow_html=True)

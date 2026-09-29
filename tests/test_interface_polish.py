@@ -19,8 +19,8 @@ def test_ist_times_are_shown_in_india_time():
 def test_creator_details_and_signature():
     assert cfg.CREATOR_NAME == "Mayur Jaiswal"
     assert cfg.CREATOR_LINKEDIN.startswith("https://www.linkedin.com/in/")
-    assert cfg.APP_VERSION == "1.0"
-    assert cfg.REPORT_SIGNATURE == ("Prepared with Marketing Intelligence Platform · "
+    assert cfg.APP_VERSION == "2.0"
+    assert cfg.REPORT_SIGNATURE == ("Prepared with Marketing Intelligence Platform v2.0 · "
                                     "Created by Mayur Jaiswal")
 
 

@@ -39,6 +39,34 @@ Upload a CSV or Excel export and, with no manual chart building:
 - **Produces three outputs from one analysis result**: an interactive Streamlit dashboard, an
   executive PDF and an analytical Excel workbook, with identical numbers in all three.
 
+New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" and "what next":
+
+- **Insight-driven charts**: titles that state the takeaway, KPI sparklines, one colour per channel
+  everywhere, channel → campaign drill-down and incident markers on trend lines.
+- **Profitability**: gross margin, break-even ROAS and contribution per campaign and channel, each
+  judged against its own margin.
+- **Targets vs actual**: a scorecard with On Target / Within 10% / Off Target, by channel and month.
+- **Budget pacing and forecast**: monthly budget use with a projected month-end, and an 8-week
+  forecast shown as a range with its past error.
+- **Scenario planner**: diminishing-returns curves per paid channel, the cost of the next
+  conversion, and budget moves with honest ranges and guardrails.
+- **Basic and Professional views**: the same numbers in plain sentences with green/yellow/red cards,
+  or in full analyst detail.
+- **Self-learning column mapping**: a knowledge base of headers from 16 sources plus mappings
+  learned from earlier confirmed choices.
+- **Smarter AI recommendations**: budget advice follows the cost of the next conversion,
+  profitability and pacing, with extra evaluator checks (capacity, underspend logic, wording).
+
+## Version roadmap
+
+| Version | Status | Contents |
+|---|---|---|
+| **v1.0 · Foundation** | Released | Upload and auto-mapping, data cleaning, verified KPIs, channel, campaign, funnel and segment analysis, incident detection, AI insights, PDF and Excel reports. |
+| **v2.0 · Decision Intelligence** | **Current** | Insight-driven visualisation, profitability and break-even analysis, targets, budget pacing and forecast, scenario planner, Basic and Professional views, self-learning column mapping and smarter AI recommendations. |
+| **v3.0** | Planned | Customer lifetime value and cohorts, multi-touch attribution, live connections to ad platforms, scheduled reports and alerts, team workspaces. |
+
+v3.0 is a direction, not a promise. The version number comes from `APP_VERSION` in `config/settings.py`.
+
 _Screenshots: add `docs/images/overview.png`, `anomalies.png`, `ai_insights.png`, `pdf.png`._
 
 ## Architecture
@@ -181,8 +209,9 @@ docs/                   architecture, methodology, demo script, project walkthro
 - **Last-click revenue.** ROAS uses the revenue recorded against each campaign, so upper-funnel
   channels (video, prospecting) can look weaker than they are. The app states this wherever
   ROAS drives a conclusion.
-- **Not a forecasting tool.** Findings and anomalies show what changed and by how much, not why.
-  AI hypotheses are labelled as hypotheses, with a validation step.
+- **Shows what changed, not why.** Findings and anomalies show what changed and by how much. AI
+  hypotheses are labelled as hypotheses, with a validation step. Forecasts and scenarios are
+  ranges from one year of weekly history, not guarantees (no yearly seasonality yet).
 - **One file per analysis**, at the grain of one row per date × campaign (optionally ×
   region/segment). Files with other grains still load, but some analyses switch off.
 - **Free-tier AI.** Gemini free-tier models can be busy. The app shows a clear message and keeps
@@ -193,19 +222,22 @@ docs/                   architecture, methodology, demo script, project walkthro
 
 ## Future improvements
 
-- **Multi-file and API ingestion:** combine Google Ads, Meta and CRM exports into one analysis,
-  or pull them directly from the platforms' APIs on a schedule.
+Planned for v3.0:
+
+- **Customer lifetime value and cohorts:** judge channels by the value of the customers they
+  bring over time, not only by first-order revenue.
 - **Multi-touch attribution:** position-based or data-driven attribution alongside last-click
   ROAS, so upper-funnel channels are judged fairly.
-- **Budget scenario planner:** simulate budget moves using each channel's diminishing-returns
-  curve, with the "₹ at stake" logic extended to expected ranges.
-- **Scheduled monitoring:** a weekly job that re-runs the analysis and e-mails new incidents
-  (tracking outages, CPL spikes) to the team.
-- **User accounts and shared workspaces** with a server database (PostgreSQL) instead of
-  per-session SQLite for multi-user deployments.
-- **Richer AI evaluation:** check the meaning of statements (e.g. "above the paid-media
-  average"), not only the numbers, and track AI quality over time.
-- **Forecasting:** seasonality-aware forecasts of spend and leads to support monthly planning.
+- **Live connections to ad platforms:** pull Google Ads, Meta and CRM data directly (and combine
+  several exports into one analysis) instead of uploading files.
+- **Scheduled reports and alerts:** a weekly job that re-runs the analysis and e-mails the report
+  and new incidents (tracking outages, CPL spikes) to the team.
+- **Team workspaces:** user accounts and a server database (PostgreSQL) instead of per-session
+  SQLite for multi-user deployments.
+
+Also worth doing: richer AI evaluation (check the meaning of statements, not only the numbers,
+and track AI quality over time) and seasonality-aware forecasts once two or more years of data
+are available.
 
 ## Documentation
 

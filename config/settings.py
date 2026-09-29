@@ -45,7 +45,7 @@ _load_streamlit_secrets()
 
 # --- Product and creator details (shown in the sidebar, About page, PDF and Excel) --------------
 APP_NAME = "Marketing Intelligence Platform"
-APP_VERSION = "1.0"
+APP_VERSION = "2.0"
 CREATOR_NAME = "Mayur Jaiswal"
 CREATOR_LINKEDIN = "https://www.linkedin.com/in/mayur-jaiswal-679501213"
 CREATOR_TITLE = "PGDM (Marketing & AI), Dr. D. Y. Patil B-School, Pune"
@@ -54,7 +54,7 @@ CREATOR_FOCUS = "Growth & Strategy Analysis · Marketing Analytics · Applied AI
 CREATOR_OPEN_TO = ("Open to Growth & Strategy Analyst and Marketing Analytics Roles · "
                    "On-site, Hybrid or Remote")
 # One signature line, identical in the PDF (cover + every footer) and the Excel title block.
-REPORT_SIGNATURE = f"Prepared with {APP_NAME} · Created by {CREATOR_NAME}"
+REPORT_SIGNATURE = f"Prepared with {APP_NAME} v{APP_VERSION} · Created by {CREATOR_NAME}"
 
 # --- Profiling & field-mapping thresholds (fixed business rules, not per-deployment) -------------
 # A header whose fuzzy similarity to a known synonym reaches this score (0-100), AND whose data
