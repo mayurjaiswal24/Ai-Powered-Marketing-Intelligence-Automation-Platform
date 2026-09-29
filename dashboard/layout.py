@@ -1888,7 +1888,8 @@ def page_scenarios(filters: Filters) -> None:
         ui.empty_state(getattr(result, "reason", "") or rc.REASON_NO_DATA, icon="tune")
         return
     st.markdown("## Data Check")
-    ui.show_table(rc.checks_table(result), wrap_headers=True)
+    with st.container(key="mi_scroll_checks"):      # phone width: scroll sideways, never clip text
+        ui.show_table(rc.checks_table(result), wrap_headers=True)
     st.caption(f"A paid channel qualifies with at least {config_settings.RESPONSE_MIN_WEEKS} full weeks of spend, "
                f"spend variation (CV) of at least {config_settings.RESPONSE_MIN_CV:.2f} and a highest week at least "
                f"{config_settings.RESPONSE_MIN_MAX_RATIO:g}× the lowest. Owned channels are left out. Channels "
@@ -1899,7 +1900,8 @@ def page_scenarios(filters: Filters) -> None:
     st.info(rc.HONEST_NOTE, icon=":material/info:")
 
     st.markdown("## Budget Efficiency by Channel")
-    ui.show_table(rc.efficiency_table(result), wrap_headers=True)
+    with st.container(key="mi_scroll_efficiency"):
+        ui.show_table(rc.efficiency_table(result), wrap_headers=True)
     st.markdown("\n".join(f"- {rc.per_lakh_sentence(cv)}" for cv in result.usable.values()))
     for cv in result.usable.values():
         if cv.clamped:

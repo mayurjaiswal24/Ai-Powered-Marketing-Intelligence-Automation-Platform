@@ -257,6 +257,18 @@ APP_CSS = f"""
                     text-transform: none; white-space: nowrap; direction: ltr;
                     -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; }}
 
+  /* Wide tables (containers keyed "mi_scroll_..."): on narrow screens the table keeps its natural
+     width and the container scrolls sideways, so no cell text is clipped or broken mid-word. */
+  [class*="st-key-mi_scroll_"] {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+  [class*="st-key-mi_scroll_"] [data-testid="stTable"],
+  [class*="st-key-mi_scroll_"] [data-testid="stTable"] > div {{ overflow: visible !important;
+      width: max-content !important; min-width: 100%; max-width: none !important; }}
+  [class*="st-key-mi_scroll_"] table {{ width: max-content !important; min-width: 100%;
+      max-width: none !important; table-layout: auto !important; }}
+  [class*="st-key-mi_scroll_"] th, [class*="st-key-mi_scroll_"] td {{ word-break: normal !important;
+      overflow-wrap: normal !important; overflow: visible !important; text-overflow: clip !important;
+      min-width: 5.5rem; max-width: 20rem; }}
+
   /* Upload page: 3-step guide, demo card, recent-analysis cards */
   .mi-steps {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.8rem;
                margin: 0.2rem 0 1.3rem 0; }}
