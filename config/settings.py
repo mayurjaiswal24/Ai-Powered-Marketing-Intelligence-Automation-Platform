@@ -217,7 +217,7 @@ BASIC_MIN_SPEND_SHARE = 1.0        # campaigns under 1% of spend are too small t
 # --- AI (Gemini) ---------------------------------------------------------------------------------
 # The evidence pack sent to Gemini is capped at this many characters; lowest-priority evidence is
 # trimmed first. Keeps each call small (free-tier friendly) and focused.
-AI_CONTEXT_MAX_CHARS = 18_000    # raised from 15,000 when incidents were added (Phase 12 review)
+AI_CONTEXT_MAX_CHARS = 21_000    # 15,000 -> 18,000 for incidents (Phase 12 review) -> 21,000 for U9 planning items
 AI_TOP_CAMPAIGNS = 5               # best and weakest campaigns included as evidence
 AI_MAX_INCIDENTS = 10              # top incidents (by estimated rupee impact) included as evidence
 AI_TIMEOUT_SECONDS = 90            # give up on a Gemini call after this long

@@ -128,7 +128,7 @@ def test_exact_values_are_not_sent_to_gemini(pack):
 
 
 def test_prompt_v5_rules():
-    assert PROMPT_VERSION == "v5"
+    assert PROMPT_VERSION >= "v5"             # the v5 rules stay in later versions
     text = " ".join(SYSTEM_INSTRUCTIONS.lower().split())
     for rule in ("source_evidence_id", "never state a projected gain", "roas paid media only"):
         assert rule in text, rule

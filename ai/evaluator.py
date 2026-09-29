@@ -12,9 +12,14 @@
    - a budget move with a test share: test_shift_pct x the spend of the campaign/channel the
      budget moves FROM (money put at risk by the test - NOT a projected gain);
    - a recommendation citing an incident: that incident's estimated rupee impact.
-   The larger of the two is used, and ALL recommendations are ranked by it (highest first);
+   - (v6) a recommendation citing the profitability evidence and naming a loss-making campaign:
+     that campaign's ₹ lost.
+   The larger of these is used, and ALL recommendations are ranked by it (highest first);
    those with nothing at stake keep their order after them.
 5. A summary counts kept, verified, unverified, weak and dropped items.
+6. Forecasts (v6): a money range with one shared unit ("₹2.7-5.9 Cr") is read as two amounts, so
+   both ends are checked. An item that quotes figures from the forecast evidence must quote at
+   least two of them (a range) and the past error; otherwise it is marked WEAK.
 """
 
 from __future__ import annotations
@@ -30,6 +35,8 @@ NUMBER = re.compile(
     r"(?:\s?(?P<unit>Cr\b|crore\b|L\b|lakh\b|lakhs\b|%|x\b))?")
 MULTIPLIER = {"Cr": 1e7, "crore": 1e7, "L": 1e5, "lakh": 1e5, "lakhs": 1e5}
 ID_PATTERN = re.compile(r"^E\d{2,3}$")
+# "₹2.7-5.9 Cr" / "₹2.7 to ₹5.9 Cr": the unit written once applies to both ends of the range.
+MONEY_RANGE = re.compile(r"₹\s?(\d[\d,]*(?:\.\d+)?)\s?(–|-|to)\s?(₹\s?)?(\d[\d,]*(?:\.\d+)?)\s?(Cr|crore|L|lakhs|lakh)\b")
 from config.settings import AI_NUMBER_TOLERANCE as RELATIVE_TOLERANCE  # noqa: E402
 
 
@@ -45,7 +52,8 @@ def extract_numbers(text: str, checkable_only: bool = True) -> list[Number]:
     """Numbers in a piece of text. With checkable_only, small bare integers (like '3 weeks'),
     years and date days are skipped: they are not metric values."""
     found = []
-    for m in NUMBER.finditer(text or ""):
+    text = MONEY_RANGE.sub(lambda m: f"₹{m.group(1)} {m.group(5)} to ₹{m.group(4)} {m.group(5)}", text or "")
+    for m in NUMBER.finditer(text):
         raw = m.group("num").rstrip(",")
         unit = m.group("unit") or ""
         rupee = bool(m.group("rupee"))
@@ -141,11 +149,36 @@ def _quality_checks(section: str, item: dict, pack, ev: Evaluation) -> None:
             if not any(_matches(n, amounts) for n in stated):
                 shown = ", ".join(f"{i}: {pack.by_id[i].facts.get('estimated impact', '').split(' (')[0]}" for i in ids)
                 weak.append(f"Does not mention the rupee impact of the incident it relies on ({shown}).")
+    weak += _forecast_checks(item, pack)
     item["weak"] = bool(weak)
     item["weak_reasons"] = weak
     if weak:
         ev.weak += 1
         item["warnings"] = item.get("warnings", []) + weak
+
+
+def _forecast_checks(item: dict, pack) -> list[str]:
+    """v6: a forecast is always a range with its past accuracy. Applies only when the item quotes a
+    figure from a cited forecast evidence item."""
+    texts = " ".join(item.get(k, "") or "" for k in ("text", "validation_step", "metric_to_watch"))
+    stated = extract_numbers(texts)
+    for eid in item.get("evidence_ids", []):
+        fc = pack.by_id.get(eid)
+        if fc is None or fc.type != "forecast":
+            continue
+        lines = [v for k, v in fc.facts.items() if k not in ("range meaning", "limits")]
+        amounts = [n for v in lines for n in extract_numbers(v.split(";")[0], checkable_only=False)]
+        errors = [n for v in lines for n in extract_numbers(v, checkable_only=False) if n.kind == "percent"]
+        quoted = [n for n in stated if n.kind != "percent" and _matches(n, amounts)]
+        if not quoted:
+            continue
+        reasons = []
+        if len(quoted) < 2:
+            reasons.append("States a forecast as a single number instead of a range.")
+        if not any(n.kind == "percent" and _matches(n, errors) for n in stated):
+            reasons.append("States a forecast without its past accuracy.")
+        return reasons
+    return []
 
 
 def budget_source(item: dict, pack):
@@ -173,6 +206,14 @@ def _add_at_stake(item: dict, pack) -> None:
         amount = pct / 100 * spend
         candidates.append((amount, f"{pct:g}% test shift × {format_inr(spend, compact=True)} spend of "
                                    f"{source.title} ({source.id}); money at risk, not a projected gain"))
+    for eid in item.get("evidence_ids", []):
+        prof = pack.by_id.get(eid)
+        if prof is None or prof.type != "profitability":
+            continue
+        for key, lost in prof.values.items():
+            name = key.split(":", 1)[1]
+            if key.startswith("loss:") and name.lower() in (item.get("text", "") or "").lower():
+                candidates.append((lost, f"₹ lost by the loss-making campaign {name}"))
     _, impacts = _incident_impact(item, pack)
     if impacts:
         biggest = max(n.value for n in impacts)

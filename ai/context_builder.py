@@ -276,6 +276,130 @@ def _measurement_items(result) -> list[EvidenceItem]:
 
 
 # ---------------------------------------------------------------------------------------------
+# U9 (prompt v6): planning evidence from the U4-U7 results. Only what the DATA says: the stored
+# AnalysisResult parts never contain user inputs (targets, assumed margin, a typed monthly budget,
+# scenarios), and analyses saved before U4-U7 (parts are None) simply have no such items.
+# ---------------------------------------------------------------------------------------------
+
+def _money(value) -> str:
+    return format_value(value, "money", compact=True)
+
+
+def _profitability_items(result) -> list[EvidenceItem]:
+    p = getattr(result, "profitability", None)
+    if p is None or not p.available or p.assumed_margin_pct is not None:   # an assumed margin: never sent
+        return []
+    t = p.totals
+    facts = {"basis": p.basis_note,
+             "total contribution (gross profit minus spend)": _money(t.get("contribution")),
+             "profit per ₹1 of spend": format_value(t.get("profit_per_rupee"), "money"),
+             "gross margin": _pct(t.get("gross_margin_pct")),
+             "break-even ROAS overall": format_value(t.get("break_even_roas"), "ratio")}
+    if p.status_counts:
+        facts["paid campaigns by status"] = ", ".join(f"{s} {n}" for s, n in p.status_counts.items() if n)
+    values = {}
+    if p.loss_spend is not None:
+        losers = p.loss_makers(3)
+        if not losers.empty:
+            facts["spend in loss-making paid campaigns"] = (f"{_money(p.loss_spend)} ({_pct(p.loss_spend_share_pct)}"
+                                                            " of paid campaign spend)")
+            facts["biggest loss-makers (₹ lost)"] = "; ".join(
+                f"{r.campaign}: {_money(-r.contribution)} lost" for r in losers.itertuples())
+            values = {f"loss:{r.campaign}": float(-r.contribution) for r in losers.itertuples()}
+        else:
+            near = p.campaigns[p.campaigns["status"] == "Near break-even"].sort_values("contribution").head(3)
+            facts["loss-making campaigns"] = "none"
+            if not near.empty:
+                facts["closest to break-even (contribution)"] = "; ".join(
+                    f"{r.campaign}: {_money(r.contribution)}" for r in near.itertuples())
+    if not p.channels.empty:
+        facts["paid channels: ROAS vs own break-even ROAS"] = "; ".join(
+            f"{r.channel} {format_value(r.roas, 'ratio')} vs {format_value(r.break_even_roas, 'ratio')} "
+            f"({r.status})" for r in p.channels.itertuples())
+    return [EvidenceItem("profitability", "Profitability (gross profit minus spend)", facts, 2, values=values)]
+
+
+def _pacing_items(result) -> list[EvidenceItem]:
+    pr = getattr(result, "pacing", None)
+    if pr is None or not pr.available or pr.assumed:        # a typed budget is a user input: never sent
+        return []
+    from analytics.pacing import PARTIAL
+    from analytics.targets import month_label
+    o = pr.overall
+    ratio = None if o.get("pacing_ratio") is None else o["pacing_ratio"] * 100
+    facts = {"budget source": "Budget column in the data",
+             "latest month": f"{month_label(o['month'])} (data to {format_date(pr.as_of)}, day {o['day']} "
+                             f"of {o['days_in_month']})",
+             "status": o["status"],
+             "spend to date vs plan to date": f"{_money(o['spend_to_date'])} vs {_money(o['planned_to_date'])} "
+                                              f"({_pct(ratio)} of plan)",
+             "month budget": _money(o.get("month_budget"))}
+    if o.get("remaining_planned", 0) > 0 and o.get("projected_spend") is not None:
+        facts["projected month-end spend (last 7 days' pace)"] = _money(o["projected_spend"])
+    rated = pr.monthly[pr.monthly["status"] != PARTIAL] if not pr.monthly.empty else pr.monthly
+    if not rated.empty:
+        facts["full months: share of budget used"] = (f"{_pct(rated['budget_utilisation'].min())} to "
+                                                      f"{_pct(rated['budget_utilisation'].max())}")
+    ch = pr.channels
+    if ch is not None and not ch.empty:
+        off = ch[~ch["owned"] & (ch["status"] != "On Pace")].head(4)
+        if not off.empty:
+            facts["paid channels off pace"] = "; ".join(
+                f"{r.channel} {_pct(r.pacing_pct)} of plan ({r.status})" for r in off.itertuples())
+    return [EvidenceItem("pacing", "Budget pacing, latest month", facts, 2)]
+
+
+def _forecast_items(result) -> list[EvidenceItem]:
+    fr = getattr(result, "forecast", None)
+    if fr is None or not fr.available or not fr.metrics:
+        return []
+    from analytics.forecast import LIMITS_NOTE
+    facts = {}
+    for m, mf in fr.metrics.items():
+        fmt = KPI_REGISTRY[m].fmt
+        fc = mf.forecast
+        show = lambda v: format_value(v, fmt, compact=True)  # noqa: E731
+        error = ("accuracy not measurable" if mf.wape is None
+                 else f"past forecasts were off by about {_pct(mf.wape)}")
+        facts[f"{KPI_REGISTRY[m].label}, next {fr.horizon} weeks"] = (
+            f"{show(fc['low'].sum())} to {show(fc['high'].sum())} (central estimate {show(fc['forecast'].sum())}); "
+            f"{error}")
+    facts["range meaning"] = ("sum of each week's 10th-90th percentile range of past forecast errors; "
+                              f"method chosen by a backtest on {fr.weeks} full weeks")
+    facts["limits"] = LIMITS_NOTE
+    return [EvidenceItem("forecast", f"Forecast outlook, next {fr.horizon} weeks (all channels)", facts, 2)]
+
+
+def _marginal_cost_items(result) -> list[EvidenceItem]:
+    rc = getattr(result, "response_curves", None)
+    if rc is None or not rc.curves:
+        return []
+    from analytics.response_curves import PERFORMANCE
+    facts, skipped = {}, []
+    for name, cv in rc.curves.items():
+        if not cv.usable:
+            skipped.append(name)
+            continue
+        now = f"now {_money(cv.base_spend)} a week"
+        if cv.status == PERFORMANCE:
+            room = max(0.0, (cv.cap_conversions or 0) - cv.base_conversions) * (cv.cpa or 0)
+            facts[name] = (f"paid per result: cost per conversion {_money(cv.cpa)} ({now}); capacity about "
+                           f"{format_count(cv.cap_conversions)} conversions a week, so at most about {_money(room)} "
+                           "more a week buys anything")
+        else:
+            mc = cv.marginal_cost(cv.base_spend)
+            facts[name] = (f"next conversion costs {_money(mc)} ({now}); confidence {cv.confidence}"
+                           + ("; returns limited to proportional, treat as an upper limit" if cv.clamped else ""))
+    if not facts:
+        return []
+    if skipped:
+        facts["not estimated (not enough spend variation)"] = ", ".join(skipped)
+    facts["meaning"] = ("cost of one more conversion at today's weekly spend, from past weekly spend and "
+                        "conversions (incident weeks left out); a past pattern, not a guarantee")
+    return [EvidenceItem("marginal_cost", "Cost of the next conversion by paid channel", facts, 2)]
+
+
+# ---------------------------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------------------------
 
@@ -287,7 +411,10 @@ def build_evidence(result, max_chars: int = AI_CONTEXT_MAX_CHARS, model: str = "
     candidates = (_kpi_items(result) + _quality_items(result) + _measurement_items(result)
                   + _finding_items(result) + _channel_items(result) + _funnel_items(result)
                   + _trend_items(result) + _incident_items(result) + _campaign_items(result)
-                  + _segment_items(result))
+                  + _segment_items(result)
+                  # U9: appended last so the IDs of the items above do not move.
+                  + _profitability_items(result) + _marginal_cost_items(result)
+                  + _pacing_items(result) + _forecast_items(result))
     not_available = _not_available(result)
 
     # Keep the most important items that fit; drop from the lowest priority upwards.

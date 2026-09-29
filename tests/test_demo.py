@@ -91,9 +91,9 @@ def test_other_samples_and_uploads_run_the_full_pipeline(demo_on, tmp_path, monk
     assert at.session_state["output"].run_id is not None and not at.exception
 
 
-# Upgrade v2.0 guard (U1-U8): the AI evidence pack for the Kalpa sample must not change, so cached
-# insights and the demo seed stay valid. U9 changes the evidence pack on purpose and updates this value.
-KALPA_EVIDENCE_FINGERPRINT = "037d98c537d928898aab1649036ed4d5024f2d4a9648763a5a818a64b41ef7f8"
+# Upgrade v2.0 guard: the AI evidence pack for the Kalpa sample must not change by accident, so cached
+# insights stay valid. U1-U8 kept 037d98c5...; U9 (prompt v6, planning evidence) changed it on purpose.
+KALPA_EVIDENCE_FINGERPRINT = "826ecf58fe8334fe567739cb403cf4f657f0628980021db5799311ea5a75e59e"
 
 
 def test_kalpa_evidence_pack_fingerprint_unchanged(tmp_path):
