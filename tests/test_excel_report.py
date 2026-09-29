@@ -14,23 +14,15 @@ from reports.excel_report import export_workbook, generate_workbook
 from utils.formatting import title_case
 
 ROOT = Path(__file__).resolve().parent.parent
-DATASETS = {
-    "clean": ("marketing_clean.csv", None),
-    "messy": ("marketing_messy.xlsx", None),
-    "no_revenue": ("marketing_no_revenue.csv", None),
-    "no_margin": ("marketing_no_margin.csv", None),
-    "meta": ("meta_ads_export_style.csv", {"Results": "leads"}),
-}
 ALWAYS = ["Executive_KPIs", "Clean_Data", "KPI_Analysis", "Data_Quality", "Methodology"]
 
 
 @pytest.fixture(scope="module")
-def books(tmp_path_factory):
+def books(tmp_path_factory, report_outputs):
+    """The samples are analysed once in conftest.py (shared with the PDF tests)."""
     folder = tmp_path_factory.mktemp("xlsx")
     out = {}
-    for name, (file, overrides) in DATASETS.items():
-        raw, report = load_raw(SAMPLE_DIR / file)
-        output = run_pipeline(prepare(raw, report, overrides), db_path=folder / "t.db")
+    for name, output in report_outputs.items():
         path = folder / f"{name}.xlsx"
         sheets = generate_workbook(output.analysis, path, output.clean.clean_df,
                                    output.clean.quality_log_df)

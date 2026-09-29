@@ -43,3 +43,25 @@ def no_real_gemini(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(ai.demo_seed, "SEED_PATH", tmp_path_factory.getbasetemp() / "no_seed.json")
     monkeypatch.setattr(dashboard.demo, "DEMO_SNAPSHOT_PATH",
                         tmp_path_factory.getbasetemp() / "no_snapshot.pkl.gz")
+
+
+# Sample files analysed by the PDF and Excel report tests: name -> (file, mapping overrides).
+REPORT_DATASETS = {
+    "clean": ("marketing_clean.csv", None),
+    "messy": ("marketing_messy.xlsx", None),
+    "no_revenue": ("marketing_no_revenue.csv", None),
+    "no_margin": ("marketing_no_margin.csv", None),
+    "meta": ("meta_ads_export_style.csv", {"Results": "leads"}),
+}
+
+
+@pytest.fixture(scope="session")
+def report_outputs(tmp_path_factory):
+    """Each report sample analysed once per test run, shared by the PDF and Excel tests (read only)."""
+    from dashboard.pipeline import SAMPLE_DIR, load_raw, prepare, run_pipeline
+    folder = tmp_path_factory.mktemp("report_samples")
+    out = {}
+    for name, (file, overrides) in REPORT_DATASETS.items():
+        raw, report = load_raw(SAMPLE_DIR / file)
+        out[name] = run_pipeline(prepare(raw, report, overrides), db_path=folder / "t.db")
+    return out

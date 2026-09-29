@@ -14,23 +14,15 @@ from database import repository as repo
 from reports.pdf_report import AI_NOT_GENERATED, export_pdf, generate_pdf
 
 ROOT = Path(__file__).resolve().parent.parent
-DATASETS = {
-    "clean": ("marketing_clean.csv", None),
-    "messy": ("marketing_messy.xlsx", None),
-    "no_revenue": ("marketing_no_revenue.csv", None),
-    "no_margin": ("marketing_no_margin.csv", None),
-    "meta": ("meta_ads_export_style.csv", {"Results": "leads"}),
-}
 
 
 @pytest.fixture(scope="module")
-def reports(tmp_path_factory):
-    """Analyse each dataset and generate its PDF once; return (result, text, pages)."""
+def reports(tmp_path_factory, report_outputs):
+    """Generate each sample's PDF once (the samples are analysed once in conftest.py, shared with
+    the Excel tests); return (result, text, pages)."""
     folder = tmp_path_factory.mktemp("pdf")
     out = {}
-    for name, (file, overrides) in DATASETS.items():
-        raw, report = load_raw(SAMPLE_DIR / file)
-        output = run_pipeline(prepare(raw, report, overrides), db_path=folder / "t.db")
+    for name, output in report_outputs.items():
         path = folder / f"{name}.pdf"
         generate_pdf(output.analysis, path)
         reader = PdfReader(str(path))

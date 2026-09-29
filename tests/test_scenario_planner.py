@@ -282,12 +282,11 @@ def test_page_renders_and_reacts(kalpa, tmp_path, monkeypatch):
     assert not at.exception
 
 
-def test_page_explains_when_the_check_fails(tmp_path, monkeypatch):
-    raw, report = load_raw(SAMPLE_DIR / "marketing_clean.csv")
-    output = run_pipeline(prepare(raw, report), db_path=tmp_path / "f.db")
+def test_page_explains_when_the_check_fails(kalpa, tmp_path, monkeypatch):
     monkeypatch.setattr(cfg, "RESPONSE_MIN_CV", 0.9)                          # nothing varies that much
-    output.analysis.response_curves = rc.response_analysis(output.clean.clean_df, output.analysis.incidents)
-    at = _app(output, tmp_path, monkeypatch)
+    failed = rc.response_analysis(kalpa.clean.clean_df, kalpa.analysis.incidents)
+    monkeypatch.setattr(kalpa.analysis, "response_curves", failed)          # restored after the test
+    at = _app(kalpa, tmp_path, monkeypatch)
     at.sidebar.radio(key="page").set_value("Scenario Planner").run()
     assert not at.exception
     assert not any(m.label == "Conversions per Week" for m in at.metric)
