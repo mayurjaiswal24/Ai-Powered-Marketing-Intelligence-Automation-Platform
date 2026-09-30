@@ -18,7 +18,7 @@ if not exist ".venv\Scripts\python.exe" (
     echo  Could not find the project's Python environment:
     echo    "%~dp0.venv\Scripts\python.exe"
     echo.
-    echo  Create it first ^(see START_HERE.md^), then double-click run_app.bat again.
+    echo  Create it first ^(see README.md^), then double-click run_app.bat again.
     echo.
     pause
     exit /b 1

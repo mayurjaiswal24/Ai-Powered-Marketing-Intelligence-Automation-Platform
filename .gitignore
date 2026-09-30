@@ -24,3 +24,9 @@ desktop.ini
 # Coverage data (pytest-cov)
 .coverage
 htmlcov/
+
+# Planning and working files (kept on this computer only)
+CLAUDE.md
+PROGRESS.md
+docs/
+START_HERE.md

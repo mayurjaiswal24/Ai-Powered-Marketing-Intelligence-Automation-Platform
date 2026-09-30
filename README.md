@@ -4,7 +4,7 @@
 > from raw marketing data to verified analytics, AI-assisted interpretation, interactive
 > visualization and executive reporting.**
 
-**Live demo:** _add the Streamlit link here_ · **Walkthrough:** [`docs/PROJECT_EXPLAINED.md`](docs/PROJECT_EXPLAINED.md) · **Demo script:** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
+**Live demo:** _add the Streamlit link here_
 
 ## The problem
 
@@ -67,8 +67,6 @@ New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" a
 
 The last row lists ideas, not promises. The version number comes from `APP_VERSION` in `config/settings.py`.
 
-_Screenshots: add `docs/images/overview.png`, `anomalies.png`, `ai_insights.png`, `pdf.png`._
-
 ## Architecture
 
 ```mermaid
@@ -90,8 +88,6 @@ flowchart LR
     R --> X[Excel workbook<br/>XlsxWriter]
     V --> S & P & X
 ```
-
-Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Technology stack
 
@@ -138,8 +134,6 @@ or margin data exists (no margin is ever assumed).
 - A zero or missing denominator gives N/A.
 - Reach is never added up across days or campaigns.
 
-Full details, cleaning rules and the anomaly method: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md).
-
 ## Setup (Windows)
 
 1. Install Python 3.12 or newer (developed and tested on Python 3.14).
@@ -179,8 +173,7 @@ limits uploads to 10 MB and AI calls per session, and deletes runs after 24 hour
 ```
 
 Tests never call the real Gemini API: `tests/conftest.py` switches AI off and blocks the SDK's
-network layer, and a fake client is used instead. Acceptance evidence is in
-[`docs/ACCEPTANCE_CHECKLIST.md`](docs/ACCEPTANCE_CHECKLIST.md).
+network layer, and a fake client is used instead.
 
 ## Project structure
 
@@ -201,7 +194,6 @@ data/sample/            synthetic "Kalpa Learning" datasets (clean, messy, varia
 data/demo/              finished sample analysis + saved AI insights for the live demo
 scripts/                data generator, benchmark, demo refresh
 tests/                  pytest suite and fixtures
-docs/                   architecture, methodology, demo script, project walkthrough
 ```
 
 ## Limitations
@@ -238,13 +230,3 @@ What I'd build next:
 Also worth doing: richer AI evaluation (check the meaning of statements, not only the numbers,
 and track AI quality over time) and seasonality-aware forecasts once two or more years of data
 are available.
-
-## Documentation
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — modules, data flow, database tables
-- [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) — every formula, cleaning rule and threshold
-- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — a five-minute demo, click by click
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — putting the app online (Streamlit Community Cloud), step by step
-- [`docs/PROJECT_EXPLAINED.md`](docs/PROJECT_EXPLAINED.md) — plain-English walkthrough and interview questions
-- [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) — the synthetic sample datasets
-- [`docs/ACCEPTANCE_CHECKLIST.md`](docs/ACCEPTANCE_CHECKLIST.md) — acceptance evidence, coverage, timings
