@@ -4,8 +4,6 @@
 > from raw marketing data to verified analytics, AI-assisted interpretation, interactive
 > visualization and executive reporting.**
 
-**Live demo:** _add the Streamlit link here_
-
 ## The problem
 
 Marketing teams export campaign data from Google Ads, Meta, CRMs and shop systems, then spend
@@ -230,3 +228,14 @@ What I'd build next:
 Also worth doing: richer AI evaluation (check the meaning of statements, not only the numbers,
 and track AI quality over time) and seasonality-aware forecasts once two or more years of data
 are available.
+
+## How this was built
+
+I designed this project end to end: the product specification, the KPI rules, the business
+decisions and the review of every stage. I used AI coding tools to help write the code, and
+verified the results with a test suite of about 600 tests. Every number in the app is calculated
+by Python, not by AI.
+
+## Licence
+
+Copyright (c) 2026 Mayur Jaiswal. All rights reserved. See [`LICENSE`](LICENSE).

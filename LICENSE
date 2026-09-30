@@ -1,0 +1,20 @@
+Copyright (c) 2026 Mayur Jaiswal. All rights reserved.
+
+This repository is published for demonstration and evaluation purposes only
+(for example, review by recruiters and interviewers).
+
+No part of this software, its source code, documentation or sample data may be
+copied, modified, distributed, sublicensed or used, in whole or in part, for
+any commercial or non-commercial purpose without the prior written permission
+of the copyright holder.
+
+The DejaVu fonts in assets/fonts/ are distributed under their own licence
+(see assets/fonts/LICENSE_DEJAVU.txt). Third-party Python packages listed in
+requirements.txt are the property of their respective owners and are used
+under their own licences.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+Contact: https://www.linkedin.com/in/mayur-jaiswal-679501213
