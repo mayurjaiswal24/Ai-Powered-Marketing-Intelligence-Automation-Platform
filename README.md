@@ -65,6 +65,34 @@ New in v2.0 (Decision Intelligence): from "what happened" to "are we on track" a
 
 The last row lists ideas, not promises. The version number comes from `APP_VERSION` in `config/settings.py`.
 
+## Screenshots
+
+All screenshots use the synthetic sample dataset that ships with the app.
+
+**Executive Overview:** headline KPIs with trend lines, weekly revenue and where the money goes.
+
+![Executive Overview](assets/screenshots/overview.png)
+
+**Channels:** paid channels compared on ROAS and efficiency; click a bar to see its campaigns.
+
+![Channels](assets/screenshots/channels.png)
+
+**Anomalies:** unusual periods grouped into incidents and ranked by estimated ₹ impact.
+
+![Anomalies](assets/screenshots/anomalies.png)
+
+**Profitability:** each campaign and channel against its own break-even ROAS.
+
+![Profitability](assets/screenshots/profitability.png)
+
+**Scenario Planner:** what moving budget between channels is likely to do, with a range.
+
+![Scenario Planner](assets/screenshots/scenario_planner.png)
+
+**AI Insights:** Gemini explains the verified findings; every quoted figure is checked.
+
+![AI Insights](assets/screenshots/ai_insights.png)
+
 ## Architecture
 
 ```mermaid
